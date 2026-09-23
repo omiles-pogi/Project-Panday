@@ -2,7 +2,7 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "dev server",
+            "label": "vite dev server",
             "type": "npm",
             "script": "dev",
             "isBackground": true,
@@ -21,6 +21,34 @@
                 "reveal": "always",
                 "panel": "dedicated"
             }
+        },
+        {
+            "label": "laravel serve",
+            "type": "shell",
+            "command": "php",
+            "args": ["artisan", "serve", "--port=8000"],
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "laravel",
+                "pattern": {
+                    "regexp": "."
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": ".*",
+                    "endsPattern": "Server running on"
+                }
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        },
+        {
+            "label": "dev server",
+            "dependsOn": ["vite dev server", "laravel serve"],
+            "dependsOrder": "parallel",
+            "problemMatcher": []
         }
     ]
 }
