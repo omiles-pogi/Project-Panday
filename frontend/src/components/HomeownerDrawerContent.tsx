@@ -2,6 +2,7 @@ import { Text, View, Pressable, ScrollView } from "react-native";
 import { router } from "expo-router";
 import type { DrawerContentComponentProps } from "expo-router/drawer";
 import { Ionicons } from "@expo/vector-icons";
+import AdminSwitch from "@/components/AdminSwitch";
 import { useAuth } from "@/context/AuthContext";
 import { roleColors } from "@/theme/colors";
 
@@ -79,6 +80,7 @@ export default function HomeownerDrawerContent(props: DrawerContentComponentProp
       </ScrollView>
 
       <View className="px-3 py-3 border-t border-border">
+        <AdminSwitch />
         <Pressable onPress={logout} className="flex-row items-center gap-3 px-3 py-3 rounded-xl">
           <Ionicons name="log-out-outline" size={18} color="#ef4444" />
           <Text className="font-medium text-sm text-danger">Sign Out</Text>

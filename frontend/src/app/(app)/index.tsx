@@ -5,6 +5,9 @@ export default function AppIndex() {
   const { user } = useAuth();
 
   switch (user?.role) {
+    case "admin":
+    case "superadmin":
+      return <Redirect href={"/admin" as never} />;
     case "contractor":
       return <Redirect href="/contractor" />;
     case "supplier":

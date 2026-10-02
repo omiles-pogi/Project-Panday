@@ -1,5 +1,6 @@
 import { Text, View, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import AdminSwitch from "@/components/AdminSwitch";
 import { useAuth } from "@/context/AuthContext";
 import { roleColors } from "@/theme/colors";
 import type { Role } from "@/types/auth";
@@ -28,7 +29,8 @@ export default function RoleStub({ role }: { role: Role }) {
         The {LABELS[role].toLowerCase()} screens haven’t been ported to mobile yet — only the
         homeowner AI planner flow has been built out so far.
       </Text>
-      <Pressable onPress={logout} className="px-5 py-2.5 rounded-xl bg-card border border-border">
+      <AdminSwitch />
+      <Pressable onPress={logout} className="mt-3 px-5 py-2.5 rounded-xl bg-card border border-border">
         <Text className="text-danger text-sm font-semibold">Sign Out</Text>
       </Pressable>
     </View>

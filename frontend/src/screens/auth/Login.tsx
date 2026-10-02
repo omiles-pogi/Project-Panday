@@ -82,15 +82,30 @@ function Field(props: {
   keyboardType?: "email-address";
   autoCapitalize?: "none";
 }) {
-  const { label, ...inputProps } = props;
+  const { label, secureTextEntry, ...inputProps } = props;
+  const [hidden, setHidden] = useState(true);
   return (
     <View>
       <Text className="text-xs font-medium text-muted-foreground mb-1.5">{label}</Text>
-      <TextInput
-        {...inputProps}
-        placeholderTextColor="#6b7280"
-        className="rounded-xl px-4 py-3 text-sm bg-card border border-border text-foreground"
-      />
+      <View className="flex-row items-center rounded-xl bg-card border border-border">
+        <TextInput
+          {...inputProps}
+          secureTextEntry={secureTextEntry && hidden}
+          placeholderTextColor="#6b7280"
+          className="flex-1 px-4 py-3 text-sm text-foreground"
+        />
+        {secureTextEntry ? (
+          <Pressable
+            onPress={() => setHidden((h) => !h)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={hidden ? "Show password" : "Hide password"}
+            className="px-4 py-3"
+          >
+            <Text className="text-xs font-semibold text-muted-foreground">{hidden ? "Show" : "Hide"}</Text>
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }

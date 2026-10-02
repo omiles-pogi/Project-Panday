@@ -66,8 +66,11 @@ php artisan migrate
 Only the **homeowner** role is fully wired up: real registration/login (Sanctum
 token auth), the bottom-tab + drawer navigation shell, and the AI planner flow end to
 end (`ProjectChat` → `PlanContext` → `/api/ai/plan`, plus `BudgetGenerator` and
-`MaterialEstimator` reading the same generated plan). Contractor/supplier/worker land
-on a placeholder screen after login (with a working sign-out), and several homeowner
+`MaterialEstimator` reading the same generated plan). The **contractor** and **worker**
+roles have full tab-based UIs ported from the web app (`src/screens/contractor`,
+`src/screens/worker`) running on static sample data in `src/data/` — there is no
+contractor/worker backend API yet. Supplier lands on a placeholder screen after login
+(with a working sign-out), and several homeowner
 screens (Progress Monitor, Budget Monitor, Labor/Equipment Estimator, AI Design,
 Approvals, Contractor Marketplace, Expenses) show a "hasn't been ported yet" stub —
 see the project's port plan for the full checklist of what's left.

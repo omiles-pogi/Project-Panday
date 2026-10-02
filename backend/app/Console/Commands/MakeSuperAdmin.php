@@ -22,7 +22,7 @@ class MakeSuperAdmin extends Command
         $existing = User::where('email', $email)->first();
 
         if ($existing) {
-            $existing->update(['role' => 'superadmin']);
+            $existing->update(['role' => 'superadmin', 'approval_status' => 'approved']);
             $this->info("Promoted existing user {$existing->email} to superadmin.");
 
             return self::SUCCESS;
@@ -53,6 +53,7 @@ class MakeSuperAdmin extends Command
             'email' => $email,
             'password' => Hash::make($password),
             'role' => 'superadmin',
+            'approval_status' => 'approved',
         ]);
 
         $this->info("Created superadmin {$user->email}.");

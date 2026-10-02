@@ -7,7 +7,8 @@ workers. Three sibling projects, each independently run:
   directly via Vite integration, not a separate deployable). See `backend/AGENTS.md`.
 - **`frontend/`** — Expo/React Native mobile app, calls the backend's JSON API over
   HTTP. See `frontend/AGENTS.md` and `frontend/README.md`.
-- **`admin/`** — reserved for a future admin dashboard. Not built yet; see
+- **`admin/`** — standalone web admin page (Vite + React): approve/reject new accounts and
+  view analytics, talking to the backend's `/api/admin/*`. Single allowed account; see
   `admin/README.md`.
 
 All client apps authenticate against the backend with Laravel Sanctum bearer tokens.
