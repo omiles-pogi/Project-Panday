@@ -5,6 +5,7 @@
             "label": "vite dev server",
             "type": "npm",
             "script": "dev",
+            "path": "backend",
             "isBackground": true,
             "problemMatcher": {
                 "owner": "vite",
@@ -27,6 +28,9 @@
             "type": "shell",
             "command": "php",
             "args": ["artisan", "serve", "--port=8000"],
+            "options": {
+                "cwd": "${workspaceFolder}/backend"
+            },
             "isBackground": true,
             "problemMatcher": {
                 "owner": "laravel",

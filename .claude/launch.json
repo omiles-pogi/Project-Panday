@@ -5,12 +5,14 @@
       "name": "laravel",
       "runtimeExecutable": "php",
       "runtimeArgs": ["artisan", "serve", "--port=8000"],
+      "cwd": "backend",
       "port": 8000
     },
     {
       "name": "vite",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
+      "cwd": "backend",
       "port": 5173
     }
   ]
