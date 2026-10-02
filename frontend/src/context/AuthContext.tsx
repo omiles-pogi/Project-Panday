@@ -75,7 +75,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }) => {
       setError(null);
       try {
-        const { user: newUser, token } = await registerRequest(fields);
+        const res = await registerRequest(fields);
+        if (!("token" in res)) {
+          // Needs admin approval first; surfaced to the user via the form's error line.
+          throw new Error(res.message);
+        }
+        const { user: newUser, token } = res;
         await SecureStore.setItemAsync(TOKEN_KEY, token);
         setAuthToken(token);
         setUser(newUser);

@@ -35,6 +35,11 @@ return [
         ],
     ],
 
+    // The single account allowed into the web admin portal (/admin).
+    'admin' => [
+        'email' => env('ADMIN_EMAIL', 'admin@panday.test'),
+    ],
+
     'anthropic' => [
         'key' => env('ANTHROPIC_API_KEY'),
         'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-5'),

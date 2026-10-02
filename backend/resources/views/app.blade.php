@@ -8,6 +8,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="theme-color" content="#0f1117" />
     <title>{{ config('app.name', 'Project-Panday') }}</title>
+    @viteReactRefresh
     @vite(['resources/css/app.css', 'resources/js/main.tsx'])
   </head>
   <body>

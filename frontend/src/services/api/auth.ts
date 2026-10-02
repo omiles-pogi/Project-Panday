@@ -6,17 +6,23 @@ interface AuthResponse {
   token: string;
 }
 
+// Registration no longer returns a token: new accounts wait for admin approval.
+export interface PendingResponse {
+  user: AuthUser;
+  message: string;
+}
+
 export function registerRequest(fields: {
   name: string;
   email: string;
   password: string;
   password_confirmation: string;
   role: Role;
-}): Promise<AuthResponse> {
+}): Promise<AuthResponse | PendingResponse> {
   return apiFetch("/api/auth/register", {
     method: "POST",
     body: JSON.stringify(fields),
-  }) as Promise<AuthResponse>;
+  }) as Promise<AuthResponse | PendingResponse>;
 }
 
 export function loginRequest(fields: { email: string; password: string }): Promise<AuthResponse> {

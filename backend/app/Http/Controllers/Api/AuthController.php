@@ -17,9 +17,10 @@ class AuthController extends Controller
     {
         $user = $this->authService->register($request->validated());
 
+        // New accounts must be approved by the admin before they can sign in, so no token yet.
         return response()->json([
             'user' => $user,
-            'token' => $user->createToken('mobile')->plainTextToken,
+            'message' => 'Account created. You can sign in once an admin approves it.',
         ], 201);
     }
 
@@ -31,6 +32,14 @@ class AuthController extends Controller
             return response()->json([
                 'error' => 'These credentials do not match our records.',
             ], 401);
+        }
+
+        if ($user->approval_status !== 'approved') {
+            return response()->json([
+                'error' => $user->approval_status === 'rejected'
+                    ? 'Your account was not approved.'
+                    : 'Your account is awaiting admin approval.',
+            ], 403);
         }
 
         return response()->json([

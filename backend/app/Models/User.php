@@ -11,7 +11,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'role'])]
+#[Fillable(['name', 'email', 'password', 'role', 'approval_status'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -25,6 +25,8 @@ class User extends Authenticatable
      * are deliberately excluded — they can only be created via `php artisan
      * make:superadmin` or by an existing superadmin.
      */
+    public const APPROVAL_STATUSES = ['pending', 'approved', 'rejected'];
+
     public const SELF_REGISTERABLE_ROLES = ['homeowner', 'contractor', 'supplier', 'worker'];
 
     /**
