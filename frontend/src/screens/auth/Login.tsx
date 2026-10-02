@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Text, TextInput, View, Pressable, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
 import { Link } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/context/AuthContext";
 import { isValidLoginForm } from "@/validators/auth";
 
@@ -35,7 +36,7 @@ export default function Login() {
         <View className="px-6 py-10">
           <View className="items-center mb-10">
             <View className="w-14 h-14 rounded-2xl items-center justify-center mb-4 bg-primary">
-              <Text className="text-2xl">🏠</Text>
+              <Ionicons name="home" size={24} color="#0f1117" />
             </View>
             <Text className="text-2xl font-extrabold text-foreground">Project-Panday</Text>
             <Text className="text-sm text-muted-foreground mt-1">Sign in to your account</Text>

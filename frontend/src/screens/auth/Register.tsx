@@ -1,16 +1,17 @@
 import { useState } from "react";
 import { Text, TextInput, View, Pressable, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
 import { Link } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/context/AuthContext";
 import { roleColors } from "@/theme/colors";
 import type { Role } from "@/types/auth";
 import { isValidRegisterForm } from "@/validators/auth";
 
-const ROLE_OPTIONS: { id: Role; label: string; icon: string }[] = [
-  { id: "homeowner", label: "Homeowner", icon: "🏠" },
-  { id: "contractor", label: "Contractor", icon: "🏗️" },
-  { id: "supplier", label: "Supplier", icon: "📦" },
-  { id: "worker", label: "Skilled Worker", icon: "👷" },
+const ROLE_OPTIONS: { id: Role; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { id: "homeowner", label: "Homeowner", icon: "home-outline" },
+  { id: "contractor", label: "Contractor", icon: "business-outline" },
+  { id: "supplier", label: "Supplier", icon: "cube-outline" },
+  { id: "worker", label: "Skilled Worker", icon: "hammer-outline" },
 ];
 
 export default function Register() {
@@ -50,7 +51,7 @@ export default function Register() {
         <View className="px-6 py-10">
           <View className="items-center mb-8">
             <View className="w-14 h-14 rounded-2xl items-center justify-center mb-4 bg-primary">
-              <Text className="text-2xl">🏠</Text>
+              <Ionicons name="home" size={24} color="#0f1117" />
             </View>
             <Text className="text-2xl font-extrabold text-foreground">Create your account</Text>
           </View>
@@ -71,7 +72,7 @@ export default function Register() {
                     borderColor: active ? color : "#2a2f42",
                   }}
                 >
-                  <Text className="text-lg">{opt.icon}</Text>
+                  <Ionicons name={opt.icon} size={18} color={active ? color : "#9ca3af"} />
                   <Text
                     className="text-xs font-semibold flex-shrink"
                     style={{ color: active ? color : "#9ca3af" }}

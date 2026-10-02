@@ -1,4 +1,5 @@
 import { ScrollView, Text, View, Pressable } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { usePlan } from "@/context/PlanContext";
 import BriefPrompt from "@/components/BriefPrompt";
 import { colorFor } from "@/utils/colors";
@@ -172,9 +173,13 @@ export default function BudgetGenerator() {
 
 function Badge() {
   return (
-    <View className="self-start px-2 py-0.5 rounded-full mb-1" style={{ backgroundColor: "#f59e0b20" }}>
+    <View
+      className="self-start px-2 py-0.5 rounded-full mb-1 flex-row items-center gap-1"
+      style={{ backgroundColor: "#f59e0b20" }}
+    >
+      <Ionicons name="sparkles-outline" size={11} color="#f59e0b" />
       <Text className="text-xs font-semibold" style={{ color: "#f59e0b" }}>
-        🤖 AI GENERATED
+        AI GENERATED
       </Text>
     </View>
   );

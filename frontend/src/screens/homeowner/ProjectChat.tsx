@@ -8,10 +8,13 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { usePlan } from "@/context/PlanContext";
 import type { ConstructionPlan } from "@/types/plan";
 import { colorFor } from "@/utils/colors";
 import { peso } from "@/utils/currency";
+
+type IconName = keyof typeof Ionicons.glyphMap;
 
 type MsgRole = "user" | "ai";
 type CardType = "plan" | "budget" | "materials" | "equipment" | "design" | "summary";
@@ -42,10 +45,10 @@ function Chip({ text, onPress }: { text: string; onPress: () => void }) {
   );
 }
 
-function SectionHeader({ icon, title, badge }: { icon: string; title: string; badge?: string }) {
+function SectionHeader({ icon, title, badge }: { icon: IconName; title: string; badge?: string }) {
   return (
     <View className="flex-row items-center gap-2">
-      <Text className="text-base">{icon}</Text>
+      <Ionicons name={icon} size={16} color="#f59e0b" />
       <Text className="font-bold text-sm text-foreground">{title}</Text>
       {badge && (
         <View className="px-2 py-0.5 rounded-full" style={{ backgroundColor: "#f59e0b20" }}>
@@ -76,20 +79,20 @@ function CardHeader({ children }: { children: React.ReactNode }) {
 function PlanCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => void }) {
   const [approved, setApproved] = useState<Record<string, boolean>>({});
   const buffer = plan.budget - plan.totalEstimate;
-  const items = [
-    { icon: "📅", title: "Timeline", value: `${plan.timelineMonths} months`, detail: `${plan.phases.length} phases`, color: "#3b82f6" },
-    { icon: "₱", title: "AI Budget Estimate", value: peso(plan.totalEstimate), detail: buffer >= 0 ? `Within budget · ${peso(buffer)} buffer` : `Over budget by ${peso(Math.abs(buffer))}`, color: "#f59e0b" },
-    { icon: "🧱", title: "Key Materials", value: `${plan.materials.length} material types`, detail: plan.materials.slice(0, 3).map((m) => m.material).join(", "), color: "#10b981" },
-    { icon: "🏠", title: "Design", value: plan.designStyle, detail: `${plan.bedrooms}BR / ${plan.bathrooms}BA · ${plan.areaSqm} sqm`, color: "#8b5cf6" },
-    { icon: "🚧", title: "Equipment", value: `${plan.equipment.length} equipment types`, detail: plan.equipment.slice(0, 3).map((e) => e.name).join(", "), color: "#f43f5e" },
-    { icon: "📐", title: "Phases", value: `${plan.phases.length} phases`, detail: plan.phases.map((p) => p.name).join(" → "), color: "#06b6d4" },
+  const items: { icon: IconName; title: string; value: string; detail: string; color: string }[] = [
+    { icon: "calendar-outline", title: "Timeline", value: `${plan.timelineMonths} months`, detail: `${plan.phases.length} phases`, color: "#3b82f6" },
+    { icon: "wallet-outline", title: "AI Budget Estimate", value: peso(plan.totalEstimate), detail: buffer >= 0 ? `Within budget · ${peso(buffer)} buffer` : `Over budget by ${peso(Math.abs(buffer))}`, color: "#f59e0b" },
+    { icon: "layers-outline", title: "Key Materials", value: `${plan.materials.length} material types`, detail: plan.materials.slice(0, 3).map((m) => m.material).join(", "), color: "#10b981" },
+    { icon: "home-outline", title: "Design", value: plan.designStyle, detail: `${plan.bedrooms}BR / ${plan.bathrooms}BA · ${plan.areaSqm} sqm`, color: "#8b5cf6" },
+    { icon: "construct-outline", title: "Equipment", value: `${plan.equipment.length} equipment types`, detail: plan.equipment.slice(0, 3).map((e) => e.name).join(", "), color: "#f43f5e" },
+    { icon: "git-branch-outline", title: "Phases", value: `${plan.phases.length} phases`, detail: plan.phases.map((p) => p.name).join(" → "), color: "#06b6d4" },
   ];
   const allApproved = items.every((i) => approved[i.title]);
 
   return (
     <CardShell>
       <CardHeader>
-        <SectionHeader icon="🤖" title="Construction Plan Overview" badge="AI Generated" />
+        <SectionHeader icon="sparkles-outline" title="Construction Plan Overview" badge="AI Generated" />
       </CardHeader>
       <View className="p-4 flex-row flex-wrap gap-2">
         {items.map((item) => (
@@ -103,7 +106,7 @@ function PlanCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => void
               borderColor: approved[item.title] ? `${item.color}50` : "transparent",
             }}
           >
-            <Text className="text-lg">{item.icon}</Text>
+            <Ionicons name={item.icon} size={18} color={item.color} />
             <View className="flex-1">
               <Text className="text-xs font-semibold mb-0.5" style={{ color: item.color }}>
                 {item.title.toUpperCase()}
@@ -125,9 +128,10 @@ function PlanCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => void
           <>
             <Pressable
               onPress={() => setApproved(Object.fromEntries(items.map((i) => [i.title, true])))}
-              className="flex-1 py-2 rounded-xl items-center bg-primary"
+              className="flex-1 py-2 rounded-xl items-center flex-row justify-center gap-1.5 bg-primary"
             >
-              <Text className="text-sm font-semibold text-primary-foreground">✓ Approve All</Text>
+              <Ionicons name="checkmark" size={15} color="#0f1117" />
+              <Text className="text-sm font-semibold text-primary-foreground">Approve All</Text>
             </Pressable>
             {items
               .filter((i) => !approved[i.title])
@@ -156,7 +160,7 @@ function BudgetCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => vo
   return (
     <CardShell>
       <CardHeader>
-        <SectionHeader icon="₱" title="Budget Breakdown" badge="AI Estimate" />
+        <SectionHeader icon="wallet-outline" title="Budget Breakdown" badge="AI Estimate" />
       </CardHeader>
       <View className="p-4">
         <View className="flex-row gap-2 mb-4">
@@ -197,8 +201,9 @@ function BudgetCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => vo
           })}
         </View>
         <View className="flex-row gap-2">
-          <Pressable onPress={onNext} className="flex-1 py-2.5 rounded-xl items-center bg-primary">
-            <Text className="text-sm font-bold text-primary-foreground">✓ Approve Budget · Next →</Text>
+          <Pressable onPress={onNext} className="flex-1 py-2.5 rounded-xl items-center flex-row justify-center gap-1.5 bg-primary">
+            <Ionicons name="checkmark" size={15} color="#0f1117" />
+            <Text className="text-sm font-bold text-primary-foreground">Approve Budget · Next →</Text>
           </Pressable>
           <Pressable className="px-4 py-2.5 rounded-xl items-center bg-muted border border-border">
             <Text className="text-sm text-muted-foreground">Modify</Text>
@@ -218,7 +223,7 @@ function MaterialsCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () =>
   return (
     <CardShell>
       <CardHeader>
-        <SectionHeader icon="🧱" title="Material Estimates" badge="AI Generated" />
+        <SectionHeader icon="layers-outline" title="Material Estimates" badge="AI Generated" />
         <Text className="text-sm font-bold" style={{ color: "#f59e0b" }}>
           {peso(total)}
         </Text>
@@ -245,26 +250,34 @@ function MaterialsCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () =>
                 className="px-2 py-1 rounded"
                 style={{ backgroundColor: approved[i] ? "#10b98120" : "#252a3a" }}
               >
-                <Text className="text-xs font-medium" style={{ color: approved[i] ? "#10b981" : "#9ca3af" }}>
-                  {approved[i] ? "✓" : "OK"}
-                </Text>
+                {approved[i] ? (
+                  <Ionicons name="checkmark" size={13} color="#10b981" />
+                ) : (
+                  <Text className="text-xs font-medium" style={{ color: "#9ca3af" }}>
+                    OK
+                  </Text>
+                )}
               </Pressable>
             </View>
           ))}
         </ScrollView>
       </View>
       <View className="p-4 border-t" style={{ borderColor: "#2a2f42" }}>
-        <Text className="text-xs mb-3 text-muted-foreground">
-          ⚠ Prices are AI estimates. Actual costs may vary based on supplier and market conditions.
-        </Text>
+        <View className="flex-row gap-1.5 mb-3">
+          <Ionicons name="warning-outline" size={13} color="#6b7280" style={{ marginTop: 1 }} />
+          <Text className="text-xs flex-1 text-muted-foreground">
+            Prices are AI estimates. Actual costs may vary based on supplier and market conditions.
+          </Text>
+        </View>
         <View className="flex-row gap-2">
           <Pressable
             onPress={() => setApproved(Object.fromEntries(plan.materials.map((_, i) => [i, true])))}
-            className="flex-1 py-2.5 rounded-xl items-center"
+            className="flex-1 py-2.5 rounded-xl items-center flex-row justify-center gap-1.5"
             style={{ backgroundColor: allApproved ? "#252a3a" : "#f59e0b15", borderWidth: 1, borderColor: "#f59e0b30" }}
           >
+            <Ionicons name="checkmark" size={15} color={allApproved ? "#9ca3af" : "#f59e0b"} />
             <Text className="text-sm font-semibold" style={{ color: allApproved ? "#9ca3af" : "#f59e0b" }}>
-              {allApproved ? "All Approved ✓" : "✓ Approve All Materials"}
+              {allApproved ? "All Approved" : "Approve All Materials"}
             </Text>
           </Pressable>
           {allApproved && (
@@ -286,7 +299,7 @@ function EquipmentCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () =>
   return (
     <CardShell>
       <CardHeader>
-        <SectionHeader icon="🚧" title="Equipment Requirements" badge="AI Generated" />
+        <SectionHeader icon="construct-outline" title="Equipment Requirements" badge="AI Generated" />
         <Text className="text-sm font-bold" style={{ color: "#f59e0b" }}>
           {peso(total)}
         </Text>
@@ -295,7 +308,7 @@ function EquipmentCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () =>
         <ScrollView style={{ gap: 6 }}>
           {plan.equipment.map((e, i) => (
             <View key={i} className="flex-row items-center gap-3 px-3 py-2.5 rounded-xl mb-1.5 bg-muted">
-              <Text className="text-base">🔧</Text>
+              <Ionicons name="hammer-outline" size={16} color="#9ca3af" />
               <View className="flex-1">
                 <Text className="text-xs font-medium text-foreground">{e.name}</Text>
                 <Text className="text-xs text-muted-foreground">
@@ -316,11 +329,12 @@ function EquipmentCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () =>
         <View className="flex-row gap-2">
           <Pressable
             onPress={() => setApproved(true)}
-            className="flex-1 py-2.5 rounded-xl items-center"
+            className="flex-1 py-2.5 rounded-xl items-center flex-row justify-center gap-1.5"
             style={{ backgroundColor: approved ? "#10b98120" : "#f59e0b15", borderWidth: 1, borderColor: approved ? "#10b98130" : "#f59e0b30" }}
           >
+            <Ionicons name="checkmark" size={15} color={approved ? "#10b981" : "#f59e0b"} />
             <Text className="text-sm font-semibold" style={{ color: approved ? "#10b981" : "#f59e0b" }}>
-              {approved ? "Equipment Approved ✓" : "✓ Approve Equipment"}
+              {approved ? "Equipment Approved" : "Approve Equipment"}
             </Text>
           </Pressable>
           {approved && (
@@ -347,7 +361,7 @@ function DesignCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => vo
   return (
     <CardShell>
       <CardHeader>
-        <SectionHeader icon="📐" title="AI Conceptual Design" badge="AI Generated" />
+        <SectionHeader icon="color-palette-outline" title="AI Conceptual Design" badge="AI Generated" />
         {approved && (
           <View className="px-2 py-0.5 rounded-full" style={{ backgroundColor: "#10b98120" }}>
             <Text className="text-xs font-semibold" style={{ color: "#10b981" }}>
@@ -371,11 +385,12 @@ function DesignCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => vo
         <View className="flex-row gap-2">
           <Pressable
             onPress={() => setApproved(true)}
-            className="flex-1 py-2.5 rounded-xl items-center"
+            className="flex-1 py-2.5 rounded-xl items-center flex-row justify-center gap-1.5"
             style={{ backgroundColor: approved ? "#10b98120" : "#f59e0b15", borderWidth: 1, borderColor: approved ? "#10b98130" : "#f59e0b30" }}
           >
+            {approved && <Ionicons name="checkmark" size={15} color="#10b981" />}
             <Text className="text-sm font-semibold" style={{ color: approved ? "#10b981" : "#f59e0b" }}>
-              {approved ? "✓ Design Approved" : "Approve Design"}
+              {approved ? "Design Approved" : "Approve Design"}
             </Text>
           </Pressable>
           {approved && (
@@ -394,7 +409,7 @@ function SummaryCard({ plan }: { plan: ConstructionPlan }) {
   return (
     <View className="rounded-2xl overflow-hidden" style={{ backgroundColor: "#1e2235", borderWidth: 1, borderColor: "#10b98140" }}>
       <View className="px-4 py-3 border-b flex-row items-center gap-2" style={{ borderColor: "#10b98130", backgroundColor: "#10b98112" }}>
-        <Text className="text-xl">🎉</Text>
+        <Ionicons name="trophy-outline" size={18} color="#10b981" />
         <Text className="font-bold text-sm" style={{ color: "#10b981" }}>
           Project Plan Complete
         </Text>
@@ -404,9 +419,12 @@ function SummaryCard({ plan }: { plan: ConstructionPlan }) {
           {["Construction Plan", "Budget Breakdown", "Material Estimates", "Equipment Plan", "Conceptual Design"].map((label) => (
             <View key={label} className="flex-row items-center justify-between px-3 py-2 rounded-lg bg-muted">
               <Text className="text-sm text-muted-foreground">{label}</Text>
-              <Text className="text-xs font-semibold" style={{ color: "#10b981" }}>
-                ✓ Approved
-              </Text>
+              <View className="flex-row items-center gap-1">
+                <Ionicons name="checkmark" size={13} color="#10b981" />
+                <Text className="text-xs font-semibold" style={{ color: "#10b981" }}>
+                  Approved
+                </Text>
+              </View>
             </View>
           ))}
         </View>
@@ -494,7 +512,7 @@ function AIBubble({
   return (
     <View className="flex-row gap-3 items-start mb-4">
       <View className="w-8 h-8 rounded-lg items-center justify-center" style={{ backgroundColor: "#f59e0b20" }}>
-        <Text className="text-sm">🤖</Text>
+        <Ionicons name="sparkles-outline" size={16} color="#f59e0b" />
       </View>
       <View className="flex-1" style={{ gap: 8 }}>
         {msg.typing ? (
@@ -651,7 +669,7 @@ export default function ProjectChat() {
             className="w-9 h-9 rounded-xl items-center justify-center"
             style={{ backgroundColor: input.trim() && !busy ? "#f59e0b" : "#252a3a" }}
           >
-            <Text style={{ color: input.trim() && !busy ? "#0f1117" : "#6b7280" }}>➤</Text>
+            <Ionicons name="arrow-up" size={18} color={input.trim() && !busy ? "#0f1117" : "#6b7280"} />
           </Pressable>
         </View>
         <Text className="text-xs text-center mt-2" style={{ color: "#3a3f52" }}>

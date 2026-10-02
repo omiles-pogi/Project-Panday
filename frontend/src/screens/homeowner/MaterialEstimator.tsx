@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ScrollView, Text, TextInput, View, Pressable } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { usePlan } from "@/context/PlanContext";
 import BriefPrompt from "@/components/BriefPrompt";
 
@@ -55,22 +56,23 @@ export default function MaterialEstimator() {
         <Pressable
           onPress={() => brief && generate(brief)}
           disabled={loading}
-          className="px-3 py-2 rounded-xl bg-primary"
+          className="px-3 py-2 rounded-xl bg-primary flex-row items-center gap-1.5"
           style={{ opacity: loading ? 0.6 : 1 }}
         >
-          <Text className="text-sm font-semibold text-primary-foreground">{loading ? "⟳…" : "⟳ Regenerate"}</Text>
+          <Ionicons name="refresh" size={14} color="#0f1117" />
+          <Text className="text-sm font-semibold text-primary-foreground">{loading ? "Regenerating…" : "Regenerate"}</Text>
         </Pressable>
       </View>
 
       <View className="rounded-xl px-4 py-3 mb-4 flex-row gap-2" style={{ backgroundColor: "#f59e0b15", borderWidth: 1, borderColor: "#f59e0b30" }}>
-        <Text>⚠️</Text>
+        <Ionicons name="warning-outline" size={16} color="#fbbf24" />
         <Text className="text-xs leading-relaxed flex-1" style={{ color: "#fbbf24" }}>
           AI-estimated prices. Final prices depend on supplier negotiations and market conditions.
         </Text>
       </View>
 
       <View className="rounded-xl px-4 py-3 mb-4 flex-row items-center gap-2 bg-card border border-border">
-        <Text style={{ color: "#6b7280" }}>🔍</Text>
+        <Ionicons name="search-outline" size={16} color="#6b7280" />
         <TextInput
           value={search}
           onChangeText={setSearch}
@@ -113,11 +115,12 @@ export default function MaterialEstimator() {
               </View>
               <Pressable
                 onPress={() => setApproved((p) => ({ ...p, [m.idx]: !p[m.idx] }))}
-                className="self-start px-3 py-1 rounded-lg"
+                className="self-start px-3 py-1 rounded-lg flex-row items-center gap-1"
                 style={{ backgroundColor: isApproved ? "#10b98120" : "#252a3a" }}
               >
+                {isApproved && <Ionicons name="checkmark-circle" size={13} color="#10b981" />}
                 <Text className="text-xs font-medium" style={{ color: isApproved ? "#10b981" : "#9ca3af" }}>
-                  {isApproved ? "✓ Approved" : "Approve"}
+                  {isApproved ? "Approved" : "Approve"}
                 </Text>
               </Pressable>
             </View>
@@ -139,9 +142,13 @@ export default function MaterialEstimator() {
 
 function Badge() {
   return (
-    <View className="self-start px-2 py-0.5 rounded-full" style={{ backgroundColor: "#f59e0b20" }}>
+    <View
+      className="self-start px-2 py-0.5 rounded-full flex-row items-center gap-1"
+      style={{ backgroundColor: "#f59e0b20" }}
+    >
+      <Ionicons name="sparkles-outline" size={11} color="#f59e0b" />
       <Text className="text-xs font-semibold" style={{ color: "#f59e0b" }}>
-        🤖 AI GENERATED
+        AI GENERATED
       </Text>
     </View>
   );

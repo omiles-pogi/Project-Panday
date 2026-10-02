@@ -1,13 +1,14 @@
-import { Text, type ColorValue } from "react-native";
+import type { ColorValue } from "react-native";
 import { Tabs } from "expo-router";
 import { DrawerToggleButton } from "expo-router/drawer";
+import { Ionicons } from "@expo/vector-icons";
 
-const TAB_ICON: Record<string, string> = {
-  index: "⊞",
-  "project-chat": "🤖",
-  progress: "📊",
-  "budget-monitor": "₱",
-  more: "⋯",
+const TAB_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
+  index: "home-outline",
+  "project-chat": "sparkles-outline",
+  progress: "stats-chart-outline",
+  "budget-monitor": "pie-chart-outline",
+  more: "ellipsis-horizontal",
 };
 
 const TAB_TITLE: Record<string, string> = {
@@ -20,7 +21,7 @@ const TAB_TITLE: Record<string, string> = {
 
 function tabIcon(name: string) {
   return function TabBarIcon({ color }: { color: ColorValue }) {
-    return <Text style={{ fontSize: 20, color }}>{TAB_ICON[name]}</Text>;
+    return <Ionicons name={TAB_ICON[name]} size={20} color={color as string} />;
   };
 }
 

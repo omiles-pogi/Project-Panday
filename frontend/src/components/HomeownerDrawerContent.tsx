@@ -1,22 +1,23 @@
 import { Text, View, Pressable, ScrollView } from "react-native";
 import { router } from "expo-router";
 import type { DrawerContentComponentProps } from "expo-router/drawer";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/context/AuthContext";
 import { roleColors } from "@/theme/colors";
 
-const NAV_ITEMS: { href: string; label: string; icon: string }[] = [
-  { href: "/homeowner", label: "Home", icon: "⊞" },
-  { href: "/homeowner/project-chat", label: "AI Plan", icon: "🤖" },
-  { href: "/homeowner/progress", label: "Progress", icon: "📊" },
-  { href: "/homeowner/budget-monitor", label: "Budget Monitor", icon: "₱" },
-  { href: "/homeowner/budget-generator", label: "Budget Generator", icon: "₱" },
-  { href: "/homeowner/material-estimator", label: "Materials", icon: "🧱" },
-  { href: "/homeowner/labor-estimator", label: "Labor", icon: "👷" },
-  { href: "/homeowner/equipment-estimator", label: "Equipment", icon: "🚧" },
-  { href: "/homeowner/ai-design", label: "AI Design", icon: "📐" },
-  { href: "/homeowner/approvals", label: "Approvals", icon: "✓" },
-  { href: "/homeowner/marketplace", label: "Contractors", icon: "🏢" },
-  { href: "/homeowner/expenses", label: "Expenses", icon: "🧾" },
+const NAV_ITEMS: { href: string; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { href: "/homeowner", label: "Home", icon: "home-outline" },
+  { href: "/homeowner/project-chat", label: "AI Plan", icon: "sparkles-outline" },
+  { href: "/homeowner/progress", label: "Progress", icon: "stats-chart-outline" },
+  { href: "/homeowner/budget-monitor", label: "Budget Monitor", icon: "pie-chart-outline" },
+  { href: "/homeowner/budget-generator", label: "Budget Generator", icon: "wallet-outline" },
+  { href: "/homeowner/material-estimator", label: "Materials", icon: "layers-outline" },
+  { href: "/homeowner/labor-estimator", label: "Labor", icon: "hammer-outline" },
+  { href: "/homeowner/equipment-estimator", label: "Equipment", icon: "construct-outline" },
+  { href: "/homeowner/ai-design", label: "AI Design", icon: "color-palette-outline" },
+  { href: "/homeowner/approvals", label: "Approvals", icon: "checkmark-circle-outline" },
+  { href: "/homeowner/marketplace", label: "Contractors", icon: "business-outline" },
+  { href: "/homeowner/expenses", label: "Expenses", icon: "receipt-outline" },
 ];
 
 export default function HomeownerDrawerContent(props: DrawerContentComponentProps) {
@@ -38,7 +39,7 @@ export default function HomeownerDrawerContent(props: DrawerContentComponentProp
     <View className="flex-1 bg-card">
       <View className="flex-row items-center gap-3 px-4 py-4 border-b border-border" style={{ paddingTop: 48 }}>
         <View className="w-9 h-9 rounded-lg items-center justify-center bg-primary">
-          <Text>🏠</Text>
+          <Ionicons name="home" size={18} color="#0f1117" />
         </View>
         <Text className="font-bold text-base text-foreground">Project-Panday</Text>
       </View>
@@ -69,7 +70,9 @@ export default function HomeownerDrawerContent(props: DrawerContentComponentProp
             onPress={() => go(item.href)}
             className="flex-row items-center gap-3 px-3 py-3 rounded-xl"
           >
-            <Text className="text-lg w-6 text-center">{item.icon}</Text>
+            <View className="w-6 items-center">
+              <Ionicons name={item.icon} size={18} color="#9ca3af" />
+            </View>
             <Text className="font-medium text-sm text-muted-foreground">{item.label}</Text>
           </Pressable>
         ))}
@@ -77,7 +80,7 @@ export default function HomeownerDrawerContent(props: DrawerContentComponentProp
 
       <View className="px-3 py-3 border-t border-border">
         <Pressable onPress={logout} className="flex-row items-center gap-3 px-3 py-3 rounded-xl">
-          <Text>⟵</Text>
+          <Ionicons name="log-out-outline" size={18} color="#ef4444" />
           <Text className="font-medium text-sm text-danger">Sign Out</Text>
         </Pressable>
       </View>

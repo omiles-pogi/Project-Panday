@@ -1,4 +1,5 @@
 import { Text, View, Pressable } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/context/AuthContext";
 import { roleColors } from "@/theme/colors";
 import type { Role } from "@/types/auth";
@@ -20,7 +21,7 @@ export default function RoleStub({ role }: { role: Role }) {
         className="w-16 h-16 rounded-2xl items-center justify-center mb-4"
         style={{ backgroundColor: `${color}20` }}
       >
-        <Text className="text-3xl">🚧</Text>
+        <Ionicons name="construct-outline" size={28} color={color} />
       </View>
       <Text className="text-foreground font-bold text-lg mb-1">{LABELS[role]} app coming soon</Text>
       <Text className="text-muted-foreground text-sm text-center mb-8">

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Text, TextInput, View, Pressable } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
 interface BriefPromptProps {
   onGenerate: (brief: string) => void;
@@ -13,7 +14,7 @@ export default function BriefPrompt({ onGenerate, loading, error }: BriefPromptP
 
   return (
     <View className="rounded-xl p-6 items-center bg-card border border-border">
-      <Text className="text-3xl mb-2">🤖</Text>
+      <Ionicons name="sparkles-outline" size={28} color="#f59e0b" style={{ marginBottom: 8 }} />
       <Text className="font-bold mb-1 text-foreground text-base">No AI plan yet</Text>
       <Text className="text-sm mb-4 text-muted-foreground text-center">
         Describe your project and the AI will generate real estimates for this page.

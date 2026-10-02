@@ -1,6 +1,7 @@
 import { ScrollView, Text, View, Pressable } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 const PHASES = [
   { name: "Foundation", pct: 100 },
@@ -19,11 +20,17 @@ const NOTIFICATIONS = [
 ];
 
 const QUICK_ACTIONS = [
-  { label: "AI Plan", icon: "🤖", href: "/homeowner/project-chat" },
-  { label: "Budget", icon: "₱", href: "/homeowner/budget-monitor" },
-  { label: "Progress", icon: "📊", href: "/homeowner/progress" },
-  { label: "Approvals", icon: "✓", href: "/homeowner/approvals" },
-];
+  { label: "AI Plan", icon: "sparkles-outline", href: "/homeowner/project-chat" },
+  { label: "Budget", icon: "wallet-outline", href: "/homeowner/budget-monitor" },
+  { label: "Progress", icon: "stats-chart-outline", href: "/homeowner/progress" },
+  { label: "Approvals", icon: "checkmark-circle-outline", href: "/homeowner/approvals" },
+] as const;
+
+const NOTIFICATION_ICONS = {
+  warning: { name: "warning-outline", color: "#f59e0b" },
+  info: { name: "information-circle-outline", color: "#3b82f6" },
+  success: { name: "checkmark-circle-outline", color: "#10b981" },
+} as const;
 
 const BUDGET_PILLS = [
   { label: "Budget", value: "₱2.5M", color: "#9ca3af" },
@@ -114,7 +121,7 @@ export default function Dashboard() {
             className="items-center gap-1.5 py-3.5 rounded-2xl bg-card border border-border"
             style={{ width: "23%" }}
           >
-            <Text className="text-2xl">{icon}</Text>
+            <Ionicons name={icon} size={22} color="#f59e0b" />
             <Text className="text-xs font-semibold text-muted-foreground">{label}</Text>
           </Pressable>
         ))}
@@ -173,7 +180,7 @@ export default function Dashboard() {
         <View style={{ gap: 10 }}>
           {NOTIFICATIONS.map(({ type, msg }, i) => (
             <View key={i} className="flex-row gap-3 p-3 rounded-2xl bg-muted">
-              <Text className="text-base">{type === "warning" ? "⚠️" : type === "info" ? "ℹ️" : "✅"}</Text>
+              <Ionicons name={NOTIFICATION_ICONS[type as keyof typeof NOTIFICATION_ICONS].name} size={18} color={NOTIFICATION_ICONS[type as keyof typeof NOTIFICATION_ICONS].color} />
               <Text className="text-xs leading-relaxed flex-1 text-muted-foreground">{msg}</Text>
             </View>
           ))}
