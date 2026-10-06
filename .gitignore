@@ -12,6 +12,15 @@ logs/
 .claude-replay.*
 .tmp-*
 
+# Guards against accidentally running composer/artisan/expo from the repo
+# root instead of backend/ or frontend/ — these belong one level down.
+/vendor/
+/bootstrap/
+/database/
+/storage/
+/.expo/
+/package-lock.json
+
 # Platform-managed agentplat state, not project source. In the
 # client-initiated single-repo workspace layout (make's `Path: "."` spec) the
 # repo root IS the workspace root, so these land inside this repo rather than
