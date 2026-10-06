@@ -9,11 +9,12 @@
       "port": 8000
     },
     {
-      "name": "vite",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "cwd": "backend",
-      "port": 5173
+      "name": "expo-web",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["expo", "start", "--web", "--port", "8082"],
+      "cwd": "frontend",
+      "env": { "EXPO_PUBLIC_API_BASE_URL": "http://localhost:8000" },
+      "port": 8082
     }
   ]
 }

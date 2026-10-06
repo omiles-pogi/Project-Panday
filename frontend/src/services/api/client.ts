@@ -26,10 +26,20 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
 
   const data = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error(extractErrorMessage(data));
+    throw new ApiError(extractErrorMessage(data), data);
   }
 
   return data;
+}
+
+/** Carries the raw response body so callers can read extra fields (e.g. approval_status). */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly data: unknown
+  ) {
+    super(message);
+  }
 }
 
 interface ApiErrorBody {

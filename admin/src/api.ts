@@ -8,6 +8,8 @@ export interface AdminUser {
   email: string;
   role: string;
   approval_status: ApprovalStatus;
+  business_name: string | null;
+  license_number: string | null;
   created_at: string;
 }
 

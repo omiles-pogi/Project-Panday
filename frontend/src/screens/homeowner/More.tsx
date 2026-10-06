@@ -1,6 +1,7 @@
 import { ScrollView, Text, View, Pressable } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import TourButton from "@/components/TourButton";
 
 const MORE_ITEMS = [
   { href: "/homeowner/budget-generator", label: "Budget Generator", icon: "wallet-outline" },
@@ -25,6 +26,7 @@ export default function More() {
           </Pressable>
         ))}
       </View>
+      <TourButton />
     </ScrollView>
   );
 }

@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { MenuGrid, PageHeader, Screen, SignOutButton } from "@/components/ui";
 import AdminSwitch from "@/components/AdminSwitch";
+import TourButton from "@/components/TourButton";
 import { useAuth } from "@/context/AuthContext";
 
 const ITEMS = [
@@ -15,6 +16,7 @@ export default function More() {
     <Screen>
       <PageHeader title="More" subtitle={user ? `${user.name} · Skilled Worker` : undefined} />
       <MenuGrid items={ITEMS} onSelect={(href) => router.push(href as never)} />
+      <TourButton />
       <AdminSwitch />
       <SignOutButton onPress={logout} />
     </Screen>

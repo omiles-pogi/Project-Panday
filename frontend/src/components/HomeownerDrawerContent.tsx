@@ -4,6 +4,7 @@ import type { DrawerContentComponentProps } from "expo-router/drawer";
 import { Ionicons } from "@expo/vector-icons";
 import AdminSwitch from "@/components/AdminSwitch";
 import { useAuth } from "@/context/AuthContext";
+import Logo from "@/components/Logo";
 import { roleColors } from "@/theme/colors";
 
 const NAV_ITEMS: { href: string; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -34,9 +35,7 @@ export default function HomeownerDrawerContent(props: DrawerContentComponentProp
   return (
     <View className="flex-1 bg-card">
       <View className="flex-row items-center gap-3 px-4 py-4 border-b border-border" style={{ paddingTop: 48 }}>
-        <View className="w-9 h-9 rounded-lg items-center justify-center bg-primary">
-          <Ionicons name="home" size={18} color="#0f1117" />
-        </View>
+        <Logo size={40} />
         <Text className="font-bold text-base text-foreground">Project-Panday</Text>
       </View>
 

@@ -365,6 +365,7 @@ function Accounts({ onError, onPendingCount }: { onError: (e: unknown) => void; 
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Email</th>
               <th className="px-4 py-3">Role</th>
+              <th className="px-4 py-3">Verification</th>
               <th className="px-4 py-3">Registered</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3 text-right">Action</th>
@@ -372,16 +373,19 @@ function Accounts({ onError, onPendingCount }: { onError: (e: unknown) => void; 
           </thead>
           <tbody>
             {users === null && (
-              <tr><td colSpan={6} className="px-4 py-6 text-center" style={{ color: "#6b7280" }}>Loading…</td></tr>
+              <tr><td colSpan={7} className="px-4 py-6 text-center" style={{ color: "#6b7280" }}>Loading…</td></tr>
             )}
             {users?.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-6 text-center" style={{ color: "#6b7280" }}>No accounts match.</td></tr>
+              <tr><td colSpan={7} className="px-4 py-6 text-center" style={{ color: "#6b7280" }}>No accounts match.</td></tr>
             )}
             {users?.map((u) => (
               <tr key={u.id} style={{ borderBottom: "1px solid #1e2235" }}>
                 <td className="px-4 py-3 font-medium" style={{ color: "#f0f2f5" }}>{u.name}</td>
                 <td className="px-4 py-3" style={{ color: "#9ca3af" }}>{u.email}</td>
                 <td className="px-4 py-3 capitalize" style={{ color: ROLE_COLOR[u.role] }}>{u.role}</td>
+                <td className="px-4 py-3 text-xs" style={{ color: "#9ca3af" }}>
+                  {u.license_number ? (<>{u.business_name && <div style={{ color: "#f0f2f5" }}>{u.business_name}</div>}<div>{u.license_number}</div></>) : "—"}
+                </td>
                 <td className="px-4 py-3" style={{ color: "#6b7280" }}>{new Date(u.created_at).toLocaleDateString()}</td>
                 <td className="px-4 py-3">
                   <span className="px-2 py-0.5 rounded-full text-xs font-semibold capitalize" style={{ background: `${STATUS_COLOR[u.approval_status]}20`, color: STATUS_COLOR[u.approval_status] }}>

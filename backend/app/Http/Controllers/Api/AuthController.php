@@ -39,6 +39,7 @@ class AuthController extends Controller
                 'error' => $user->approval_status === 'rejected'
                     ? 'Your account was not approved.'
                     : 'Your account is awaiting admin approval.',
+                'approval_status' => $user->approval_status,
             ], 403);
         }
 
@@ -46,6 +47,21 @@ class AuthController extends Controller
             'user' => $user,
             'token' => $user->createToken('mobile')->plainTextToken,
         ]);
+    }
+
+    /**
+     * Lets a freshly registered user's "waiting for approval" screen poll for the admin's
+     * decision. Same credential check as login, but never issues a token.
+     */
+    public function approvalStatus(LoginRequest $request): JsonResponse
+    {
+        $user = $this->authService->attempt($request->validated('email'), $request->validated('password'));
+
+        if (! $user) {
+            return response()->json(['error' => 'These credentials do not match our records.'], 401);
+        }
+
+        return response()->json(['approval_status' => $user->approval_status]);
     }
 
     public function logout(Request $request): JsonResponse

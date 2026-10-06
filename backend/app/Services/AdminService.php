@@ -119,7 +119,7 @@ class AdminService
                 ->orWhere('email', 'like', "%{$search}%")))
             ->latest()
             ->limit(200)
-            ->get(['id', 'name', 'email', 'role', 'approval_status', 'created_at']);
+            ->get(['id', 'name', 'email', 'role', 'approval_status', 'business_name', 'license_number', 'created_at']);
     }
 
     public function setApproval(User $user, string $status): User

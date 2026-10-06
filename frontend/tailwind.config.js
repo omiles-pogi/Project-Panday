@@ -1,6 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 // Colors must stay in sync with src/theme/colors.ts (transcribed from resources/css/app.css).
 module.exports = {
+  darkMode: "class",
   content: ["./src/**/*.{js,jsx,ts,tsx}"],
   presets: [require("nativewind/preset")],
   theme: {

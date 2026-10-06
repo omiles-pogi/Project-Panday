@@ -3,9 +3,10 @@ import { Text, TextInput, View, Pressable, KeyboardAvoidingView, Platform, Scrol
 import { Link } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/context/AuthContext";
+import Logo from "@/components/Logo";
 import { roleColors } from "@/theme/colors";
 import type { Role } from "@/types/auth";
-import { isValidRegisterForm } from "@/validators/auth";
+import { isValidRegisterForm, VERIFICATION_FIELDS } from "@/validators/auth";
 
 const ROLE_OPTIONS: { id: Role; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { id: "homeowner", label: "Homeowner", icon: "home-outline" },
@@ -21,10 +22,22 @@ export default function Register() {
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [role, setRole] = useState<Role>("homeowner");
+  const [businessName, setBusinessName] = useState("");
+  const [licenseNumber, setLicenseNumber] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const canSubmit = isValidRegisterForm({ name, email, password, passwordConfirmation }) && !submitting;
+  const verification = VERIFICATION_FIELDS[role];
+
+  const canSubmit = isValidRegisterForm({
+      name,
+      email,
+      password,
+      passwordConfirmation,
+      role,
+      businessName,
+      licenseNumber,
+    }) && !submitting;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -37,6 +50,12 @@ export default function Register() {
         password,
         password_confirmation: passwordConfirmation,
         role,
+        ...(verification
+          ? {
+              business_name: verification.businessLabel ? businessName.trim() : undefined,
+              license_number: licenseNumber.trim(),
+            }
+          : {}),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to register.");
@@ -50,8 +69,8 @@ export default function Register() {
       <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
         <View className="px-6 py-10">
           <View className="items-center mb-8">
-            <View className="w-14 h-14 rounded-2xl items-center justify-center mb-4 bg-primary">
-              <Ionicons name="home" size={24} color="#0f1117" />
+            <View className="mb-4">
+              <Logo size={130} />
             </View>
             <Text className="text-2xl font-extrabold text-foreground">Create your account</Text>
           </View>
@@ -96,6 +115,24 @@ export default function Register() {
             />
           </View>
 
+          {verification ? (
+            <View className="mt-5 gap-3">
+              <Text className="text-xs font-semibold text-primary">
+                Verification — an admin reviews these before your account is approved
+              </Text>
+              {verification.businessLabel ? (
+                <Field label={verification.businessLabel} value={businessName} onChangeText={setBusinessName} />
+              ) : null}
+              <Field
+                label={verification.licenseLabel}
+                value={licenseNumber}
+                onChangeText={setLicenseNumber}
+                placeholder={verification.licenseHint}
+                autoCapitalize="characters"
+              />
+            </View>
+          ) : null}
+
           {error && <Text className="text-danger text-sm mt-4 text-center">{error}</Text>}
 
           <Pressable
@@ -129,7 +166,8 @@ function Field(props: {
   onChangeText: (t: string) => void;
   secureTextEntry?: boolean;
   keyboardType?: "email-address";
-  autoCapitalize?: "none";
+  autoCapitalize?: "none" | "characters";
+  placeholder?: string;
 }) {
   const { label, secureTextEntry, ...inputProps } = props;
   const [hidden, setHidden] = useState(true);

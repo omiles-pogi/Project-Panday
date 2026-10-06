@@ -15,6 +15,7 @@ import type { ConstructionPlan } from "@/types/plan";
 import { colorFor } from "@/utils/colors";
 import { peso } from "@/utils/currency";
 import { createProject } from "@/services/api/projects";
+import Mascot from "@/components/Mascot";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -516,9 +517,7 @@ function AIBubble({
 }) {
   return (
     <View className="flex-row gap-3 items-start mb-4">
-      <View className="w-8 h-8 rounded-lg items-center justify-center" style={{ backgroundColor: "#f59e0b20" }}>
-        <Ionicons name="sparkles-outline" size={16} color="#f59e0b" />
-      </View>
+      <Mascot size={44} mood={msg.typing ? "thinking" : "happy"} bob={msg.typing} />
       <View className="flex-1" style={{ gap: 8 }}>
         {msg.typing ? (
           <View className="rounded-2xl self-start bg-card border border-border">
@@ -634,6 +633,13 @@ export default function ProjectChat() {
   return (
     <KeyboardAvoidingView className="flex-1 bg-background" behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView ref={scrollRef} className="flex-1 px-4 py-5" contentContainerStyle={{ paddingBottom: 8 }}>
+        {showSuggestions && (
+          <View className="items-center mb-5">
+            <Mascot size={110} />
+            <Text className="text-lg font-extrabold text-foreground mt-2">Hi, I&apos;m Pandy!</Text>
+            <Text className="text-xs text-muted-foreground mt-0.5">Your AI construction buddy</Text>
+          </View>
+        )}
         {messages.map((msg) =>
           msg.role === "ai" ? (
             <AIBubble key={msg.id} msg={msg} plan={plan} onQuickReply={handleQuickReply} onAdvance={advance} />

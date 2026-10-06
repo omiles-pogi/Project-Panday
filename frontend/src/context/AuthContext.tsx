@@ -1,17 +1,28 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import * as SecureStore from "expo-secure-store";
+import { tokenStorage } from "@/utils/tokenStorage";
 import { loginRequest, logoutRequest, meRequest, registerRequest } from "@/services/api/auth";
-import { setAuthToken } from "@/services/api/client";
+import { ApiError, setAuthToken } from "@/services/api/client";
 import type { AuthUser, Role } from "@/types/auth";
 
 const TOKEN_KEY = "buildai_auth_token";
 
 type AuthStatus = "bootstrapping" | "authed" | "guest";
 
+export interface PendingAccount {
+  name: string;
+  email: string;
+  password: string;
+}
+
 interface AuthContextValue {
   status: AuthStatus;
   user: AuthUser | null;
   error: string | null;
+  /** An account that exists but is waiting for admin approval (drives Pandy's waiting screen). */
+  pending: PendingAccount | null;
+  /** Leave the waiting screen; pass an email to pre-fill it on the sign-in page. */
+  clearPending: (prefillEmail?: string) => void;
+  prefillEmail: string;
   login: (email: string, password: string) => Promise<void>;
   register: (fields: {
     name: string;
@@ -19,6 +30,8 @@ interface AuthContextValue {
     password: string;
     password_confirmation: string;
     role: Role;
+    business_name?: string;
+    license_number?: string;
   }) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -29,10 +42,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("bootstrapping");
   const [user, setUser] = useState<AuthUser | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<PendingAccount | null>(null);
+  const [prefillEmail, setPrefillEmail] = useState("");
+  const clearPending = useCallback((email?: string) => {
+    setPending(null);
+    setPrefillEmail(email ?? "");
+  }, []);
 
   useEffect(() => {
     (async () => {
-      const token = await SecureStore.getItemAsync(TOKEN_KEY);
+      const token = await tokenStorage.getItem(TOKEN_KEY);
       if (!token) {
         setStatus("guest");
         return;
@@ -43,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(me);
         setStatus("authed");
       } catch {
-        await SecureStore.deleteItemAsync(TOKEN_KEY);
+        await tokenStorage.deleteItem(TOKEN_KEY);
         setAuthToken(null);
         setStatus("guest");
       }
@@ -54,11 +73,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const { user: loggedInUser, token } = await loginRequest({ email, password });
-      await SecureStore.setItemAsync(TOKEN_KEY, token);
+      await tokenStorage.setItem(TOKEN_KEY, token);
       setAuthToken(token);
       setUser(loggedInUser);
+      setPending(null);
       setStatus("authed");
     } catch (err) {
+      if (err instanceof ApiError && (err.data as { approval_status?: string } | null)?.approval_status === "pending") {
+        // Valid credentials but not approved yet: wait here instead of just showing an error.
+        setPending({ name: "", email, password });
+        return;
+      }
       const message = err instanceof Error ? err.message : "Failed to log in.";
       setError(message);
       throw err;
@@ -72,16 +97,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password: string;
       password_confirmation: string;
       role: Role;
+      business_name?: string;
+      license_number?: string;
     }) => {
       setError(null);
       try {
         const res = await registerRequest(fields);
         if (!("token" in res)) {
-          // Needs admin approval first; surfaced to the user via the form's error line.
-          throw new Error(res.message);
+          // Needs admin approval first: hand over to Pandy's waiting screen, which polls
+          // for the decision. Credentials stay in memory only.
+          setPending({ name: fields.name, email: fields.email, password: fields.password });
+          return;
         }
         const { user: newUser, token } = res;
-        await SecureStore.setItemAsync(TOKEN_KEY, token);
+        await tokenStorage.setItem(TOKEN_KEY, token);
         setAuthToken(token);
         setUser(newUser);
         setStatus("authed");
@@ -100,14 +129,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // best-effort: proceed with local logout even if the request fails
     }
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await tokenStorage.deleteItem(TOKEN_KEY);
     setAuthToken(null);
     setUser(null);
     setStatus("guest");
   }, []);
 
   return (
-    <AuthContext.Provider value={{ status, user, error, login, register, logout }}>
+    <AuthContext.Provider value={{ status, user, error, pending, clearPending, prefillEmail, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );
