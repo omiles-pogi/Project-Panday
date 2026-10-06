@@ -3,11 +3,11 @@ import { MenuGrid, PageHeader, Screen, SignOutButton } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 
 const ROLES = [
-  { href: "/homeowner", label: "Homeowner", icon: "🏠" },
-  { href: "/contractor", label: "Contractor", icon: "🏗️" },
-  { href: "/worker", label: "Worker", icon: "👷" },
-  { href: "/supplier", label: "Supplier", icon: "📦" },
-];
+  { href: "/homeowner", label: "Homeowner", icon: "home-outline" },
+  { href: "/contractor", label: "Contractor", icon: "business-outline" },
+  { href: "/worker", label: "Worker", icon: "hammer-outline" },
+  { href: "/supplier", label: "Supplier", icon: "cube-outline" },
+] as const;
 
 export default function AdminHub() {
   const { user, logout } = useAuth();

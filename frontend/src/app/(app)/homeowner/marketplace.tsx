@@ -1,5 +1,5 @@
-import ComingSoon from "@/components/ComingSoon";
+import FindWorkers from "@/screens/homeowner/FindWorkers";
 
 export default function Marketplace() {
-  return <ComingSoon title="Contractor Marketplace" />;
+  return <FindWorkers />;
 }

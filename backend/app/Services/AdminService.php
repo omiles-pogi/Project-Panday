@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Project;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
@@ -36,6 +37,11 @@ class AdminService
             ->where('last_used_at', '>=', now()->subDays(7))
             ->distinct()->count('tokenable_id');
 
+        $projects = Project::query()
+            ->whereHas('user', fn ($q) => $q->whereIn('role', self::MANAGED_ROLES))
+            ->with('phases')
+            ->get();
+
         return [
             'totals' => [
                 'users' => $managed()->count(),
@@ -52,7 +58,51 @@ class AdminService
                 'date' => $day->toDateString(),
                 'total' => (int) ($signupCounts[$day->toDateString()] ?? 0),
             ])->values(),
+            'projects' => [
+                'total' => $projects->count(),
+                'active' => $projects->where('status', 'active')->count(),
+                'completed' => $projects->where('status', 'completed')->count(),
+                'avg_progress' => $projects->isEmpty()
+                    ? 0
+                    : (int) round($projects->avg(fn (Project $p) => $p->overallProgressPct())),
+            ],
         ];
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    public function projects(?string $status, ?string $search): \Illuminate\Support\Collection
+    {
+        return Project::query()
+            ->whereHas('user', fn ($q) => $q->whereIn('role', self::MANAGED_ROLES))
+            ->with(['phases', 'user'])
+            ->when($status, fn ($q) => $q->where('status', $status))
+            ->when($search, fn ($q) => $q->where(fn ($w) => $w
+                ->where('title', 'like', "%{$search}%")
+                ->orWhereHas('user', fn ($u) => $u
+                    ->where('name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%"))))
+            ->latest('started_at')
+            ->limit(200)
+            ->get()
+            ->map(fn (Project $project) => [
+                'id' => $project->id,
+                'title' => $project->title,
+                'location' => $project->location,
+                'status' => $project->status,
+                'budget' => $project->budget,
+                'totalEstimate' => $project->total_estimate,
+                'startedAt' => $project->started_at->toDateString(),
+                'overallProgressPct' => $project->overallProgressPct(),
+                'owner' => [
+                    'id' => $project->user->id,
+                    'name' => $project->user->name,
+                    'email' => $project->user->email,
+                    'role' => $project->user->role,
+                ],
+            ])
+            ->values();
     }
 
     /**

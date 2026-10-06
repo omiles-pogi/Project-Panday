@@ -1,6 +1,7 @@
 export interface PlanPhase {
   name: string;
   percentComplete: number;
+  tasks: string[];
 }
 
 export interface BudgetLine {

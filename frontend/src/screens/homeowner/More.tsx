@@ -5,12 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 const MORE_ITEMS = [
   { href: "/homeowner/budget-generator", label: "Budget Generator", icon: "wallet-outline" },
   { href: "/homeowner/material-estimator", label: "Materials", icon: "layers-outline" },
-  { href: "/homeowner/labor-estimator", label: "Labor", icon: "hammer-outline" },
-  { href: "/homeowner/equipment-estimator", label: "Equipment", icon: "construct-outline" },
-  { href: "/homeowner/ai-design", label: "AI Design", icon: "color-palette-outline" },
-  { href: "/homeowner/approvals", label: "Approvals", icon: "checkmark-circle-outline" },
-  { href: "/homeowner/marketplace", label: "Contractors", icon: "business-outline" },
-  { href: "/homeowner/expenses", label: "Expenses", icon: "receipt-outline" },
+  { href: "/homeowner/marketplace", label: "Find Your Team", icon: "people-outline" },
 ] as const;
 
 export default function More() {

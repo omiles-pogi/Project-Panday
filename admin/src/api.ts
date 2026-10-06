@@ -22,6 +22,29 @@ export interface Stats {
   };
   by_role: { role: string; total: number }[];
   signups: { date: string; total: number }[];
+  projects: {
+    total: number;
+    active: number;
+    completed: number;
+    avg_progress: number;
+  };
+}
+
+export interface AdminProject {
+  id: number;
+  title: string;
+  location: string | null;
+  status: "active" | "completed";
+  budget: number;
+  totalEstimate: number;
+  startedAt: string;
+  overallProgressPct: number;
+  owner: {
+    id: number;
+    name: string;
+    email: string;
+    role: string;
+  };
 }
 
 export class UnauthorizedError extends Error {}
@@ -87,6 +110,11 @@ export const fetchStats = () => request<Stats>("/api/admin/stats");
 export const fetchUsers = (params: { status?: string; role?: string; q?: string }) => {
   const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]);
   return request<AdminUser[]>(`/api/admin/users?${qs}`);
+};
+
+export const fetchProjects = (params: { status?: string; q?: string } = {}) => {
+  const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]);
+  return request<AdminProject[]>(`/api/admin/projects?${qs}`);
 };
 
 export const setApproval = (id: number, status: ApprovalStatus) =>

@@ -1,4 +1,5 @@
 import { Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Card, InfoBox, PageHeader, Screen } from "@/components/ui";
 import { EQUIPMENT_SCHEDULE, WEEK_LABELS } from "@/data/contractor";
 
@@ -14,7 +15,7 @@ export default function EquipmentSchedule() {
     <Screen>
       <PageHeader title="Equipment Schedule" subtitle="Allocation across all projects" />
 
-      <InfoBox color="#ef4444" title="🤖 AI Conflict Detected">
+      <InfoBox color="#ef4444" title="AI Conflict Detected">
         <Text className="text-xs leading-5" style={{ color: "#fca5a5" }}>
           Concrete Mixer A is double-booked Sep 12–14. AI recommends rescheduling or renting an additional unit.
         </Text>
@@ -37,7 +38,7 @@ export default function EquipmentSchedule() {
                     borderColor: w?.color,
                   }}
                 >
-                  {w?.conflict ? <Text style={{ fontSize: 9, color: w.color }}>⚡</Text> : null}
+                  {w?.conflict ? <Ionicons name="warning" size={9} color={w.color} /> : null}
                   <Text numberOfLines={1} style={{ fontSize: 9, color: w ? w.color : "#4b5563" }}>
                     {w ? w.project.split(" ")[0] : "Free"}
                   </Text>
@@ -56,9 +57,12 @@ export default function EquipmentSchedule() {
             <Text className="text-xs text-muted-foreground">{label}</Text>
           </View>
         ))}
-        <Text className="text-xs" style={{ color: "#ef4444" }}>
-          ⚡ Conflict
-        </Text>
+        <View className="flex-row items-center gap-1">
+          <Ionicons name="warning" size={11} color="#ef4444" />
+          <Text className="text-xs" style={{ color: "#ef4444" }}>
+            Conflict
+          </Text>
+        </View>
       </View>
     </Screen>
   );

@@ -1,11 +1,12 @@
-import { Text, type ColorValue } from "react-native";
+import { type ColorValue } from "react-native";
 import { Tabs } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 export interface RoleTab {
   name: string;
   title: string;
   label: string;
-  icon: string;
+  icon: keyof typeof Ionicons.glyphMap;
 }
 
 // Shared bottom-tab shell for the contractor and worker apps, styled like the homeowner tabs.
@@ -27,7 +28,7 @@ export default function RoleTabs({ tabs }: { tabs: RoleTab[] }) {
           options={{
             title: t.title,
             tabBarLabel: t.label,
-            tabBarIcon: ({ color }: { color: ColorValue }) => <Text style={{ fontSize: 20, color }}>{t.icon}</Text>,
+            tabBarIcon: ({ color }: { color: ColorValue }) => <Ionicons name={t.icon} size={20} color={color as string} />,
           }}
         />
       ))}

@@ -4,11 +4,12 @@ import AdminSwitch from "@/components/AdminSwitch";
 import { useAuth } from "@/context/AuthContext";
 
 const ITEMS = [
-  { href: "/contractor/capacity-monitor", label: "Capacity", icon: "🤖" },
-  { href: "/contractor/equipment-schedule", label: "Equipment", icon: "📅" },
-  { href: "/contractor/progress-analysis", label: "Analysis", icon: "📈" },
-  { href: "/contractor/weekly-analytics", label: "Weekly", icon: "📊" },
-];
+  { href: "/contractor/profile", label: "Profile", icon: "person-outline" },
+  { href: "/contractor/capacity-monitor", label: "Capacity", icon: "sparkles-outline" },
+  { href: "/contractor/equipment-schedule", label: "Equipment", icon: "calendar-outline" },
+  { href: "/contractor/progress-analysis", label: "Analysis", icon: "trending-up-outline" },
+  { href: "/contractor/weekly-analytics", label: "Weekly", icon: "stats-chart-outline" },
+] as const;
 
 export default function More() {
   const { user, logout } = useAuth();

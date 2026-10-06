@@ -27,6 +27,14 @@ class AdminController extends Controller
         ));
     }
 
+    public function projects(Request $request): JsonResponse
+    {
+        return response()->json($this->admin->projects(
+            $request->query('status'),
+            $request->query('q'),
+        ));
+    }
+
     public function updateApproval(UpdateApprovalRequest $request, User $user): JsonResponse
     {
         if (! $this->admin->isManaged($user)) {

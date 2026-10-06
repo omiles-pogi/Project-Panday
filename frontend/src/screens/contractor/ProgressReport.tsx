@@ -31,7 +31,7 @@ export default function ProgressReport() {
         again="Submit Another Report"
         onAgain={() => setSubmitted(false)}
       >
-        <Card title="🤖 AI Analysis Preview">
+        <Card title="AI Analysis Preview">
           <View className="flex-row flex-wrap gap-2 mb-3">
             {[
               { label: "Previous Progress", value: "34%", color: "#9ca3af" },

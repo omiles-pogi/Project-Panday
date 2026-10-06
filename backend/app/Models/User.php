@@ -7,6 +7,9 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -40,5 +43,44 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    public function projects(): HasMany
+    {
+        return $this->hasMany(Project::class);
+    }
+
+    public function workerProfile(): HasOne
+    {
+        return $this->hasOne(WorkerProfile::class);
+    }
+
+    public function ratingsReceived(): HasMany
+    {
+        return $this->hasMany(WorkerRating::class, 'worker_id');
+    }
+
+    public function contractorProfile(): HasOne
+    {
+        return $this->hasOne(ContractorProfile::class);
+    }
+
+    public function contractorRatingsReceived(): HasMany
+    {
+        return $this->hasMany(ContractorRating::class, 'contractor_id');
+    }
+
+    /** Projects this user is assigned to work on as a contractor. */
+    public function contractorAssignments(): BelongsToMany
+    {
+        return $this->belongsToMany(Project::class, 'project_contractors', 'contractor_id', 'project_id')
+            ->withTimestamps();
+    }
+
+    /** Projects this user is assigned to work on as a skilled worker. */
+    public function workerAssignments(): BelongsToMany
+    {
+        return $this->belongsToMany(Project::class, 'project_workers', 'worker_id', 'project_id')
+            ->withTimestamps();
     }
 }

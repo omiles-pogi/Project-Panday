@@ -8,11 +8,13 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { usePlan } from "@/context/PlanContext";
 import type { ConstructionPlan } from "@/types/plan";
 import { colorFor } from "@/utils/colors";
 import { peso } from "@/utils/currency";
+import { createProject } from "@/services/api/projects";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -442,8 +444,11 @@ function SummaryCard({ plan }: { plan: ConstructionPlan }) {
             </Text>
           </View>
         </View>
-        <Pressable className="py-2.5 rounded-xl items-center bg-primary">
-          <Text className="text-sm font-bold text-primary-foreground">Find Contractors →</Text>
+        <Pressable
+          onPress={() => router.push("/homeowner/marketplace" as never)}
+          className="py-2.5 rounded-xl items-center bg-primary"
+        >
+          <Text className="text-sm font-bold text-primary-foreground">Find Your Team →</Text>
         </Pressable>
       </View>
     </View>
@@ -602,6 +607,12 @@ export default function ProjectChat() {
     const next = STAGE_ORDER[currentIndex + 1];
     if (!next) return;
     const label = NEXT_LABEL[stage as ResolvedStage];
+
+    if (next === "summary") {
+      createProject(plan).catch((err) => {
+        console.warn("Failed to save project to dashboard:", err);
+      });
+    }
 
     setMessages((p) => [...p, { id: nextId(), role: "user", text: label }]);
     setBusy(true);

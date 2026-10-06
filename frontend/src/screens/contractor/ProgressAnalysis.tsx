@@ -25,7 +25,7 @@ export default function ProgressAnalysis() {
   return (
     <Screen>
       <PageHeader
-        badge="🤖 AI ANALYSIS"
+        badge="AI ANALYSIS"
         title="AI Progress Analysis"
         subtitle="Dela Cruz Residence · Analysis generated Sep 6, 2026"
       />
@@ -101,7 +101,7 @@ export default function ProgressAnalysis() {
         </View>
       </Card>
 
-      <Card title="🤖 AI Recommendations to Recover Schedule">
+      <Card title="AI Recommendations to Recover Schedule">
         <View style={{ gap: 10 }}>
           {RECOMMENDATIONS.map((rec) => (
             <View key={rec} className="flex-row gap-3 p-3 rounded-xl bg-muted">

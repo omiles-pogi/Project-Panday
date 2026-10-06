@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   adminLogin,
+  fetchProjects,
   fetchStats,
   fetchUsers,
   getToken,
@@ -8,6 +9,7 @@ import {
   setApproval,
   setToken,
   UnauthorizedError,
+  type AdminProject,
   type AdminUser,
   type ApprovalStatus,
   type Stats,
@@ -218,6 +220,71 @@ function Analytics({ onError }: { onError: (e: unknown) => void }) {
           </div>
         </section>
       </div>
+
+      <section className="rounded-2xl p-5" style={card}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold text-sm" style={{ color: "#f0f2f5" }}>Project progress</h2>
+          <div className="flex gap-4 text-xs" style={{ color: "#6b7280" }}>
+            <span>Total: <span style={{ color: "#f0f2f5" }}>{stats.projects.total}</span></span>
+            <span>Active: <span style={{ color: "#f59e0b" }}>{stats.projects.active}</span></span>
+            <span>Completed: <span style={{ color: "#10b981" }}>{stats.projects.completed}</span></span>
+            <span>Avg progress: <span style={{ color: "#f0f2f5" }}>{stats.projects.avg_progress}%</span></span>
+          </div>
+        </div>
+        <ProjectProgressList onError={onError} />
+      </section>
+    </div>
+  );
+}
+
+function ProjectProgressList({ onError }: { onError: (e: unknown) => void }) {
+  const [projects, setProjects] = useState<AdminProject[] | null>(null);
+
+  useEffect(() => {
+    fetchProjects().then(setProjects).catch(onError);
+  }, [onError]);
+
+  if (!projects) return <p style={{ color: "#6b7280" }}>Loading…</p>;
+  if (projects.length === 0) return <p className="text-sm" style={{ color: "#6b7280" }}>No projects yet.</p>;
+
+  return (
+    <div className="space-y-3">
+      {projects.map((p) => (
+        <div key={p.id} className="rounded-xl px-4 py-3" style={{ background: "#252a3a" }}>
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="min-w-0">
+              <div className="text-sm font-medium truncate" style={{ color: "#f0f2f5" }}>{p.title}</div>
+              <div className="text-xs truncate" style={{ color: "#6b7280" }}>
+                {p.owner.name} · {p.owner.email}
+                {p.location ? ` · ${p.location}` : ""}
+              </div>
+            </div>
+            <span
+              className="px-2 py-0.5 rounded-full text-xs font-semibold capitalize flex-shrink-0"
+              style={{
+                background: p.status === "completed" ? "#10b98120" : "#f59e0b20",
+                color: p.status === "completed" ? "#10b981" : "#f59e0b",
+              }}
+            >
+              {p.status}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "#1a1d27" }}>
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${p.overallProgressPct}%`,
+                  background: p.overallProgressPct === 100 ? "#10b981" : "#f59e0b",
+                }}
+              />
+            </div>
+            <span className="text-xs font-semibold w-10 text-right" style={{ color: "#9ca3af" }}>
+              {p.overallProgressPct}%
+            </span>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

@@ -1,23 +1,11 @@
-import { ScrollView, Text, View, Pressable } from "react-native";
+import { useCallback, useState } from "react";
+import { ScrollView, Text, View, Pressable, ActivityIndicator } from "react-native";
 import Svg, { Circle } from "react-native-svg";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-
-const PHASES = [
-  { name: "Foundation", pct: 100 },
-  { name: "Structural Works", pct: 80 },
-  { name: "Walls", pct: 60 },
-  { name: "Roofing", pct: 30 },
-  { name: "Electrical", pct: 10 },
-  { name: "Plumbing", pct: 10 },
-  { name: "Finishing", pct: 0 },
-];
-
-const NOTIFICATIONS = [
-  { type: "warning", msg: "3 items pending your approval." },
-  { type: "info", msg: "AI recommendation ready for structural phase review." },
-  { type: "success", msg: "Foundation phase completed ahead of schedule." },
-];
+import { fetchDashboard } from "@/services/api/projects";
+import type { DashboardData } from "@/types/project";
+import { peso } from "@/utils/currency";
 
 const QUICK_ACTIONS = [
   { label: "AI Plan", icon: "sparkles-outline", href: "/homeowner/project-chat" },
@@ -26,30 +14,99 @@ const QUICK_ACTIONS = [
   { label: "Approvals", icon: "checkmark-circle-outline", href: "/homeowner/approvals" },
 ] as const;
 
-const NOTIFICATION_ICONS = {
-  warning: { name: "warning-outline", color: "#f59e0b" },
-  info: { name: "information-circle-outline", color: "#3b82f6" },
-  success: { name: "checkmark-circle-outline", color: "#10b981" },
-} as const;
-
-const BUDGET_PILLS = [
-  { label: "Budget", value: "₱2.5M", color: "#9ca3af" },
-  { label: "Spent", value: "₱1.08M", color: "#f59e0b" },
-  { label: "Remaining", value: "₱1.42M", color: "#10b981" },
-  { label: "Projected", value: "₱2.42M", color: "#3b82f6" },
-];
-
-const STATS = [
-  { label: "Active", value: "1", color: "#f59e0b" },
-  { label: "Completed", value: "2", color: "#10b981" },
-  { label: "Pending", value: "3", color: "#ef4444" },
-];
+function progressLabel(pct: number): { label: string; color: string } {
+  if (pct >= 100) return { label: "COMPLETED", color: "#10b981" };
+  if (pct > 0) return { label: "IN PROGRESS", color: "#f59e0b" };
+  return { label: "JUST STARTED", color: "#9ca3af" };
+}
 
 export default function Dashboard() {
-  const budget = 2500000;
-  const spent = 1080000;
-  const projected = 2420000;
-  const pct = 42;
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      setLoading(true);
+      setError(null);
+      fetchDashboard()
+        .then((result) => {
+          if (!cancelled) setData(result);
+        })
+        .catch((err) => {
+          if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load dashboard.");
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
+
+  if (loading) {
+    return (
+      <View className="flex-1 items-center justify-center bg-background">
+        <ActivityIndicator color="#f59e0b" />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View className="flex-1 items-center justify-center bg-background px-8">
+        <Ionicons name="warning-outline" size={28} color="#ef4444" style={{ marginBottom: 8 }} />
+        <Text className="text-sm text-center text-muted-foreground">{error}</Text>
+      </View>
+    );
+  }
+
+  const project = data?.project ?? null;
+
+  if (!project) {
+    return (
+      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 16 }}>
+        <View className="rounded-3xl p-6 items-center bg-card border border-border">
+          <Ionicons name="sparkles-outline" size={28} color="#f59e0b" style={{ marginBottom: 8 }} />
+          <Text className="font-bold text-base mb-1 text-foreground">No active project yet</Text>
+          <Text className="text-sm text-center mb-4 text-muted-foreground">
+            Describe your project to the AI planner and approve the generated plan to see it here.
+          </Text>
+          <Pressable
+            onPress={() => router.push("/homeowner/project-chat" as never)}
+            className="px-5 py-2.5 rounded-xl bg-primary"
+          >
+            <Text className="font-bold text-sm text-primary-foreground">Start AI Plan</Text>
+          </Pressable>
+        </View>
+        <View className="flex-row flex-wrap gap-2">
+          {QUICK_ACTIONS.map(({ label, icon, href }) => (
+            <Pressable
+              key={href}
+              onPress={() => router.push(href as never)}
+              className="items-center gap-1.5 py-3.5 rounded-2xl bg-card border border-border"
+              style={{ width: "23%" }}
+            >
+              <Ionicons name={icon} size={22} color="#f59e0b" />
+              <Text className="text-xs font-semibold text-muted-foreground">{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </ScrollView>
+    );
+  }
+
+  const pct = project.overallProgressPct;
+  const status = progressLabel(pct);
+  const remaining = project.budget - project.totalEstimate;
+
+  const budgetPills = [
+    { label: "Your Budget", value: peso(project.budget), color: "#9ca3af" },
+    { label: "AI Estimate", value: peso(project.totalEstimate), color: "#f59e0b" },
+    { label: "Remaining", value: peso(remaining), color: remaining >= 0 ? "#10b981" : "#ef4444" },
+  ];
 
   return (
     <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 16 }}>
@@ -59,14 +116,16 @@ export default function Dashboard() {
           <View className="flex-1 pr-3">
             <View
               className="self-start px-2 py-0.5 rounded-full mb-1"
-              style={{ backgroundColor: "#10b98120" }}
+              style={{ backgroundColor: `${status.color}20` }}
             >
-              <Text className="text-xs font-bold" style={{ color: "#10b981" }}>
-                ACTIVE
+              <Text className="text-xs font-bold" style={{ color: status.color }}>
+                {status.label}
               </Text>
             </View>
-            <Text className="text-lg font-extrabold text-foreground">My House Construction</Text>
-            <Text className="text-xs mt-0.5 text-muted-foreground">Quezon City · Started Mar 1, 2026</Text>
+            <Text className="text-lg font-extrabold text-foreground">{project.title}</Text>
+            <Text className="text-xs mt-0.5 text-muted-foreground">
+              {project.location ? `${project.location} · ` : ""}Started {new Date(project.startedAt).toLocaleDateString()}
+            </Text>
           </View>
           <View className="w-16 h-16 items-center justify-center">
             <Svg width={64} height={64} viewBox="0 0 36 36" style={{ transform: [{ rotate: "-90deg" }] }}>
@@ -89,8 +148,8 @@ export default function Dashboard() {
         </View>
 
         <View className="flex-row flex-wrap gap-2 mb-4">
-          {BUDGET_PILLS.map(({ label, value, color }) => (
-            <View key={label} className="px-3 py-2.5 rounded-2xl bg-background" style={{ width: "47%" }}>
+          {budgetPills.map(({ label, value, color }) => (
+            <View key={label} className="px-3 py-2.5 rounded-2xl bg-background" style={{ width: "31%" }}>
               <Text className="text-xs mb-0.5 text-muted-foreground">{label}</Text>
               <Text className="font-bold text-sm" style={{ color, fontFamily: "DMMono_500Medium" }}>
                 {value}
@@ -102,8 +161,8 @@ export default function Dashboard() {
         <View>
           <View className="flex-row justify-between mb-1.5">
             <Text className="text-xs text-muted-foreground">Overall Progress</Text>
-            <Text className="text-xs" style={{ color: "#10b981" }}>
-              ON SCHEDULE
+            <Text className="text-xs" style={{ color: status.color }}>
+              {pct}%
             </Text>
           </View>
           <View className="h-2.5 rounded-full overflow-hidden bg-muted">
@@ -129,7 +188,10 @@ export default function Dashboard() {
 
       {/* Stats row */}
       <View className="flex-row gap-2">
-        {STATS.map(({ label, value, color }) => (
+        {[
+          { label: "Active Projects", value: data!.stats.active, color: "#f59e0b" },
+          { label: "Completed", value: data!.stats.completed, color: "#10b981" },
+        ].map(({ label, value, color }) => (
           <View key={label} className="flex-1 p-4 rounded-2xl items-center bg-card border border-border">
             <Text className="text-2xl font-extrabold mb-0.5" style={{ color }}>
               {value}
@@ -148,24 +210,24 @@ export default function Dashboard() {
           </Pressable>
         </View>
         <View style={{ gap: 12 }}>
-          {PHASES.map(({ name, pct: phasePct }) => (
+          {project.phases.map(({ name, progressPct }) => (
             <View key={name}>
               <View className="flex-row justify-between mb-1.5">
                 <Text className="text-xs text-muted-foreground">{name}</Text>
                 <Text
                   className="text-xs font-semibold"
-                  style={{ color: phasePct === 100 ? "#10b981" : phasePct > 0 ? "#f59e0b" : "#374151" }}
+                  style={{ color: progressPct === 100 ? "#10b981" : progressPct > 0 ? "#f59e0b" : "#374151" }}
                 >
-                  {phasePct}%
+                  {progressPct}%
                 </Text>
               </View>
               <View className="h-2 rounded-full overflow-hidden bg-muted">
                 <View
                   className="h-full rounded-full"
                   style={{
-                    width: `${phasePct}%`,
+                    width: `${progressPct}%`,
                     backgroundColor:
-                      phasePct === 100 ? "#10b981" : phasePct > 50 ? "#f59e0b" : phasePct > 0 ? "#3b82f6" : "#252a3a",
+                      progressPct === 100 ? "#10b981" : progressPct > 50 ? "#f59e0b" : progressPct > 0 ? "#3b82f6" : "#252a3a",
                   }}
                 />
               </View>
@@ -174,42 +236,40 @@ export default function Dashboard() {
         </View>
       </View>
 
-      {/* Notifications */}
-      <View className="rounded-3xl p-4 bg-card border border-border">
-        <Text className="font-bold text-sm mb-3 text-foreground">Notifications</Text>
-        <View style={{ gap: 10 }}>
-          {NOTIFICATIONS.map(({ type, msg }, i) => (
-            <View key={i} className="flex-row gap-3 p-3 rounded-2xl bg-muted">
-              <Ionicons name={NOTIFICATION_ICONS[type as keyof typeof NOTIFICATION_ICONS].name} size={18} color={NOTIFICATION_ICONS[type as keyof typeof NOTIFICATION_ICONS].color} />
-              <Text className="text-xs leading-relaxed flex-1 text-muted-foreground">{msg}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-
-      {/* Budget overview */}
+      {/* Project team */}
       <View className="rounded-3xl p-4 bg-card border border-border">
         <View className="flex-row items-center justify-between mb-3">
-          <Text className="font-bold text-sm text-foreground">Budget Overview</Text>
-          <Pressable onPress={() => router.push("/homeowner/budget-monitor" as never)}>
-            <Text className="text-xs font-semibold text-primary">Details →</Text>
+          <Text className="font-bold text-sm text-foreground">Project Team</Text>
+          <Pressable onPress={() => router.push("/homeowner/marketplace" as never)}>
+            <Text className="text-xs font-semibold text-primary">Find Team →</Text>
           </Pressable>
         </View>
-        <View className="h-3 rounded-full overflow-hidden flex-row mb-2 bg-muted">
-          <View style={{ width: `${(spent / budget) * 100}%`, backgroundColor: "#f59e0b" }} className="h-full" />
-          <View
-            style={{ width: `${((projected - spent) / budget) * 100}%`, backgroundColor: "#f59e0b40" }}
-            className="h-full"
-          />
-        </View>
-        <View className="flex-row justify-between">
+        {project.contractors.length === 0 && project.workers.length === 0 ? (
           <Text className="text-xs text-muted-foreground">
-            Spent: <Text style={{ color: "#f59e0b" }}>₱{spent.toLocaleString()}</Text>
+            No contractors or workers added yet. Search and add your team from Find Your Team.
           </Text>
-          <Text className="text-xs text-muted-foreground">
-            Projected: <Text style={{ color: "#3b82f6" }}>₱{projected.toLocaleString()}</Text>
-          </Text>
-        </View>
+        ) : (
+          <View style={{ gap: 8 }}>
+            {project.contractors.map((c) => (
+              <View key={`contractor-${c.id}`} className="flex-row items-center gap-3 px-3 py-2.5 rounded-xl bg-muted">
+                <Ionicons name="business-outline" size={16} color="#10b981" />
+                <View className="flex-1">
+                  <Text className="text-xs font-medium text-foreground">{c.companyName || c.name}</Text>
+                  <Text className="text-xs text-muted-foreground">{c.specialization || "Contractor"}</Text>
+                </View>
+              </View>
+            ))}
+            {project.workers.map((w) => (
+              <View key={`worker-${w.id}`} className="flex-row items-center gap-3 px-3 py-2.5 rounded-xl bg-muted">
+                <Ionicons name="hammer-outline" size={16} color="#f59e0b" />
+                <View className="flex-1">
+                  <Text className="text-xs font-medium text-foreground">{w.name}</Text>
+                  <Text className="text-xs text-muted-foreground">{w.trade || "Worker"}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
       </View>
     </ScrollView>
   );

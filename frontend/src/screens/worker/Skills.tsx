@@ -1,10 +1,85 @@
-import { Text, View } from "react-native";
-import { Badge, Card, MONO, PageHeader, ProgressBar, Screen, StatGrid, StatTile } from "@/components/ui";
+import { useEffect, useState } from "react";
+import { Text, View, Pressable, ActivityIndicator } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Badge, Card, Field, PageHeader, Screen, SubmitButton } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
-import { CERTIFICATIONS, LEVEL_COLOR, SKILLS } from "@/data/worker";
+import { fetchWorkerProfile, updateMyWorkerProfile } from "@/services/api/workers";
 
 export default function Skills() {
   const { user } = useAuth();
+  const [trade, setTrade] = useState("");
+  const [yearsExperience, setYearsExperience] = useState("");
+  const [bio, setBio] = useState("");
+  const [skills, setSkills] = useState<string[]>([]);
+  const [skillInput, setSkillInput] = useState("");
+  const [averageRating, setAverageRating] = useState<number | null>(null);
+  const [ratingCount, setRatingCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    fetchWorkerProfile(user.id)
+      .then((profile) => {
+        setTrade(profile.trade ?? "");
+        setYearsExperience(profile.yearsExperience != null ? String(profile.yearsExperience) : "");
+        setBio(profile.bio ?? "");
+        setSkills(profile.skills);
+        setAverageRating(profile.averageRating);
+        setRatingCount(profile.ratingCount);
+      })
+      .catch(() => undefined)
+      .finally(() => setLoading(false));
+  }, [user]);
+
+  const addSkill = () => {
+    const trimmed = skillInput.trim();
+    if (!trimmed || skills.some((s) => s.toLowerCase() === trimmed.toLowerCase())) {
+      setSkillInput("");
+      return;
+    }
+    setSkills((prev) => [...prev, trimmed]);
+    setSkillInput("");
+  };
+
+  const removeSkill = (skill: string) => {
+    setSkills((prev) => prev.filter((s) => s !== skill));
+  };
+
+  const canSave = trade.trim().length > 0 && yearsExperience.trim().length > 0 && skills.length > 0 && !saving;
+
+  const save = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await updateMyWorkerProfile({
+        trade: trade.trim(),
+        years_experience: Number(yearsExperience) || 0,
+        bio: bio.trim() || undefined,
+        skills,
+      });
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save profile.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Screen>
+        <View className="items-center justify-center py-12">
+          <ActivityIndicator color="#f59e0b" />
+        </View>
+      </Screen>
+    );
+  }
+
   const name = user?.name ?? "Worker";
   const initials = name
     .split(" ")
@@ -15,7 +90,10 @@ export default function Skills() {
 
   return (
     <Screen>
-      <PageHeader title="Skills & Profile" />
+      <PageHeader
+        title="Skills & Profile"
+        subtitle="This is what homeowners and contractors see when searching for workers."
+      />
 
       <Card>
         <View className="flex-row gap-4 items-center">
@@ -26,63 +104,78 @@ export default function Skills() {
           </View>
           <View className="flex-1" style={{ gap: 4 }}>
             <Text className="text-lg font-bold text-foreground">{name}</Text>
-            <Text className="text-xs text-secondary-foreground">Skilled Mason · 8 years experience</Text>
-            <View className="flex-row flex-wrap gap-1.5">
-              <Badge label="✓ Verified" color="#10b981" />
-              <Badge label="⭐ 4.8" color="#f59e0b" />
-            </View>
+            <Text className="text-xs text-secondary-foreground">{trade || "No trade set yet"}</Text>
+            {ratingCount > 0 ? (
+              <View className="flex-row items-center gap-1">
+                <Ionicons name="star" size={12} color="#f59e0b" />
+                <Text className="text-xs" style={{ color: "#f59e0b" }}>
+                  {averageRating} ({ratingCount} {ratingCount === 1 ? "rating" : "ratings"})
+                </Text>
+              </View>
+            ) : (
+              <Text className="text-xs text-muted-foreground">No ratings yet</Text>
+            )}
           </View>
         </View>
       </Card>
 
-      <StatGrid>
-        <StatTile label="Projects Done" value="9" />
-        <StatTile label="Total Hours" value="1,136h" color="#f59e0b" />
-        <StatTile label="On-time Rate" value="94%" color="#10b981" />
-        <StatTile label="Quality Score" value="4.8/5" color="#3b82f6" />
-      </StatGrid>
+      <Card title="Edit profile">
+        <View style={{ gap: 12 }}>
+          <Field label="Trade" value={trade} onChangeText={setTrade} placeholder="e.g. Mason, Electrician, Carpenter" />
+          <Field
+            label="Years of experience"
+            value={yearsExperience}
+            onChangeText={(t) => setYearsExperience(t.replace(/[^0-9]/g, ""))}
+            placeholder="e.g. 5"
+            keyboardType="number-pad"
+          />
+          <Field
+            label="Bio (optional)"
+            value={bio}
+            onChangeText={setBio}
+            placeholder="A short description of your experience"
+            multiline
+          />
 
-      <Card title="Skills Assessment" right={<Text className="text-xs text-muted-foreground">AI-assessed</Text>}>
-        <View style={{ gap: 16 }}>
-          {SKILLS.map(({ name: skill, level, years, pct }) => {
-            const color = LEVEL_COLOR[level];
-            return (
-              <View key={skill}>
-                <View className="flex-row items-center justify-between mb-1.5">
-                  <Text className="flex-1 text-sm font-medium text-foreground pr-2">{skill}</Text>
-                  <Text className="text-xs text-muted-foreground" style={{ fontFamily: MONO }}>
-                    {years}y · {pct}%
+          <View>
+            <Text className="text-xs font-medium mb-2 text-secondary-foreground">Skills</Text>
+            <View className="flex-row flex-wrap gap-2 mb-2">
+              {skills.map((skill) => (
+                <Pressable
+                  key={skill}
+                  onPress={() => removeSkill(skill)}
+                  className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
+                  style={{ backgroundColor: "#f59e0b20" }}
+                >
+                  <Text className="text-xs font-medium" style={{ color: "#f59e0b" }}>
+                    {skill}
                   </Text>
-                </View>
-                <View className="mb-1.5">
-                  <ProgressBar pct={pct} color={color} />
-                </View>
-                <Badge label={level} color={color} />
-              </View>
-            );
-          })}
-        </View>
-        <View className="mt-4 p-3 rounded-xl" style={{ backgroundColor: "#f59e0b15", borderLeftWidth: 3, borderLeftColor: "#f59e0b" }}>
-          <Text className="text-xs leading-5" style={{ color: "#fbbf24" }}>
-            🤖 AI Suggestion: Based on your masonry expertise, you qualify for senior mason roles. Improving your
-            tile-setting skills could increase your daily rate by up to ₱150.
-          </Text>
-        </View>
-      </Card>
-
-      <Card title="Certifications & Training">
-        <View style={{ gap: 10 }}>
-          {CERTIFICATIONS.map(({ name: cert, issuer, year }) => (
-            <View key={cert} className="flex-row items-center justify-between px-4 py-3 rounded-xl bg-muted">
-              <View className="flex-1 pr-2">
-                <Text className="font-medium text-sm text-foreground">{cert}</Text>
-                <Text className="text-xs text-muted-foreground">
-                  {issuer} · {year}
-                </Text>
-              </View>
-              <Badge label="✓ Valid" color="#10b981" />
+                  <Ionicons name="close" size={12} color="#f59e0b" />
+                </Pressable>
+              ))}
+              {skills.length === 0 && <Text className="text-xs text-muted-foreground">No skills added yet</Text>}
             </View>
-          ))}
+            <View className="flex-row gap-2">
+              <View className="flex-1">
+                <Field
+                  label=""
+                  value={skillInput}
+                  onChangeText={setSkillInput}
+                  placeholder="e.g. Concrete Work"
+                  onSubmitEditing={addSkill}
+                  returnKeyType="done"
+                />
+              </View>
+              <Pressable onPress={addSkill} className="px-4 items-center justify-center rounded-xl bg-primary">
+                <Ionicons name="add" size={18} color="#0f1117" />
+              </Pressable>
+            </View>
+          </View>
+
+          {error && <Text className="text-xs text-danger">{error}</Text>}
+          {saved && <Badge label="Saved" color="#10b981" />}
+
+          <SubmitButton label={saving ? "Saving…" : "Save Profile"} onPress={save} />
         </View>
       </Card>
     </Screen>

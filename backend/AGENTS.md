@@ -35,10 +35,10 @@ instead: `php artisan serve --host=0.0.0.0 --port=8000`.
 - `app/Http/Controllers/Api/*` - Thin controllers only: validate via a Form Request, delegate to a service, shape the response. No business logic lives here.
 - `app/Http/Requests/*` - Form Request classes hold all validation rules (`RegisterRequest`, `LoginRequest`, `GeneratePlanRequest`)
 - `app/Services/AuthService.php` - User registration/credential-check logic, used by `AuthController`
-- `app/Services/ConstructionPlanService.php` - The Anthropic API call + tool schema, used by `ConstructionPlanController`; throws `App\Exceptions\ConstructionPlanGenerationException` (carries the HTTP status to return) on failure
+- `app/Services/ConstructionPlanService.php` - The Groq API call + tool schema, used by `ConstructionPlanController`; throws `App\Exceptions\ConstructionPlanGenerationException` (carries the HTTP status to return) on failure
 - `app/Console/Commands/MakeSuperAdmin.php` - `php artisan make:superadmin` — the only way to create/promote a superadmin; `admin`/`superadmin` are deliberately excluded from public self-registration (`User::SELF_REGISTERABLE_ROLES`)
 - `app/Http/Middleware/EnsureUserHasRole.php` - reusable `role:admin,superadmin`-style route middleware, aliased as `role` in `bootstrap/app.php`
-- `config/services.php` - `services.anthropic.key` / `services.anthropic.model`, read from `.env` (`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`)
+- `config/services.php` - `services.groq.key` / `services.groq.model`, read from `.env` (`GROQ_API_KEY`, `GROQ_MODEL`)
 - `vite.config.ts` - Vite configuration with `laravel-vite-plugin`, React, Tailwind CSS v4, and the `@` alias for `resources/js`
 - `tsconfig.json` - `@/*` maps to `resources/js/*`
 
@@ -60,9 +60,9 @@ This project uses **Tailwind CSS v4** through the `@tailwindcss/vite` plugin con
 The homeowner "AI Construction Planner" chat and the Budget/Material/Equipment/Design
 estimator pages share one generated plan via `resources/js/lib/ai/PlanContext.tsx`.
 Generating a plan calls `POST /api/ai/plan` (`ConstructionPlanController`), which asks
-Claude (via a forced tool call, so the response is always valid JSON matching
+Groq (via a forced tool call, so the response is always valid JSON matching
 `resources/js/lib/ai/types.ts`'s `ConstructionPlan` shape) and returns it directly.
-Requires `ANTHROPIC_API_KEY` in `.env`. This endpoint requires an authenticated request
+Requires `GROQ_API_KEY` in `.env`. This endpoint requires an authenticated request
 (Sanctum bearer token) and is rate-limited per user.
 
 ## Auth & roles
@@ -74,6 +74,12 @@ Requires `ANTHROPIC_API_KEY` in `.env`. This endpoint requires an authenticated 
   (prompts for any omitted argument). Running it again with an existing email promotes
   that user to superadmin instead of creating a duplicate.
 - Protect a future admin-only route with `->middleware('role:admin,superadmin')`.
+- Registration email must be real and deliverable: `RegisterRequest` validates with
+  `bail`, `email:rfc,dns` (rejects malformed/non-existent domains), and
+  `indisposable:mx` (rejects known disposable/throwaway providers via
+  `propaganistas/laravel-disposable-email`). `bail` is required — without it, the
+  disposable-email check's own DNS lookup can throw on a domain that `email:rfc,dns`
+  already rejected as non-existent.
 
 ## Architecture convention
 

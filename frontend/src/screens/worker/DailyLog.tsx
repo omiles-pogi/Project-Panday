@@ -27,7 +27,7 @@ export default function DailyLog() {
         again="Log Another Day"
         onAgain={() => setSubmitted(false)}
       >
-        <InfoBox color="#f59e0b" title="🤖 AI ACKNOWLEDGMENT">
+        <InfoBox color="#f59e0b" title="AI ACKNOWLEDGMENT">
           Your log has been recorded. The AI will use it to update the project progress estimate.
         </InfoBox>
       </SubmittedView>

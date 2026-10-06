@@ -1,4 +1,5 @@
 import { Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Card, MONO, PageHeader, Screen, StatTile } from "@/components/ui";
 import { WEEKLY_PROGRESS } from "@/data/contractor";
 
@@ -9,7 +10,7 @@ export default function WeeklyAnalytics() {
   return (
     <Screen>
       <PageHeader
-        badge="🤖 AI ANALYTICS"
+        badge="AI ANALYTICS"
         title="Weekly Analytics"
         subtitle="Dela Cruz Residence · Cumulative progress comparison"
       />
@@ -64,16 +65,19 @@ export default function WeeklyAnalytics() {
                   {expected}% → {actual}% ({gap >= 0 ? "+" : ""}
                   {gap}%)
                 </Text>
-                <Text className="text-xs font-medium" style={{ color }}>
-                  {onTime ? "✓ On Track" : "Behind"}
-                </Text>
+                <View className="flex-row items-center gap-1">
+                  {onTime && <Ionicons name="checkmark" size={11} color={color} />}
+                  <Text className="text-xs font-medium" style={{ color }}>
+                    {onTime ? "On Track" : "Behind"}
+                  </Text>
+                </View>
               </View>
             );
           })}
         </View>
       </Card>
 
-      <Card title="🤖 AI Weekly Analysis">
+      <Card title="AI Weekly Analysis">
         <Text className="text-sm leading-6 text-secondary-foreground">
           The project started strong in Weeks 1–2, achieving above-expected progress. Starting Week 3, actual progress
           began lagging behind expected rates. The current 6% cumulative gap suggests that if the current trend

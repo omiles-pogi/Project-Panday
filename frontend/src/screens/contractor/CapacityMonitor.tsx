@@ -1,5 +1,6 @@
 import { Text, View } from "react-native";
 import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { Button, Card, InfoBox, MONO, PageHeader, ProgressBar, Screen, StatGrid, StatTile } from "@/components/ui";
 
 const EQUIPMENT = [
@@ -21,7 +22,7 @@ export default function CapacityMonitor() {
     <Screen>
       <PageHeader title="AI Capacity Monitor" subtitle="AI evaluation before accepting Reyes Family Residence project" />
 
-      <InfoBox color="#f59e0b" title="🤖 AI CAPACITY ALERT">
+      <InfoBox color="#f59e0b" title="AI CAPACITY ALERT">
         <Text className="text-sm leading-5" style={{ color: "#fbbf24" }}>
           You currently have 4 active projects. Accepting the Reyes Family Residence project may exceed your estimated
           construction capacity. Your workforce utilization is at 89% and concrete mixers are 66% allocated. Consider
@@ -37,13 +38,13 @@ export default function CapacityMonitor() {
       </StatGrid>
 
       <Card title="Equipment Conflict Detection">
-        <InfoBox color="#ef4444" title="⚠️ AI EQUIPMENT CONFLICT">
+        <InfoBox color="#ef4444" title="AI EQUIPMENT CONFLICT">
           <Text className="text-sm leading-5" style={{ color: "#fca5a5" }}>
             Concrete Mixer A is assigned to Garcia Renovation from September 10–15, but the Reyes Family Residence
             project requires it from September 12–14.
           </Text>
           <Text className="text-sm leading-5 mt-2 text-secondary-foreground">
-            🤖 Recommendation: Reschedule Reyes start to September 16 or rent an additional mixer for the conflict
+            Recommendation: Reschedule Reyes start to September 16 or rent an additional mixer for the conflict
             period (~₱3,000/day).
           </Text>
         </InfoBox>
@@ -61,9 +62,12 @@ export default function CapacityMonitor() {
               <View className="flex-row justify-between">
                 <Text className="text-sm text-foreground">{equipment}</Text>
                 {conflict ? (
-                  <Text className="text-xs font-semibold" style={{ color: "#ef4444" }}>
-                    ⚡ CONFLICT
-                  </Text>
+                  <View className="flex-row items-center gap-1">
+                    <Ionicons name="warning" size={12} color="#ef4444" />
+                    <Text className="text-xs font-semibold" style={{ color: "#ef4444" }}>
+                      CONFLICT
+                    </Text>
+                  </View>
                 ) : null}
               </View>
               <Text className="text-xs mt-0.5 text-muted-foreground">
@@ -83,9 +87,12 @@ export default function CapacityMonitor() {
               <View key={role}>
                 <View className="flex-row justify-between mb-1">
                   <Text className="text-xs text-secondary-foreground">{role}</Text>
-                  <Text className="text-xs" style={{ color: ok ? "#10b981" : "#ef4444" }}>
-                    {avail} available · {needed} needed {ok ? "✓" : "⚠ Shortage"}
-                  </Text>
+                  <View className="flex-row items-center gap-1">
+                    <Text className="text-xs" style={{ color: ok ? "#10b981" : "#ef4444" }}>
+                      {avail} available · {needed} needed
+                    </Text>
+                    <Ionicons name={ok ? "checkmark-circle" : "alert-circle"} size={12} color={ok ? "#10b981" : "#ef4444"} />
+                  </View>
                 </View>
                 <ProgressBar pct={(used / total) * 100} color={used === total ? "#ef4444" : "#f59e0b"} />
               </View>

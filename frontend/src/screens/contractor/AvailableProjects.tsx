@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Text, View } from "react-native";
 import { router } from "expo-router";
-import { Badge, Button, Card, ChipPicker, MONO, PageHeader, Screen } from "@/components/ui";
+import { Ionicons } from "@expo/vector-icons";
+import { Button, Card, ChipPicker, MONO, PageHeader, Screen } from "@/components/ui";
 import { AVAILABLE_PROJECTS } from "@/data/contractor";
 
 const TYPES = ["All", "Residential", "Commercial"];
@@ -28,7 +29,14 @@ export default function AvailableProjects() {
           <View className="flex-row items-start justify-between mb-3">
             <View className="flex-1 pr-3">
               <Text className="font-bold text-base text-foreground mb-1">{p.name}</Text>
-              {p.ai ? <Badge label="🤖 AI-Approved Plan" color="#f59e0b" /> : null}
+              {p.ai ? (
+                <View className="self-start flex-row items-center gap-1 px-2 py-0.5 rounded-full" style={{ backgroundColor: "#f59e0b20" }}>
+                  <Ionicons name="sparkles-outline" size={10} color="#f59e0b" />
+                  <Text className="text-xs font-semibold" style={{ color: "#f59e0b" }}>
+                    AI-Approved Plan
+                  </Text>
+                </View>
+              ) : null}
               <Text className="text-xs mt-2 mb-1 text-muted-foreground">
                 {p.location} · {p.type}
               </Text>

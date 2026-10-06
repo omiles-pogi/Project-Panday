@@ -1,5 +1,8 @@
 import { type ReactNode } from "react";
 import { Pressable, ScrollView, Text, TextInput, View, type TextInputProps } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+
+export type IconName = keyof typeof Ionicons.glyphMap;
 
 export const MONO = "DMMono_500Medium";
 
@@ -87,11 +90,11 @@ export function StatTile({
   value: string | number;
   color?: string;
   sub?: string;
-  icon?: string;
+  icon?: IconName;
 }) {
   return (
     <View className="p-4 rounded-2xl bg-card border border-border" style={{ width: "48%" }}>
-      {icon ? <Text className="text-2xl mb-1">{icon}</Text> : null}
+      {icon ? <Ionicons name={icon} size={22} color={color} style={{ marginBottom: 4 }} /> : null}
       <Text className="text-xs mb-1 text-muted-foreground">{label}</Text>
       <Text className="text-xl font-bold" style={{ color, fontFamily: MONO }}>
         {value}
@@ -209,7 +212,7 @@ export function MenuGrid({
   items,
   onSelect,
 }: {
-  items: { href: string; label: string; icon: string }[];
+  items: readonly { href: string; label: string; icon: IconName }[];
   onSelect: (href: string) => void;
 }) {
   return (
@@ -221,7 +224,7 @@ export function MenuGrid({
           className="items-center gap-2 py-4 rounded-2xl bg-card border border-border"
           style={{ width: "30%" }}
         >
-          <Text className="text-2xl">{item.icon}</Text>
+          <Ionicons name={item.icon} size={24} color="#f59e0b" />
           <Text className="text-xs font-semibold text-center text-muted-foreground">{item.label}</Text>
         </Pressable>
       ))}
@@ -257,9 +260,7 @@ export function SubmittedView({
           className="w-16 h-16 rounded-full items-center justify-center mb-4"
           style={{ backgroundColor: "#10b98120" }}
         >
-          <Text className="text-3xl" style={{ color: "#10b981" }}>
-            ✓
-          </Text>
+          <Ionicons name="checkmark" size={28} color="#10b981" />
         </View>
         <Text className="text-2xl font-bold text-center mb-2 text-foreground">{title}</Text>
         <Text className="text-sm text-center text-muted-foreground">{message}</Text>

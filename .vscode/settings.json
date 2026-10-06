@@ -1,0 +1,14 @@
+{
+  "files.exclude": {
+    ".claude": true,
+    ".vscode": true,
+    ".editorconfig": true,
+    ".gitattributes": true,
+    ".gitignore": true,
+    ".mise.toml": true,
+    ".npmrc": true,
+    "AGENTS.md": true,
+    "CLAUDE.md": true,
+    "README.md": true
+  }
+}

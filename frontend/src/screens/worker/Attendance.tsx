@@ -1,4 +1,5 @@
 import { Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Card, InfoBox, PageHeader, Screen, StatGrid, StatTile } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 
@@ -86,16 +87,19 @@ export default function Attendance() {
         </View>
       </Card>
 
-      <Card title="🤖 AI Attendance Insight">
+      <Card title="AI Attendance Insight">
         <Text className="text-sm leading-6 text-secondary-foreground mb-3">
           Your current attendance rate of <Text style={{ color: "#f59e0b" }}>{rate}%</Text> is above the project
           average of 89%. Your 1 absence this month was on a Friday — consistent Friday absences may affect your project
           score over time.
         </Text>
         <InfoBox color="#10b981">
-          <Text className="text-sm" style={{ color: "#6ee7b7" }}>
-            ✓ High attendance increases your priority for future project assignments.
-          </Text>
+          <View className="flex-row items-center gap-1.5">
+            <Ionicons name="checkmark-circle" size={14} color="#6ee7b7" />
+            <Text className="text-sm flex-1" style={{ color: "#6ee7b7" }}>
+              High attendance increases your priority for future project assignments.
+            </Text>
+          </View>
         </InfoBox>
       </Card>
     </Screen>

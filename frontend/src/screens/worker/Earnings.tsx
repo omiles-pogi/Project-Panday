@@ -1,4 +1,5 @@
 import { Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Card, MONO, PageHeader, Screen, StatGrid, StatTile } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { DAILY_RATE, DEDUCTIONS, OT_RATE, PAY_HISTORY } from "@/data/worker";
@@ -31,9 +32,12 @@ export default function Earnings() {
             >
               <View className="flex-row items-center justify-between mb-1.5">
                 <Text className="text-sm font-medium text-foreground">{p.period}</Text>
-                <Text className="text-xs font-medium" style={{ color: released ? "#10b981" : "#f59e0b" }}>
-                  {released ? "✓ Released" : "Pending"}
-                </Text>
+                <View className="flex-row items-center gap-1">
+                  {released && <Ionicons name="checkmark" size={11} color="#10b981" />}
+                  <Text className="text-xs font-medium" style={{ color: released ? "#10b981" : "#f59e0b" }}>
+                    {released ? "Released" : "Pending"}
+                  </Text>
+                </View>
               </View>
               <View className="flex-row justify-between">
                 <Text className="text-xs text-muted-foreground">

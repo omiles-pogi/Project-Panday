@@ -15,18 +15,46 @@ class AuthTest extends TestCase
     {
         $response = $this->postJson('/api/auth/register', [
             'name' => 'Test User',
-            'email' => 'test@example.com',
+            'email' => 'test@gmail.com',
             'password' => 'password123',
             'password_confirmation' => 'password123',
             'role' => 'homeowner',
         ]);
 
         $response->assertStatus(201)
-            ->assertJsonPath('user.email', 'test@example.com')
+            ->assertJsonPath('user.email', 'test@gmail.com')
             ->assertJsonPath('user.role', 'homeowner')
-            ->assertJsonStructure(['user', 'token']);
+            ->assertJsonPath('user.approval_status', 'pending')
+            ->assertJsonStructure(['user', 'message'])
+            ->assertJsonMissing(['token']);
 
-        $this->assertDatabaseHas('users', ['email' => 'test@example.com', 'role' => 'homeowner']);
+        $this->assertDatabaseHas('users', ['email' => 'test@gmail.com', 'role' => 'homeowner', 'approval_status' => 'pending']);
+    }
+
+    public function test_registration_rejects_an_undeliverable_email_domain(): void
+    {
+        $response = $this->postJson('/api/auth/register', [
+            'name' => 'Test User',
+            'email' => 'test@this-domain-does-not-exist-panday-zzz123.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'role' => 'homeowner',
+        ]);
+
+        $response->assertStatus(422)->assertJsonValidationErrors('email');
+    }
+
+    public function test_registration_rejects_a_disposable_email_domain(): void
+    {
+        $response = $this->postJson('/api/auth/register', [
+            'name' => 'Test User',
+            'email' => 'test@mailinator.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'role' => 'homeowner',
+        ]);
+
+        $response->assertStatus(422)->assertJsonValidationErrors('email');
     }
 
     public function test_registration_rejects_an_invalid_role(): void
@@ -63,6 +91,7 @@ class AuthTest extends TestCase
         User::factory()->create([
             'email' => 'test@example.com',
             'password' => Hash::make('password123'),
+            'approval_status' => 'approved',
         ]);
 
         $response = $this->postJson('/api/auth/login', [
@@ -71,6 +100,38 @@ class AuthTest extends TestCase
         ]);
 
         $response->assertStatus(200)->assertJsonStructure(['user', 'token']);
+    }
+
+    public function test_login_is_blocked_while_the_account_is_pending_approval(): void
+    {
+        User::factory()->create([
+            'email' => 'test@example.com',
+            'password' => Hash::make('password123'),
+            'approval_status' => 'pending',
+        ]);
+
+        $response = $this->postJson('/api/auth/login', [
+            'email' => 'test@example.com',
+            'password' => 'password123',
+        ]);
+
+        $response->assertStatus(403);
+    }
+
+    public function test_login_is_blocked_when_the_account_was_rejected(): void
+    {
+        User::factory()->create([
+            'email' => 'test@example.com',
+            'password' => Hash::make('password123'),
+            'approval_status' => 'rejected',
+        ]);
+
+        $response = $this->postJson('/api/auth/login', [
+            'email' => 'test@example.com',
+            'password' => 'password123',
+        ]);
+
+        $response->assertStatus(403);
     }
 
     public function test_login_fails_with_incorrect_credentials(): void
