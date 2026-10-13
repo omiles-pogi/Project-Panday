@@ -2,6 +2,8 @@ import { Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Card, MONO, PageHeader, Screen, StatTile } from "@/components/ui";
 import { WEEKLY_PROGRESS } from "@/data/contractor";
+import Animated, { FadeInRight } from "react-native-reanimated";
+import { GrowBar } from "@/components/charts";
 
 const MAX = 55;
 const CHART_HEIGHT = 160;
@@ -33,19 +35,14 @@ export default function WeeklyAnalytics() {
         </View>
 
         <View className="flex-row items-end gap-2" style={{ height: CHART_HEIGHT + 20 }}>
-          {WEEKLY_PROGRESS.map(({ week, expected, actual }) => (
+          {WEEKLY_PROGRESS.map(({ week, expected, actual }, i) => (
             <View key={week} className="flex-1 items-center">
               <View className="w-full flex-row items-end gap-0.5" style={{ height: CHART_HEIGHT }}>
-                <View
-                  className="flex-1 rounded-t-sm"
-                  style={{ height: (expected / MAX) * CHART_HEIGHT, backgroundColor: "#4b556380" }}
-                />
-                <View
-                  className="flex-1 rounded-t-sm"
-                  style={{
-                    height: (actual / MAX) * CHART_HEIGHT,
-                    backgroundColor: actual >= expected ? "#10b981" : "#f59e0b",
-                  }}
+                <GrowBar height={(expected / MAX) * CHART_HEIGHT} color="#4b556380" delay={i * 120} />
+                <GrowBar
+                  height={(actual / MAX) * CHART_HEIGHT}
+                  color={actual >= expected ? "#10b981" : "#f59e0b"}
+                  delay={i * 120 + 80}
                 />
               </View>
               <Text className="text-xs mt-1 text-muted-foreground">{week}</Text>
@@ -54,12 +51,16 @@ export default function WeeklyAnalytics() {
         </View>
 
         <View className="mt-5" style={{ gap: 6 }}>
-          {WEEKLY_PROGRESS.map(({ week, expected, actual }) => {
+          {WEEKLY_PROGRESS.map(({ week, expected, actual }, i) => {
             const gap = actual - expected;
             const onTime = gap >= 0;
             const color = onTime ? "#10b981" : "#f59e0b";
             return (
-              <View key={week} className="flex-row items-center px-3 py-2 rounded-xl bg-muted">
+              <Animated.View
+                key={week}
+                entering={FadeInRight.delay(400 + i * 90).duration(400)}
+                className="flex-row items-center px-3 py-2 rounded-xl bg-muted"
+              >
                 <Text className="text-xs font-semibold w-12 text-secondary-foreground">{week}</Text>
                 <Text className="flex-1 text-xs" style={{ color, fontFamily: MONO }}>
                   {expected}% → {actual}% ({gap >= 0 ? "+" : ""}
@@ -71,7 +72,7 @@ export default function WeeklyAnalytics() {
                     {onTime ? "On Track" : "Behind"}
                   </Text>
                 </View>
-              </View>
+              </Animated.View>
             );
           })}
         </View>

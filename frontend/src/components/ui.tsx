@@ -8,6 +8,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import KeyboardView from "./KeyboardView";
+import { CountUp } from "./charts";
 import {
   Pressable,
   ScrollView,
@@ -173,9 +174,7 @@ export function StatTile({
     >
       {icon ? <Ionicons name={icon} size={22} color={color} style={{ marginBottom: 4 }} /> : null}
       <Text className="text-xs mb-1 text-muted-foreground">{label}</Text>
-      <Text className="text-xl font-bold" style={{ color, fontFamily: MONO }}>
-        {value}
-      </Text>
+      <CountUp text={String(value)} className="text-xl font-bold" style={{ color, fontFamily: MONO }} />
       {sub ? <Text className="text-xs mt-0.5 text-muted-foreground">{sub}</Text> : null}
     </Animated.View>
   );

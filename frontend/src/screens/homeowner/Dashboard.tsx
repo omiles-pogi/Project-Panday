@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { ScrollView, Text, View, Pressable, ActivityIndicator } from "react-native";
-import Svg, { Circle } from "react-native-svg";
+import { ProgressRing } from "@/components/charts";
+import { ProgressBar } from "@/components/ui";
 import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { fetchDashboard, fetchMyHomeownerProjects } from "@/services/api/projects";
@@ -179,24 +180,7 @@ export default function Dashboard() {
               {project.location ? `${project.location} · ` : ""}Started {new Date(project.startedAt).toLocaleDateString()}
             </Text>
           </View>
-          <View className="w-16 h-16 items-center justify-center">
-            <Svg width={64} height={64} viewBox="0 0 36 36" style={{ transform: [{ rotate: "-90deg" }] }}>
-              <Circle cx="18" cy="18" r="15.9" fill="none" stroke="#252a3a" strokeWidth={3} />
-              <Circle
-                cx="18"
-                cy="18"
-                r="15.9"
-                fill="none"
-                stroke="#f59e0b"
-                strokeWidth={3}
-                strokeDasharray={`${pct} ${100 - pct}`}
-                strokeLinecap="round"
-              />
-            </Svg>
-            <View style={{ position: "absolute" }}>
-              <Text className="text-sm font-extrabold text-foreground">{pct}%</Text>
-            </View>
-          </View>
+          <ProgressRing pct={pct} />
         </View>
 
         <View className="flex-row flex-wrap gap-2 mb-4">
@@ -217,9 +201,7 @@ export default function Dashboard() {
               {pct}%
             </Text>
           </View>
-          <View className="h-2.5 rounded-full overflow-hidden bg-muted">
-            <View className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
-          </View>
+          <ProgressBar pct={pct} color="#f59e0b" height={10} />
         </View>
       </View>
 
@@ -273,16 +255,11 @@ export default function Dashboard() {
                   {progressPct}%
                 </Text>
               </View>
-              <View className="h-2 rounded-full overflow-hidden bg-muted">
-                <View
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${progressPct}%`,
-                    backgroundColor:
-                      progressPct === 100 ? "#10b981" : progressPct > 50 ? "#f59e0b" : progressPct > 0 ? "#3b82f6" : "#252a3a",
-                  }}
-                />
-              </View>
+              <ProgressBar
+                pct={progressPct}
+                height={8}
+                color={progressPct === 100 ? "#10b981" : progressPct > 50 ? "#f59e0b" : progressPct > 0 ? "#3b82f6" : "#252a3a"}
+              />
             </View>
           ))}
         </View>
