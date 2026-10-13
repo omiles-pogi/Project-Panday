@@ -15,7 +15,10 @@ class ConstructionPlanController extends Controller
     public function store(GeneratePlanRequest $request): JsonResponse
     {
         try {
-            $plan = $this->planService->generate($request->validated('brief'));
+            $plan = $this->planService->generate(
+                $request->validated('brief'),
+                $request->boolean('allow_clarification', true)
+            );
         } catch (ConstructionPlanGenerationException $e) {
             return response()->json(['error' => $e->getMessage()], $e->statusCode());
         }

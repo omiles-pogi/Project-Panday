@@ -11,7 +11,7 @@ import {
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { usePlan } from "@/context/PlanContext";
-import type { ConstructionPlan } from "@/types/plan";
+import { isClarificationNeeded, type ConstructionPlan } from "@/types/plan";
 import { colorFor } from "@/utils/colors";
 import { peso } from "@/utils/currency";
 import { createProject } from "@/services/api/projects";
@@ -145,7 +145,9 @@ function PlanCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => void
                   onPress={() => setApproved((p) => ({ ...p, [i.title]: true }))}
                   className="flex-1 py-2 rounded-xl items-center bg-muted border border-border"
                 >
-                  <Text className="text-sm text-muted-foreground">Approve One by One</Text>
+                  <Text className="text-sm text-muted-foreground" numberOfLines={1}>
+                    Approve &quot;{i.title}&quot;
+                  </Text>
                 </Pressable>
               ))}
           </>
@@ -466,23 +468,16 @@ function Dots() {
   );
 }
 
-const SUGGESTIONS = [
-  "3-bedroom house, 120 sqm, modern design, Quezon City, ₱2.5M budget",
-  "Two-story commercial building, 200 sqm, Makati, ₱5M budget",
-  "Apartment renovation, 80 sqm, Pasig City, ₱800K budget",
-  "Restaurant build-out, 60 sqm, BGC, ₱1.2M budget",
-];
-
-type Stage = "idle" | "generating" | "plan" | "budget" | "materials" | "equipment" | "design" | "summary";
-type ResolvedStage = Exclude<Stage, "idle" | "generating">;
+type Stage = "idle" | "generating" | "clarifying" | "plan" | "budget" | "materials" | "equipment" | "design" | "summary";
+type ResolvedStage = Exclude<Stage, "idle" | "generating" | "clarifying">;
 
 const STAGE_TEXT: Record<ResolvedStage, (p: ConstructionPlan) => string> = {
-  plan: (p) => `Here's a complete overview of your construction plan for ${p.projectTitle}. Approve all sections or review them individually.`,
-  budget: (p) => `Your AI budget breakdown is ready. Your ₱${(p.budget / 1000000).toFixed(2)}M budget ${p.budget >= p.totalEstimate ? `comfortably covers the estimated ₱${(p.totalEstimate / 1000000).toFixed(2)}M cost` : `is below the estimated ₱${(p.totalEstimate / 1000000).toFixed(2)}M cost — you may want to adjust scope`}.`,
-  materials: () => "Here are the AI-estimated material requirements. Prices are based on current market data — review and approve each item.",
-  equipment: () => "Here's the recommended equipment list with estimated rental/usage costs per construction phase.",
-  design: (p) => `Here's your AI-generated conceptual design concept for a ${p.designStyle.toLowerCase()} ${p.bedrooms}-bedroom, ${p.bathrooms}-bathroom home.`,
-  summary: (p) => `All sections are approved! 🎉 Your complete construction plan for ${p.projectTitle} is ready. You can now search for contractors who will receive your approved plan.`,
+  plan: (p) => `Here's your construction plan for ${p.projectTitle}. Review each section below, or approve everything at once.`,
+  budget: (p) => `Budget breakdown ready. Your ₱${(p.budget / 1000000).toFixed(2)}M budget ${p.budget >= p.totalEstimate ? `comfortably covers the ₱${(p.totalEstimate / 1000000).toFixed(2)}M estimate` : `is below the ₱${(p.totalEstimate / 1000000).toFixed(2)}M estimate — you may want to adjust scope`}.`,
+  materials: () => "Material estimates below, based on current market prices.",
+  equipment: () => "Recommended equipment and estimated costs per construction phase.",
+  design: (p) => `Design concept for your ${p.designStyle.toLowerCase()} ${p.bedrooms}BR/${p.bathrooms}BA home.`,
+  summary: (p) => `All sections approved. Your construction plan for ${p.projectTitle} is ready — next, find contractors who'll receive it.`,
 };
 
 const STAGE_ORDER: ResolvedStage[] = ["plan", "budget", "materials", "equipment", "design", "summary"];
@@ -499,7 +494,7 @@ function greeting(): ChatMessage {
   return {
     id: nextId(),
     role: "ai",
-    text: 'Hello! I\'m your AI Construction Planner. Describe your project and I\'ll generate a complete plan — timeline, budget, materials, equipment, and conceptual design — all in one conversation.\n\nYou can type naturally, like: "3-bedroom house in Quezon City, 120 sqm, ₱2.5M budget, modern design."',
+    text: 'Describe your project and I\'ll generate a complete construction plan — timeline, budget, materials, equipment, and a design concept.\n\nTry: "3-bedroom house in Quezon City, 120 sqm, ₱2.5M budget, modern design."',
     quickReplies: ["Residential house", "Renovation project", "Commercial building", "Two-story apartment"],
   };
 }
@@ -559,7 +554,7 @@ function UserBubble({ msg }: { msg: ChatMessage }) {
 }
 
 export default function ProjectChat() {
-  const { plan, generate } = usePlan();
+  const { plan, generate, answerClarification } = usePlan();
   const [messages, setMessages] = useState<ChatMessage[]>([greeting()]);
   const [input, setInput] = useState("");
   const [stage, setStage] = useState<Stage>("idle");
@@ -586,10 +581,37 @@ export default function ProjectChat() {
 
     try {
       const result = await generate(brief.trim());
-      resolveTyping(typingId, {
-        text: `I've processed your requirements. Here's your full AI construction plan for ${result.projectTitle}. Review and approve each section — only approved items will be shared with contractors.`,
-      });
-      setMessages((p) => [...p, { id: nextId(), role: "ai", text: STAGE_TEXT.plan(result), card: "plan" }]);
+      if (isClarificationNeeded(result)) {
+        const list = result.questions.map((q, i) => `${i + 1}. ${q}`).join("\n");
+        resolveTyping(typingId, {
+          text: `Before I put together your plan, a couple of quick questions:\n\n${list}`,
+        });
+        setStage("clarifying");
+        return;
+      }
+      resolveTyping(typingId, { text: STAGE_TEXT.plan(result), card: "plan" });
+      setStage("plan");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Something went wrong generating your plan.";
+      resolveTyping(typingId, { text: `Sorry, I couldn't generate a plan: ${message}` });
+      setStage("idle");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const answerClarifyingQuestion = async (reply: string) => {
+    if (!reply.trim() || busy) return;
+    setMessages((p) => [...p, { id: nextId(), role: "user", text: reply.trim() }]);
+    setInput("");
+
+    setBusy(true);
+    const typingId = nextId();
+    setMessages((p) => [...p, { id: typingId, role: "ai", text: "", typing: true }]);
+
+    try {
+      const result = await answerClarification(reply.trim());
+      resolveTyping(typingId, { text: STAGE_TEXT.plan(result), card: "plan" });
       setStage("plan");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong generating your plan.";
@@ -649,39 +671,26 @@ export default function ProjectChat() {
         )}
       </ScrollView>
 
-      {showSuggestions && (
-        <View className="px-4 pb-3">
-          <Text className="text-xs mb-2 text-muted-foreground">Quick start:</Text>
-          <View className="flex-row flex-wrap gap-2">
-            {SUGGESTIONS.map((s) => (
-              <Pressable
-                key={s}
-                onPress={() => startGeneration(s)}
-                disabled={busy}
-                className="px-3 py-2.5 rounded-xl bg-card border border-border"
-                style={{ width: "47%" }}
-              >
-                <Text className="text-xs text-muted-foreground">{s}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      )}
-
       <View className="px-4 pb-4">
         <View className="flex-row gap-3 items-end rounded-2xl p-3 bg-card border border-border">
           <TextInput
             value={input}
             onChangeText={setInput}
             multiline
-            placeholder={busy ? "AI is generating your plan..." : "Describe your project or ask a question..."}
+            placeholder={
+              busy
+                ? "AI is generating your plan..."
+                : stage === "clarifying"
+                  ? "Answer the questions above..."
+                  : "Describe your project or ask a question..."
+            }
             placeholderTextColor="#6b7280"
             editable={!busy}
             className="flex-1 text-sm text-foreground"
             style={{ minHeight: 24, maxHeight: 120 }}
           />
           <Pressable
-            onPress={() => startGeneration(input)}
+            onPress={() => (stage === "clarifying" ? answerClarifyingQuestion(input) : startGeneration(input))}
             disabled={!input.trim() || busy}
             className="w-9 h-9 rounded-xl items-center justify-center"
             style={{ backgroundColor: input.trim() && !busy ? "#f59e0b" : "#252a3a" }}

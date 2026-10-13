@@ -1,6 +1,6 @@
 import { apiFetch } from "@/services/api/client";
 import type { ConstructionPlan } from "@/types/plan";
-import type { DashboardData, DashboardProject, MyProject, PhaseTask } from "@/types/project";
+import type { DashboardData, DashboardProject, MyProject, PhaseTask, ProjectSummary } from "@/types/project";
 
 export async function createProject(plan: ConstructionPlan): Promise<DashboardProject> {
   const data = await apiFetch("/api/projects", {
@@ -11,10 +11,17 @@ export async function createProject(plan: ConstructionPlan): Promise<DashboardPr
   return data as DashboardProject;
 }
 
-export async function fetchDashboard(): Promise<DashboardData> {
-  const data = await apiFetch("/api/dashboard");
+export async function fetchDashboard(projectId?: number): Promise<DashboardData> {
+  const query = projectId ? `?project_id=${projectId}` : "";
+  const data = await apiFetch(`/api/dashboard${query}`);
 
   return data as DashboardData;
+}
+
+/** All projects the homeowner owns, newest first — for the dashboard's project picker. */
+export async function fetchMyHomeownerProjects(): Promise<ProjectSummary[]> {
+  const data = await apiFetch("/api/projects");
+  return data as ProjectSummary[];
 }
 
 export async function assignWorkerToProject(projectId: number, workerId: number): Promise<void> {

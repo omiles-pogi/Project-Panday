@@ -25,6 +25,17 @@ export interface EquipmentLine {
   phase: string;
 }
 
+export interface ClarificationNeeded {
+  needsClarification: true;
+  questions: string[];
+}
+
+export function isClarificationNeeded(
+  result: ConstructionPlan | ClarificationNeeded
+): result is ClarificationNeeded {
+  return (result as ClarificationNeeded).needsClarification === true;
+}
+
 export interface ConstructionPlan {
   projectTitle: string;
   location: string;

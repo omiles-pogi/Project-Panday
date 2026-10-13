@@ -53,3 +53,11 @@ export interface MyProject extends DashboardProject {
   ownerName: string;
   canManageChecklist: boolean;
 }
+
+export interface ProjectSummary {
+  id: number;
+  title: string;
+  status: "active" | "completed";
+  startedAt: string;
+  overallProgressPct: number;
+}

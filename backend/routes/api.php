@@ -18,6 +18,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/ai/plan', [ConstructionPlanController::class, 'store'])->middleware('throttle:20,1');
     Route::post('/projects', [ProjectController::class, 'store']);
+    Route::get('/projects', [ProjectController::class, 'index']);
     Route::get('/dashboard', [ProjectController::class, 'dashboard']);
     Route::post('/projects/{project}/workers', [ProjectController::class, 'assignWorker']);
     Route::delete('/projects/{project}/workers/{worker}', [ProjectController::class, 'unassignWorker']);

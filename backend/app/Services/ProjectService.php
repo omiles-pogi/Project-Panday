@@ -159,11 +159,15 @@ class ProjectService
     /**
      * @return array<string, mixed>
      */
-    public function dashboardFor(User $user): array
+    public function dashboardFor(User $user, ?int $projectId = null): array
     {
-        $project = $user->projects()
-            ->with(['phases.tasks', 'workers.workerProfile', 'contractors.contractorProfile'])
-            ->latest('started_at')->first();
+        $query = $user->projects()->with(['phases.tasks', 'workers.workerProfile', 'contractors.contractorProfile']);
+
+        // A specific project the homeowner picked from their list; falls back to the most
+        // recently started one (and silently ignores an id that isn't theirs, same as "none").
+        $project = $projectId
+            ? $query->whereKey($projectId)->first()
+            : $query->latest('started_at')->first();
 
         return [
             'project' => $project ? $this->present($project) : null,
@@ -172,6 +176,25 @@ class ProjectService
                 'completed' => $user->projects()->where('status', 'completed')->count(),
             ],
         ];
+    }
+
+    /**
+     * All projects the homeowner owns, newest first — lightweight, for a project picker.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    public function listFor(User $user): Collection
+    {
+        return $user->projects()
+            ->latest('started_at')
+            ->get()
+            ->map(fn (Project $project) => [
+                'id' => $project->id,
+                'title' => $project->title,
+                'status' => $project->status,
+                'startedAt' => $project->started_at->toDateString(),
+                'overallProgressPct' => $project->overallProgressPct(),
+            ]);
     }
 
     /**

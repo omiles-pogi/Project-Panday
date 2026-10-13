@@ -18,6 +18,7 @@ class GeneratePlanRequest extends FormRequest
     {
         return [
             'brief' => ['required', 'string', 'min:1'],
+            'allow_clarification' => ['sometimes', 'boolean'],
         ];
     }
 }

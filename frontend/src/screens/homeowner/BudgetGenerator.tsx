@@ -5,14 +5,14 @@ import BriefPrompt from "@/components/BriefPrompt";
 import { colorFor } from "@/utils/colors";
 
 export default function BudgetGenerator() {
-  const { plan, brief, loading, error, generate } = usePlan();
+  const { plan, brief, loading, generate } = usePlan();
 
   if (!plan) {
     return (
       <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16 }}>
         <Badge />
         <Text className="text-2xl font-bold mb-6 text-foreground">AI Budget Generator</Text>
-        <BriefPrompt onGenerate={generate} loading={loading} error={error} />
+        <BriefPrompt />
       </ScrollView>
     );
   }

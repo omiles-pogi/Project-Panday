@@ -26,7 +26,14 @@ class ProjectController extends Controller
 
     public function dashboard(Request $request): JsonResponse
     {
-        return response()->json($this->projects->dashboardFor($request->user()));
+        $projectId = $request->query('project_id');
+
+        return response()->json($this->projects->dashboardFor($request->user(), $projectId ? (int) $projectId : null));
+    }
+
+    public function index(Request $request): JsonResponse
+    {
+        return response()->json($this->projects->listFor($request->user()));
     }
 
     public function myProjects(Request $request): JsonResponse

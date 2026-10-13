@@ -3,8 +3,8 @@ import { ScrollView, Text, View, Pressable, ActivityIndicator } from "react-nati
 import Svg, { Circle } from "react-native-svg";
 import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { fetchDashboard } from "@/services/api/projects";
-import type { DashboardData } from "@/types/project";
+import { fetchDashboard, fetchMyHomeownerProjects } from "@/services/api/projects";
+import type { DashboardData, ProjectSummary } from "@/types/project";
 import { peso } from "@/utils/currency";
 
 const QUICK_ACTIONS = [
@@ -22,7 +22,10 @@ function progressLabel(pct: number): { label: string; color: string } {
 
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [switching, setSwitching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useFocusEffect(
@@ -30,9 +33,12 @@ export default function Dashboard() {
       let cancelled = false;
       setLoading(true);
       setError(null);
-      fetchDashboard()
-        .then((result) => {
-          if (!cancelled) setData(result);
+      Promise.all([fetchDashboard(), fetchMyHomeownerProjects()])
+        .then(([dashboard, list]) => {
+          if (cancelled) return;
+          setData(dashboard);
+          setProjects(list);
+          setSelectedProjectId(dashboard.project?.id ?? null);
         })
         .catch((err) => {
           if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load dashboard.");
@@ -45,6 +51,16 @@ export default function Dashboard() {
       };
     }, [])
   );
+
+  const switchProject = useCallback((projectId: number) => {
+    if (projectId === selectedProjectId) return;
+    setSwitching(true);
+    setSelectedProjectId(projectId);
+    fetchDashboard(projectId)
+      .then(setData)
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load project."))
+      .finally(() => setSwitching(false));
+  }, [selectedProjectId]);
 
   if (loading) {
     return (
@@ -65,9 +81,44 @@ export default function Dashboard() {
 
   const project = data?.project ?? null;
 
+  const picker = projects.length > 1 && (
+    <View>
+      <Text className="text-xs font-semibold mb-2 text-muted-foreground">YOUR PROJECTS</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+        {projects.map((p) => {
+          const active = p.id === selectedProjectId;
+          return (
+            <Pressable
+              key={p.id}
+              onPress={() => switchProject(p.id)}
+              disabled={switching}
+              className="flex-row items-center gap-1.5 px-3 py-2 rounded-xl border"
+              style={{
+                maxWidth: 180,
+                backgroundColor: active ? "#f59e0b20" : "transparent",
+                borderColor: active ? "#f59e0b50" : "#2a2f42",
+                opacity: switching ? 0.6 : 1,
+              }}
+            >
+              {active && <Ionicons name="checkmark-circle" size={13} color="#f59e0b" />}
+              <Text
+                className="text-xs font-semibold"
+                style={{ color: active ? "#f59e0b" : "#9ca3af" }}
+                numberOfLines={1}
+              >
+                {p.title}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+
   if (!project) {
     return (
       <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 16 }}>
+        {picker}
         <View className="rounded-3xl p-6 items-center bg-card border border-border">
           <Ionicons name="sparkles-outline" size={28} color="#f59e0b" style={{ marginBottom: 8 }} />
           <Text className="font-bold text-base mb-1 text-foreground">No active project yet</Text>
@@ -110,6 +161,7 @@ export default function Dashboard() {
 
   return (
     <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 16 }}>
+      {picker}
       {/* Hero project card */}
       <View className="rounded-3xl p-5 bg-card border border-border">
         <View className="flex-row items-start justify-between mb-4">

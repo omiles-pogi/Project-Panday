@@ -18,7 +18,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 const FALLBACK_COLOR = "#6b7280";
 
 export default function MaterialEstimator() {
-  const { plan, brief, loading, error, generate } = usePlan();
+  const { plan, brief, loading, generate } = usePlan();
   const [search, setSearch] = useState("");
   const [approved, setApproved] = useState<Record<number, boolean>>({});
 
@@ -28,7 +28,7 @@ export default function MaterialEstimator() {
         <Badge />
         <Text className="text-2xl font-bold mt-2 mb-1 text-foreground">Material Estimator</Text>
         <View className="mt-4">
-          <BriefPrompt onGenerate={generate} loading={loading} error={error} />
+          <BriefPrompt />
         </View>
       </ScrollView>
     );
