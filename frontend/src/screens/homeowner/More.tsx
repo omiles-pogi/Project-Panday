@@ -19,7 +19,7 @@ export default function More() {
             key={item.href}
             onPress={() => router.push(item.href as never)}
             className="items-center gap-2 py-4 rounded-2xl bg-card border border-border"
-            style={{ width: "30%" }}
+            style={{ flexGrow: 1, flexBasis: "28%", minWidth: 96 }}
           >
             <Ionicons name={item.icon} size={22} color="#f59e0b" />
             <Text className="text-xs font-semibold text-center text-muted-foreground">{item.label}</Text>

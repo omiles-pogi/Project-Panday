@@ -5,8 +5,6 @@ import {
   TextInput,
   Pressable,
   ScrollView,
-  KeyboardAvoidingView,
-  Platform,
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -16,6 +14,7 @@ import { colorFor } from "@/utils/colors";
 import { peso } from "@/utils/currency";
 import { createProject } from "@/services/api/projects";
 import Mascot from "@/components/Mascot";
+import KeyboardView from "@/components/KeyboardView";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -103,7 +102,7 @@ function PlanCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => void
             key={item.title}
             className="rounded-xl p-3 flex-row items-start gap-2.5"
             style={{
-              width: "47%",
+              flexGrow: 1, flexBasis: "45%",
               backgroundColor: approved[item.title] ? `${item.color}12` : "#252a3a",
               borderWidth: 1,
               borderColor: approved[item.title] ? `${item.color}50` : "transparent",
@@ -378,7 +377,7 @@ function DesignCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => vo
       <View className="p-4">
         <View className="flex-row flex-wrap gap-2 mb-4">
           {rows.map(({ label, value }) => (
-            <View key={label} className="px-3 py-2 rounded-lg bg-muted" style={{ width: "47%" }}>
+            <View key={label} className="px-3 py-2 rounded-lg bg-muted" style={{ flexGrow: 1, flexBasis: "45%" }}>
               <Text className="text-xs mb-0.5 text-muted-foreground">{label}</Text>
               <Text className="text-xs font-medium text-foreground">{value}</Text>
             </View>
@@ -653,7 +652,7 @@ export default function ProjectChat() {
   const showSuggestions = messages.length <= 1;
 
   return (
-    <KeyboardAvoidingView className="flex-1 bg-background" behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <KeyboardView>
       <ScrollView ref={scrollRef} className="flex-1 px-4 py-5" contentContainerStyle={{ paddingBottom: 8 }}>
         {showSuggestions && (
           <View className="items-center mb-5">
@@ -702,6 +701,6 @@ export default function ProjectChat() {
           AI recommends · You decide · All items require your approval
         </Text>
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardView>
   );
 }

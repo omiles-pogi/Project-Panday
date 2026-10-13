@@ -145,11 +145,11 @@ function ProjectCard({ project, onChanged }: { project: MyProject; onChanged: ()
           </View>
         </View>
         <View className="flex-row flex-wrap gap-2 mb-2">
-          <View className="p-2.5 rounded-xl bg-muted" style={{ width: "48%" }}>
+          <View className="p-2.5 rounded-xl bg-muted" style={{ flexGrow: 1, flexBasis: "45%" }}>
             <Text className="text-xs mb-0.5 text-muted-foreground">Budget</Text>
             <Text className="text-xs font-medium text-foreground">{peso(project.budget)}</Text>
           </View>
-          <View className="p-2.5 rounded-xl bg-muted" style={{ width: "48%" }}>
+          <View className="p-2.5 rounded-xl bg-muted" style={{ flexGrow: 1, flexBasis: "45%" }}>
             <Text className="text-xs mb-0.5 text-muted-foreground">AI Estimate</Text>
             <Text className="text-xs font-medium text-foreground">{peso(project.totalEstimate)}</Text>
           </View>

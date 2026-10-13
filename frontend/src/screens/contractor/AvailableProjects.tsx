@@ -56,7 +56,7 @@ export default function AvailableProjects() {
               { label: "Target", value: p.target },
               { label: "Duration", value: p.duration },
             ].map(({ label, value }) => (
-              <View key={label} className="p-3 rounded-xl bg-muted" style={{ width: "31%" }}>
+              <View key={label} className="p-3 rounded-xl bg-muted" style={{ flexGrow: 1, flexBasis: "28%" }}>
                 <Text className="text-xs mb-1 text-muted-foreground">{label}</Text>
                 <Text className="text-xs font-medium text-foreground">{value}</Text>
               </View>

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Text, TextInput, View, Pressable, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+import { Text, TextInput, View, Pressable, ScrollView } from "react-native";
+import KeyboardView from "@/components/KeyboardView";
 import { Link } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/context/AuthContext";
@@ -65,7 +66,7 @@ export default function Register() {
   };
 
   return (
-    <KeyboardAvoidingView className="flex-1 bg-background" behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <KeyboardView className="flex-1 bg-background">
       <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
         <View className="px-6 py-10">
           <View className="items-center mb-8">
@@ -86,7 +87,7 @@ export default function Register() {
                   onPress={() => setRole(opt.id)}
                   className="rounded-xl px-4 py-3 flex-row items-center gap-2 border"
                   style={{
-                    width: "47%",
+                    flexGrow: 1, flexBasis: "45%",
                     backgroundColor: active ? `${color}20` : "#1a1d27",
                     borderColor: active ? color : "#2a2f42",
                   }}
@@ -156,7 +157,7 @@ export default function Register() {
           </View>
         </View>
       </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardView>
   );
 }
 

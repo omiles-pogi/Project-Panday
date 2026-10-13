@@ -39,7 +39,7 @@ export default function ProgressReport() {
               { label: "Current Progress", value: "42%", color: "#f59e0b" },
               { label: "Expected Progress", value: "48%", color: "#10b981" },
             ].map(({ label, value, color }) => (
-              <View key={label} className="p-3 rounded-xl bg-muted" style={{ width: "48%" }}>
+              <View key={label} className="p-3 rounded-xl bg-muted" style={{ flexGrow: 1, flexBasis: "45%" }}>
                 <Text className="text-xs mb-1 text-muted-foreground">{label}</Text>
                 <Text className="font-bold" style={{ color, fontFamily: MONO }}>
                   {value}

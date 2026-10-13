@@ -1,26 +1,95 @@
-import { type ReactNode } from "react";
-import { Pressable, ScrollView, Text, TextInput, View, type TextInputProps } from "react-native";
+import { useEffect, type ReactNode } from "react";
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
+import KeyboardView from "./KeyboardView";
+import {
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+  type TextInputProps,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 export type IconName = keyof typeof Ionicons.glyphMap;
 
 export const MONO = "DMMono_500Medium";
 
+/** Content never stretches past this on tablets/web; it is centered instead. */
+export const MAX_CONTENT_WIDTH = 880;
+
+/** Width-based breakpoints so layouts adapt to phones, tablets, landscape and web. */
+export function useBreakpoint() {
+  const { width } = useWindowDimensions();
+  return { width, isTablet: width >= 700, isWide: width >= 1000 };
+}
+
+
+export { KeyboardView };
+
 export function Screen({ children }: { children: ReactNode }) {
   return (
+    <KeyboardView>
     <ScrollView
       className="flex-1 bg-background"
-      contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 16 }}
+      contentContainerStyle={{
+        padding: 16,
+        paddingBottom: 96,
+        gap: 16,
+        width: "100%",
+        maxWidth: MAX_CONTENT_WIDTH,
+        alignSelf: "center",
+      }}
       keyboardShouldPersistTaps="handled"
     >
       {children}
     </ScrollView>
+    </KeyboardView>
+  );
+}
+
+/** Pressable that springs down slightly while held; the wrapper carries the layout style. */
+function PressScale({
+  onPress,
+  className,
+  style,
+  wrapperStyle,
+  children,
+}: {
+  onPress?: () => void;
+  className?: string;
+  style?: object;
+  wrapperStyle?: object;
+  children: ReactNode;
+}) {
+  const scale = useSharedValue(1);
+  const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <Animated.View style={[wrapperStyle, animated]}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={() => scale.set(withSpring(0.96, { duration: 150 }))}
+        onPressOut={() => scale.set(withSpring(1, { duration: 200 }))}
+        className={className}
+        style={style}
+      >
+        {children}
+      </Pressable>
+    </Animated.View>
   );
 }
 
 export function PageHeader({ title, subtitle, badge }: { title: string; subtitle?: string; badge?: string }) {
   return (
-    <View>
+    <Animated.View entering={FadeIn.duration(300)}>
       {badge ? (
         <View className="self-start px-2 py-0.5 rounded-full mb-1" style={{ backgroundColor: "#f59e0b20" }}>
           <Text className="text-xs font-semibold" style={{ color: "#f59e0b" }}>
@@ -30,7 +99,7 @@ export function PageHeader({ title, subtitle, badge }: { title: string; subtitle
       ) : null}
       <Text className="text-2xl font-bold text-foreground">{title}</Text>
       {subtitle ? <Text className="text-sm mt-1 text-muted-foreground">{subtitle}</Text> : null}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -46,15 +115,17 @@ export function Card({
   gap?: number;
 }) {
   return (
-    <View className="rounded-3xl p-4 bg-card border border-border">
-      {title ? (
-        <View className="flex-row items-center justify-between mb-3">
-          <Text className="font-bold text-sm text-foreground">{title}</Text>
-          {right}
-        </View>
-      ) : null}
-      {gap ? <View style={{ gap }}>{children}</View> : children}
-    </View>
+    <Animated.View entering={FadeInDown.duration(350)}>
+      <View className="rounded-3xl p-4 bg-card border border-border">
+        {title ? (
+          <View className="flex-row items-center justify-between mb-3">
+            <Text className="font-bold text-sm text-foreground">{title}</Text>
+            {right}
+          </View>
+        ) : null}
+        {gap ? <View style={{ gap }}>{children}</View> : children}
+      </View>
+    </Animated.View>
   );
 }
 
@@ -69,12 +140,14 @@ export function Badge({ label, color }: { label: string; color: string }) {
 }
 
 export function ProgressBar({ pct, color, height = 8 }: { pct: number; color: string; height?: number }) {
+  const width = useSharedValue(0);
+  useEffect(() => {
+    width.value = withTiming(Math.max(0, Math.min(100, pct)), { duration: 700 });
+  }, [pct, width]);
+  const fill = useAnimatedStyle(() => ({ width: `${width.value}%` }));
   return (
     <View className="rounded-full overflow-hidden bg-muted" style={{ height }}>
-      <View
-        className="h-full rounded-full"
-        style={{ width: `${Math.max(0, Math.min(100, pct))}%`, backgroundColor: color }}
-      />
+      <Animated.View className="h-full rounded-full" style={[{ backgroundColor: color }, fill]} />
     </View>
   );
 }
@@ -93,19 +166,23 @@ export function StatTile({
   icon?: IconName;
 }) {
   return (
-    <View className="p-4 rounded-2xl bg-card border border-border" style={{ width: "48%" }}>
+    <Animated.View
+      entering={FadeInDown.duration(350)}
+      className="p-4 rounded-2xl bg-card border border-border"
+      style={{ flexGrow: 1, flexBasis: "45%", minWidth: 140 }}
+    >
       {icon ? <Ionicons name={icon} size={22} color={color} style={{ marginBottom: 4 }} /> : null}
       <Text className="text-xs mb-1 text-muted-foreground">{label}</Text>
       <Text className="text-xl font-bold" style={{ color, fontFamily: MONO }}>
         {value}
       </Text>
       {sub ? <Text className="text-xs mt-0.5 text-muted-foreground">{sub}</Text> : null}
-    </View>
+    </Animated.View>
   );
 }
 
 export function StatGrid({ children }: { children: ReactNode }) {
-  return <View className="flex-row flex-wrap gap-3 justify-between">{children}</View>;
+  return <View className="flex-row flex-wrap gap-3">{children}</View>;
 }
 
 export function InfoBox({ color, title, children }: { color: string; title?: string; children: ReactNode }) {
@@ -142,19 +219,19 @@ export function Button({
   const bg = variant === "primary" ? "#f59e0b" : variant === "tint" ? `${color}20` : "#252a3a";
   const fg = variant === "primary" ? "#0f1117" : variant === "tint" ? color : "#9ca3af";
   return (
-    <Pressable onPress={onPress} className="px-4 py-2.5 rounded-xl items-center" style={{ backgroundColor: bg }}>
+    <PressScale onPress={onPress} className="px-4 py-2.5 rounded-xl items-center" style={{ backgroundColor: bg }}>
       <Text className="text-xs font-semibold" style={{ color: fg }}>
         {label}
       </Text>
-    </Pressable>
+    </PressScale>
   );
 }
 
 export function SubmitButton({ label, onPress }: { label: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} className="py-4 rounded-2xl items-center bg-primary">
+    <PressScale onPress={onPress} className="py-4 rounded-2xl items-center bg-primary">
       <Text className="font-bold text-sm text-primary-foreground">{label}</Text>
-    </Pressable>
+    </PressScale>
   );
 }
 
@@ -218,15 +295,15 @@ export function MenuGrid({
   return (
     <View className="flex-row flex-wrap gap-3">
       {items.map((item) => (
-        <Pressable
+        <PressScale
           key={item.href}
           onPress={() => onSelect(item.href)}
           className="items-center gap-2 py-4 rounded-2xl bg-card border border-border"
-          style={{ width: "30%" }}
+          wrapperStyle={{ flexGrow: 1, flexBasis: "28%", minWidth: 96 }}
         >
           <Ionicons name={item.icon} size={24} color="#f59e0b" />
           <Text className="text-xs font-semibold text-center text-muted-foreground">{item.label}</Text>
-        </Pressable>
+        </PressScale>
       ))}
     </View>
   );
@@ -234,9 +311,9 @@ export function MenuGrid({
 
 export function SignOutButton({ onPress }: { onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} className="px-5 py-3 rounded-xl bg-card border border-border items-center">
+    <PressScale onPress={onPress} className="px-5 py-3 rounded-xl bg-card border border-border items-center">
       <Text className="text-danger text-sm font-semibold">Sign Out</Text>
-    </Pressable>
+    </PressScale>
   );
 }
 

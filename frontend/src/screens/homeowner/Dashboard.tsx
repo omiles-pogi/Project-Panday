@@ -201,7 +201,7 @@ export default function Dashboard() {
 
         <View className="flex-row flex-wrap gap-2 mb-4">
           {budgetPills.map(({ label, value, color }) => (
-            <View key={label} className="px-3 py-2.5 rounded-2xl bg-background" style={{ width: "31%" }}>
+            <View key={label} className="px-3 py-2.5 rounded-2xl bg-background" style={{ flexGrow: 1, flexBasis: "28%" }}>
               <Text className="text-xs mb-0.5 text-muted-foreground">{label}</Text>
               <Text className="font-bold text-sm" style={{ color, fontFamily: "DMMono_500Medium" }}>
                 {value}

@@ -6,6 +6,12 @@ import type { AuthUser, Role } from "@/types/auth";
 
 const TOKEN_KEY = "buildai_auth_token";
 
+// Dev-only offline admin; set both in the git-ignored frontend/.env. Unset = feature disabled.
+const DEV_ADMIN = {
+  email: (process.env.EXPO_PUBLIC_DEV_ADMIN_EMAIL ?? "").trim().toLowerCase(),
+  password: process.env.EXPO_PUBLIC_DEV_ADMIN_PASSWORD ?? "",
+};
+
 type AuthStatus = "bootstrapping" | "authed" | "guest";
 
 export interface PendingAccount {
@@ -71,6 +77,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     setError(null);
+    // Dev-only offline admin: lets you browse every role's screens without the backend running.
+    if (__DEV__ && DEV_ADMIN.email && DEV_ADMIN.password && email.trim().toLowerCase() === DEV_ADMIN.email && password === DEV_ADMIN.password) {
+      setAuthToken(null);
+      setUser({ id: 0, name: "Dev Admin", email: DEV_ADMIN.email, role: "superadmin" });
+      setPending(null);
+      setStatus("authed");
+      return;
+    }
     try {
       const { user: loggedInUser, token } = await loginRequest({ email, password });
       await tokenStorage.setItem(TOKEN_KEY, token);

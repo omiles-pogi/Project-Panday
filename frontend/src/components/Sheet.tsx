@@ -1,5 +1,6 @@
 import { type ReactNode } from "react";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+import KeyboardView from "@/components/KeyboardView";
 import { Ionicons } from "@expo/vector-icons";
 
 // Bottom sheet for forms (submit bid, update order, edit product).
@@ -18,7 +19,7 @@ export default function Sheet({
 }) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View className="flex-1 justify-end" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
+      <KeyboardView className="flex-1 justify-end" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
         <Pressable className="flex-1" onPress={onClose} accessibilityLabel="Close" />
         <View
           className="bg-card border border-border rounded-t-3xl self-center w-full"
@@ -40,7 +41,7 @@ export default function Sheet({
             {children}
           </ScrollView>
         </View>
-      </View>
+      </KeyboardView>
     </Modal>
   );
 }

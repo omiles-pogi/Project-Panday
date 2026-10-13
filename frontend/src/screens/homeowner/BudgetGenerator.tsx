@@ -2,6 +2,7 @@ import { ScrollView, Text, View, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { usePlan } from "@/context/PlanContext";
 import BriefPrompt from "@/components/BriefPrompt";
+import { KeyboardView } from "@/components/ui";
 import { colorFor } from "@/utils/colors";
 
 export default function BudgetGenerator() {
@@ -9,11 +10,13 @@ export default function BudgetGenerator() {
 
   if (!plan) {
     return (
-      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16 }}>
-        <Badge />
-        <Text className="text-2xl font-bold mb-6 text-foreground">AI Budget Generator</Text>
-        <BriefPrompt />
-      </ScrollView>
+      <KeyboardView>
+        <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
+          <Badge />
+          <Text className="text-2xl font-bold mb-6 text-foreground">AI Budget Generator</Text>
+          <BriefPrompt />
+        </ScrollView>
+      </KeyboardView>
     );
   }
 

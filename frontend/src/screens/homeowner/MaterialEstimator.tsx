@@ -3,6 +3,7 @@ import { ScrollView, Text, TextInput, View, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { usePlan } from "@/context/PlanContext";
 import BriefPrompt from "@/components/BriefPrompt";
+import { KeyboardView } from "@/components/ui";
 
 const CATEGORY_COLORS: Record<string, string> = {
   Concrete: "#f59e0b",
@@ -24,13 +25,15 @@ export default function MaterialEstimator() {
 
   if (!plan) {
     return (
-      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16 }}>
-        <Badge />
-        <Text className="text-2xl font-bold mt-2 mb-1 text-foreground">Material Estimator</Text>
-        <View className="mt-4">
-          <BriefPrompt />
-        </View>
-      </ScrollView>
+      <KeyboardView>
+        <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
+          <Badge />
+          <Text className="text-2xl font-bold mt-2 mb-1 text-foreground">Material Estimator</Text>
+          <View className="mt-4">
+            <BriefPrompt />
+          </View>
+        </ScrollView>
+      </KeyboardView>
     );
   }
 
@@ -46,7 +49,8 @@ export default function MaterialEstimator() {
   const approvedCount = Object.values(approved).filter(Boolean).length;
 
   return (
-    <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
+    <KeyboardView>
+    <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
       <Badge />
       <View className="flex-row items-center justify-between mt-2 mb-4">
         <View>
@@ -137,6 +141,7 @@ export default function MaterialEstimator() {
         </Text>
       </View>
     </ScrollView>
+    </KeyboardView>
   );
 }
 

@@ -79,7 +79,7 @@ export default function ProgressAnalysis() {
               key={label}
               className="p-3 rounded-2xl items-center"
               style={{
-                width: "48%",
+                flexGrow: 1, flexBasis: "45%",
                 backgroundColor: active ? `${color}20` : "#252a3a",
                 borderWidth: active ? 2 : 1,
                 borderColor: active ? color : "#2a2f42",

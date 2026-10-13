@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Text, TextInput, View, Pressable, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+import { Text, TextInput, View, Pressable, ScrollView } from "react-native";
+import KeyboardView from "@/components/KeyboardView";
 import { Link } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
 import Logo from "@/components/Logo";
@@ -28,9 +29,8 @@ export default function Login() {
   };
 
   return (
-    <KeyboardAvoidingView
+    <KeyboardView
       className="flex-1 bg-background"
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }} keyboardShouldPersistTaps="handled">
         <View className="px-6 py-10">
@@ -70,7 +70,7 @@ export default function Login() {
           </View>
         </View>
       </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardView>
   );
 }
 
