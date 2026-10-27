@@ -9,6 +9,7 @@ import type { MyProject } from "@/types/project";
 
 const QUICK_ACTIONS = [
   { label: "Assignments", icon: "briefcase-outline", href: "/worker/assignments" },
+  { label: "Browse", icon: "list-outline", href: "/worker/available" },
   { label: "Log Work", icon: "document-text-outline", href: "/worker/daily-log" },
   { label: "Timesheet", icon: "time-outline", href: "/worker/timesheet" },
   { label: "Profile", icon: "build-outline", href: "/worker/skills" },
@@ -46,7 +47,13 @@ export default function Dashboard() {
       {error && <Text className="text-xs text-danger px-1">{error}</Text>}
 
       <StatGrid>
-        <StatTile label="Active Assignments" value={active.length} color="#f59e0b" icon="briefcase-outline" />
+        <StatTile
+          label="Active Assignments"
+          value={active.length}
+          color="#f59e0b"
+          icon="briefcase-outline"
+          onPress={() => router.push("/worker/assignments" as never)}
+        />
         <StatTile label="Completed" value={(projects?.length ?? 0) - active.length} color="#10b981" icon="checkmark-circle-outline" />
       </StatGrid>
 
@@ -79,7 +86,11 @@ export default function Dashboard() {
         )}
         <View style={{ gap: 10 }}>
           {active.map((p) => (
-            <View key={p.id} className="p-3.5 rounded-2xl bg-muted">
+            <Pressable
+              key={p.id}
+              onPress={() => router.push(`/worker/assignments?projectId=${p.id}` as never)}
+              className="p-3.5 rounded-2xl bg-muted"
+            >
               <View className="flex-row items-center justify-between mb-1.5">
                 <Text className="text-sm font-medium text-foreground">{p.title}</Text>
                 <Text className="text-xs font-semibold" style={{ color: "#f59e0b" }}>
@@ -93,7 +104,7 @@ export default function Dashboard() {
               <View className="h-1.5 rounded-full overflow-hidden bg-background">
                 <View className="h-full rounded-full bg-primary" style={{ width: `${p.overallProgressPct}%` }} />
               </View>
-            </View>
+            </Pressable>
           ))}
         </View>
       </Card>

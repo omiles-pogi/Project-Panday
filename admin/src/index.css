@@ -1,15 +1,41 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
+/* Chrome (background/surface/text/border) tokens — brand and status colors (amber, green, red,
+   role colors) stay fixed in AdminApp.tsx and are not themed here. Dark is the default/existing
+   look; [data-theme="light"] on <html> overrides it — toggled by the button in the header. */
+:root {
+  --color-background: #0a0c12;
+  --color-card: #1a1d27;
+  --color-foreground: #f0f2f5;
+  --color-secondary-foreground: #9ca3af;
+  --color-muted-foreground: #6b7280;
+  --color-muted: #252a3a;
+  --color-border: #2a2f42;
+  --color-border-soft: #1e2235;
+}
+
+:root[data-theme="light"] {
+  --color-background: #f3f4f7;
+  --color-card: #ffffff;
+  --color-foreground: #11141c;
+  --color-secondary-foreground: #64748b;
+  --color-muted-foreground: #5a6370;
+  --color-muted: #ebedf1;
+  --color-border: #e2e5eb;
+  --color-border-soft: #e9ebef;
+}
+
 html,
 body,
 #root {
   min-height: 100%;
   height: 100%;
   font-family: "Inter", system-ui, sans-serif;
-  background: #0a0c12;
-  color: #f0f2f5;
+  background: var(--color-background);
+  color: var(--color-foreground);
   -webkit-font-smoothing: antialiased;
+  transition: background-color 150ms ease, color 150ms ease;
 }
 
 * {

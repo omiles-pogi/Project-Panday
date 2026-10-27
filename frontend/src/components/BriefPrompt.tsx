@@ -4,28 +4,22 @@ import { Ionicons } from "@expo/vector-icons";
 import { usePlan } from "@/context/PlanContext";
 
 export default function BriefPrompt() {
-  const { loading, error, clarificationQuestions, generate, answerClarification, clearClarification } = usePlan();
+  const { loading, error, lastAssistantMessage, send, reset } = usePlan();
   const [text, setText] = useState("");
   const [reply, setReply] = useState("");
 
-  if (clarificationQuestions) {
+  if (lastAssistantMessage) {
     return (
       <View className="rounded-xl p-6 items-center bg-card border border-border">
-        <Ionicons name="help-circle-outline" size={28} color="#f59e0b" style={{ marginBottom: 8 }} />
-        <Text className="font-bold mb-3 text-foreground text-base text-center">Just a couple more details</Text>
-        <View className="w-full mb-3" style={{ gap: 6 }}>
-          {clarificationQuestions.map((q, i) => (
-            <Text key={i} className="text-sm text-muted-foreground">
-              • {q}
-            </Text>
-          ))}
-        </View>
+        <Ionicons name="chatbubble-ellipses-outline" size={28} color="#f59e0b" style={{ marginBottom: 8 }} />
+        <Text className="font-bold mb-3 text-foreground text-base text-center">Pandy says:</Text>
+        <Text className="text-sm mb-3 text-muted-foreground">{lastAssistantMessage}</Text>
         <TextInput
           value={reply}
           onChangeText={setReply}
           multiline
           numberOfLines={2}
-          placeholder="e.g. about 15 sqm, budget around ₱400K"
+          placeholder="Type your reply..."
           placeholderTextColor="#6b7280"
           className="w-full rounded-lg p-3 text-sm mb-3 bg-background border border-border text-foreground"
           style={{ minHeight: 56, textAlignVertical: "top" }}
@@ -33,19 +27,19 @@ export default function BriefPrompt() {
         {error && <Text className="text-xs mb-3 text-danger">{error}</Text>}
         <View className="flex-row gap-2 w-full">
           <Pressable
-            onPress={clearClarification}
+            onPress={reset}
             disabled={loading}
             className="flex-1 px-4 py-2.5 rounded-xl items-center bg-muted border border-border"
           >
-            <Text className="text-sm text-muted-foreground">Back</Text>
+            <Text className="text-sm text-muted-foreground">Start Over</Text>
           </Pressable>
           <Pressable
             disabled={loading || !reply.trim()}
-            onPress={() => answerClarification(reply.trim())}
+            onPress={() => send(reply.trim()).then(() => setReply(""))}
             className="flex-1 px-4 py-2.5 rounded-xl items-center bg-primary"
             style={{ opacity: loading || !reply.trim() ? 0.6 : 1 }}
           >
-            <Text className="font-bold text-sm text-primary-foreground">{loading ? "Generating…" : "Generate Plan"}</Text>
+            <Text className="font-bold text-sm text-primary-foreground">{loading ? "Thinking…" : "Send"}</Text>
           </Pressable>
         </View>
       </View>
@@ -74,7 +68,7 @@ export default function BriefPrompt() {
       {error && <Text className="text-xs mb-3 text-danger">{error}</Text>}
       <Pressable
         disabled={disabled}
-        onPress={() => generate(text.trim())}
+        onPress={() => send(text.trim())}
         className="px-5 py-2.5 rounded-xl bg-primary"
         style={{ opacity: disabled ? 0.6 : 1 }}
       >

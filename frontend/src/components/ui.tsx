@@ -9,6 +9,8 @@ import Animated, {
 } from "react-native-reanimated";
 import KeyboardView from "./KeyboardView";
 import { CountUp } from "./charts";
+import { useTheme } from "@/context/ThemeContext";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   Pressable,
   ScrollView,
@@ -36,13 +38,21 @@ export function useBreakpoint() {
 
 export { KeyboardView };
 
-export function Screen({ children }: { children: ReactNode }) {
+/**
+ * `topInset` defaults to true because most Screen consumers sit on a headerless Drawer route
+ * (the homeowner Drawer hides its header for every screen, tabs included) and would otherwise
+ * render their first content right under the status bar. Pass `topInset={false}` only for a
+ * screen that already has a real navigation header, which already reserves that space itself.
+ */
+export function Screen({ children, topInset = true }: { children: ReactNode; topInset?: boolean }) {
+  const insets = useSafeAreaInsets();
   return (
     <KeyboardView>
     <ScrollView
       className="flex-1 bg-background"
       contentContainerStyle={{
         padding: 16,
+        paddingTop: 16 + (topInset ? insets.top : 0),
         paddingBottom: 96,
         gap: 16,
         width: "100%",
@@ -156,26 +166,50 @@ export function ProgressBar({ pct, color, height = 8 }: { pct: number; color: st
 export function StatTile({
   label,
   value,
-  color = "#f0f2f5",
+  color,
   sub,
   icon,
+  onPress,
 }: {
   label: string;
   value: string | number;
   color?: string;
   sub?: string;
   icon?: IconName;
+  /** Makes the tile tappable (e.g. "Active Projects" jumping to that list) — purely additive,
+   * every existing non-interactive tile is unaffected. */
+  onPress?: () => void;
 }) {
+  const { chrome } = useTheme();
+  const resolvedColor = color ?? chrome.foreground;
+  const content = (
+    <>
+      {icon ? <Ionicons name={icon} size={22} color={resolvedColor} style={{ marginBottom: 4 }} /> : null}
+      <Text className="text-xs mb-1 text-muted-foreground">{label}</Text>
+      <CountUp text={String(value)} className="text-xl font-bold" style={{ color: resolvedColor, fontFamily: MONO }} />
+      {sub ? <Text className="text-xs mt-0.5 text-muted-foreground">{sub}</Text> : null}
+    </>
+  );
+
+  if (onPress) {
+    return (
+      <PressScale
+        onPress={onPress}
+        wrapperStyle={{ flexGrow: 1, flexBasis: "45%", minWidth: 140 }}
+        className="p-4 rounded-2xl bg-card border border-border"
+      >
+        {content}
+      </PressScale>
+    );
+  }
+
   return (
     <Animated.View
       entering={FadeInDown.duration(350)}
       className="p-4 rounded-2xl bg-card border border-border"
       style={{ flexGrow: 1, flexBasis: "45%", minWidth: 140 }}
     >
-      {icon ? <Ionicons name={icon} size={22} color={color} style={{ marginBottom: 4 }} /> : null}
-      <Text className="text-xs mb-1 text-muted-foreground">{label}</Text>
-      <CountUp text={String(value)} className="text-xl font-bold" style={{ color, fontFamily: MONO }} />
-      {sub ? <Text className="text-xs mt-0.5 text-muted-foreground">{sub}</Text> : null}
+      {content}
     </Animated.View>
   );
 }
@@ -215,8 +249,9 @@ export function Button({
   variant?: "primary" | "muted" | "tint";
   color?: string;
 }) {
-  const bg = variant === "primary" ? "#f59e0b" : variant === "tint" ? `${color}20` : "#252a3a";
-  const fg = variant === "primary" ? "#0f1117" : variant === "tint" ? color : "#9ca3af";
+  const { chrome } = useTheme();
+  const bg = variant === "primary" ? "#f59e0b" : variant === "tint" ? `${color}20` : chrome.muted;
+  const fg = variant === "primary" ? "#0f1117" : variant === "tint" ? color : chrome.mutedForeground;
   return (
     <PressScale onPress={onPress} className="px-4 py-2.5 rounded-xl items-center" style={{ backgroundColor: bg }}>
       <Text className="text-xs font-semibold" style={{ color: fg }}>
@@ -260,6 +295,7 @@ export function ChipPicker({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const { chrome } = useTheme();
   return (
     <View>
       <Text className="text-xs font-medium mb-2 text-secondary-foreground">{label}</Text>
@@ -271,9 +307,9 @@ export function ChipPicker({
               key={o}
               onPress={() => onChange(o)}
               className="px-3 py-2 rounded-xl border"
-              style={{ backgroundColor: active ? "#f59e0b20" : "#252a3a", borderColor: active ? "#f59e0b" : "#2a2f42" }}
+              style={{ backgroundColor: active ? "#f59e0b20" : chrome.muted, borderColor: active ? "#f59e0b" : chrome.border }}
             >
-              <Text className="text-xs font-medium" style={{ color: active ? "#f59e0b" : "#9ca3af" }}>
+              <Text className="text-xs font-medium" style={{ color: active ? "#f59e0b" : chrome.mutedForeground }}>
                 {o}
               </Text>
             </Pressable>

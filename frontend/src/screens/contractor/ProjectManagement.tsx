@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { Text, View, Pressable, ActivityIndicator } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Card, Field, PageHeader, Screen } from "@/components/ui";
 import { addPhaseTask, deletePhaseTask, fetchMyProjects, togglePhaseTask } from "@/services/api/projects";
@@ -122,8 +122,16 @@ function PhaseChecklist({
   );
 }
 
-function ProjectCard({ project, onChanged }: { project: MyProject; onChanged: () => void }) {
-  const [expanded, setExpanded] = useState(false);
+function ProjectCard({
+  project,
+  onChanged,
+  initiallyExpanded,
+}: {
+  project: MyProject;
+  onChanged: () => void;
+  initiallyExpanded?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(!!initiallyExpanded);
 
   return (
     <Card>
@@ -172,6 +180,10 @@ function ProjectCard({ project, onChanged }: { project: MyProject; onChanged: ()
 }
 
 export default function ProjectManagement() {
+  // Set when arriving from a specific project elsewhere (e.g. tapping it on the Dashboard) —
+  // that project's checklist opens pre-expanded instead of landing on the flat, collapsed list.
+  const { projectId } = useLocalSearchParams<{ projectId?: string }>();
+  const targetId = projectId ? Number(projectId) : null;
   const [projects, setProjects] = useState<MyProject[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -202,7 +214,7 @@ export default function ProjectManagement() {
       )}
 
       {projects?.map((project) => (
-        <ProjectCard key={project.id} project={project} onChanged={load} />
+        <ProjectCard key={project.id} project={project} onChanged={load} initiallyExpanded={project.id === targetId} />
       ))}
     </Screen>
   );

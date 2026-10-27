@@ -32,6 +32,72 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
   return data;
 }
 
+/**
+ * Like apiFetch, but for an endpoint that streams newline-delimited JSON events (the AI chat
+ * endpoint) instead of returning one JSON body. Calls onEvent for each line as it arrives.
+ *
+ * Uses XMLHttpRequest + progressive responseText reading rather than fetch's ReadableStream body —
+ * React Native's fetch doesn't reliably support streaming response bodies on native platforms
+ * (only in a real browser / react-native-web), while XHR's onprogress + responseText works
+ * consistently on both web and native.
+ */
+export function apiFetchStream(
+  path: string,
+  options: { method?: string; body?: string },
+  onEvent: (event: unknown) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (!BASE_URL) {
+      reject(
+        new Error("EXPO_PUBLIC_API_BASE_URL is not set. Add it to frontend/.env (see .env.example).")
+      );
+      return;
+    }
+
+    const xhr = new XMLHttpRequest();
+    xhr.open(options.method ?? "POST", `${BASE_URL}${path}`);
+    xhr.setRequestHeader("content-type", "application/json");
+    xhr.setRequestHeader("accept", "application/x-ndjson");
+    if (authToken) {
+      xhr.setRequestHeader("authorization", `Bearer ${authToken}`);
+    }
+
+    let processedLength = 0;
+    let lineBuffer = "";
+
+    const consumeNewText = () => {
+      const newText = xhr.responseText.slice(processedLength);
+      processedLength = xhr.responseText.length;
+      lineBuffer += newText;
+
+      let newlineIndex: number;
+      while ((newlineIndex = lineBuffer.indexOf("\n")) !== -1) {
+        const line = lineBuffer.slice(0, newlineIndex).trim();
+        lineBuffer = lineBuffer.slice(newlineIndex + 1);
+        if (!line) continue;
+        try {
+          onEvent(JSON.parse(line));
+        } catch {
+          // Incomplete/malformed line — skip rather than crash the whole stream.
+        }
+      }
+    };
+
+    xhr.onprogress = consumeNewText;
+    xhr.onload = () => {
+      consumeNewText();
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        reject(new ApiError(`Request failed with status ${xhr.status}.`, null));
+      }
+    };
+    xhr.onerror = () => reject(new Error("Network request failed."));
+
+    xhr.send(options.body);
+  });
+}
+
 /** Carries the raw response body so callers can read extra fields (e.g. approval_status). */
 export class ApiError extends Error {
   constructor(

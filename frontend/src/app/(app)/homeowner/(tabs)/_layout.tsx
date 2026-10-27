@@ -2,13 +2,13 @@ import type { ColorValue } from "react-native";
 import { Tabs } from "expo-router";
 import { DrawerToggleButton } from "expo-router/drawer";
 import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "@/context/ThemeContext";
 
 const TAB_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   index: "home-outline",
   "project-chat": "sparkles-outline",
   progress: "stats-chart-outline",
   "budget-monitor": "pie-chart-outline",
-  more: "ellipsis-horizontal",
 };
 
 const TAB_TITLE: Record<string, string> = {
@@ -16,7 +16,6 @@ const TAB_TITLE: Record<string, string> = {
   "project-chat": "AI Plan",
   progress: "Progress",
   "budget-monitor": "Budget",
-  more: "More",
 };
 
 function tabIcon(name: string) {
@@ -26,15 +25,16 @@ function tabIcon(name: string) {
 }
 
 export default function HomeownerTabsLayout() {
+  const { chrome } = useTheme();
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: "#1a1d27" },
-        headerTintColor: "#f0f2f5",
-        headerLeft: () => <DrawerToggleButton tintColor="#9ca3af" />,
+        headerStyle: { backgroundColor: chrome.card },
+        headerTintColor: chrome.foreground,
+        headerLeft: () => <DrawerToggleButton tintColor={chrome.mutedForeground} />,
         tabBarActiveTintColor: "#f59e0b",
-        tabBarInactiveTintColor: "#6b7280",
-        tabBarStyle: { backgroundColor: "#1a1d27", borderTopColor: "#2a2f42" },
+        tabBarInactiveTintColor: chrome.mutedForeground,
+        tabBarStyle: { backgroundColor: chrome.card, borderTopColor: chrome.border },
       }}
     >
       <Tabs.Screen
@@ -60,10 +60,6 @@ export default function HomeownerTabsLayout() {
           tabBarIcon: tabIcon("budget-monitor"),
           tabBarLabel: TAB_TITLE["budget-monitor"],
         }}
-      />
-      <Tabs.Screen
-        name="more"
-        options={{ title: TAB_TITLE.more, tabBarIcon: tabIcon("more"), tabBarLabel: TAB_TITLE.more }}
       />
     </Tabs>
   );

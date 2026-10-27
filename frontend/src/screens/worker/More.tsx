@@ -5,6 +5,7 @@ import TourButton from "@/components/TourButton";
 import { useAuth } from "@/context/AuthContext";
 
 const ITEMS = [
+  { href: "/worker/available", label: "Browse Projects", icon: "list-outline" },
   { href: "/worker/timesheet", label: "Timesheet", icon: "time-outline" },
   { href: "/worker/earnings", label: "Earnings", icon: "wallet-outline" },
   { href: "/worker/skills", label: "Skills", icon: "build-outline" },

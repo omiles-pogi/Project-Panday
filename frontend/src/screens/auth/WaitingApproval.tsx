@@ -3,6 +3,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Mascot from "@/components/Mascot";
 import { useAuth } from "@/context/AuthContext";
+import { useTheme } from "@/context/ThemeContext";
 import { approvalStatusRequest } from "@/services/api/auth";
 
 const POLL_MS = 5000;
@@ -114,12 +115,13 @@ export default function WaitingApproval() {
 }
 
 function Step({ label, done, active, failed }: { label: string; done?: boolean; active?: boolean; failed?: boolean }) {
-  const color = failed ? "#ef4444" : done ? "#10b981" : active ? "#f59e0b" : "#6b7280";
+  const { chrome } = useTheme();
+  const color = failed ? "#ef4444" : done ? "#10b981" : active ? "#f59e0b" : chrome.mutedForeground;
   const icon = failed ? "close-circle" : done ? "checkmark-circle" : active ? "time" : "ellipse-outline";
   return (
     <View className="flex-row items-center gap-3 px-4 py-3 rounded-xl bg-card border border-border">
       <Ionicons name={icon} size={20} color={color} />
-      <Text className="text-sm font-medium" style={{ color: done || active || failed ? "#f0f2f5" : "#6b7280" }}>
+      <Text className="text-sm font-medium" style={{ color: done || active || failed ? chrome.foreground : chrome.mutedForeground }}>
         {label}
       </Text>
     </View>

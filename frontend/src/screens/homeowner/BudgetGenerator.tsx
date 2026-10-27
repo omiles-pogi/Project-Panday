@@ -1,17 +1,26 @@
 import { ScrollView, Text, View, Pressable } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { usePlan } from "@/context/PlanContext";
 import BriefPrompt from "@/components/BriefPrompt";
 import { KeyboardView } from "@/components/ui";
-import { colorFor } from "@/utils/colors";
+import { budgetCategoryMeta } from "@/utils/budgetCategories";
 
 export default function BudgetGenerator() {
-  const { plan, brief, loading, generate } = usePlan();
+  const { plan, loading, send } = usePlan();
+  const insets = useSafeAreaInsets();
+  const regenerate = () => send("Please generate a fresh take on this plan.");
 
+  // This sits on the homeowner Drawer, which hides its header for every screen — without this,
+  // content would render right under the status bar instead of below it.
   if (!plan) {
     return (
       <KeyboardView>
-        <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          className="flex-1 bg-background"
+          contentContainerStyle={{ padding: 16, paddingTop: 16 + insets.top }}
+          keyboardShouldPersistTaps="handled"
+        >
           <Badge />
           <Text className="text-2xl font-bold mb-6 text-foreground">AI Budget Generator</Text>
           <BriefPrompt />
@@ -20,7 +29,7 @@ export default function BudgetGenerator() {
     );
   }
 
-  const budgetItems = plan.budgetBreakdown.map((b, i) => ({ ...b, color: colorFor(i) }));
+  const budgetItems = plan.budgetBreakdown.map((b) => ({ ...b, ...budgetCategoryMeta(b.category) }));
   const total = budgetItems.reduce((s, b) => s + b.amount, 0) || plan.totalEstimate;
   const buffer = plan.budget - plan.totalEstimate;
   const status = buffer > plan.budget * 0.05 ? "within" : buffer >= 0 ? "near" : "over";
@@ -32,7 +41,10 @@ export default function BudgetGenerator() {
   const s = statusMap[status];
 
   return (
-    <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 48, gap: 16 }}>
+    <ScrollView
+      className="flex-1 bg-background"
+      contentContainerStyle={{ padding: 16, paddingTop: 16 + insets.top, paddingBottom: 48, gap: 16 }}
+    >
       <View>
         <View className="flex-row items-start justify-between gap-3 mb-2">
           <View className="flex-1">
@@ -43,7 +55,7 @@ export default function BudgetGenerator() {
             </Text>
           </View>
           <Pressable
-            onPress={() => brief && generate(brief)}
+            onPress={regenerate}
             disabled={loading}
             className="px-3 py-2 rounded-lg bg-muted border border-border"
             style={{ opacity: loading ? 0.6 : 1 }}
@@ -101,19 +113,26 @@ export default function BudgetGenerator() {
       {/* Distribution */}
       <View className="rounded-xl p-5 bg-card border border-border">
         <Text className="font-semibold text-sm mb-4 text-foreground">Budget Distribution</Text>
-        <View style={{ gap: 12 }}>
-          {budgetItems.map(({ category, amount, color }) => {
+        <View style={{ gap: 14 }}>
+          {budgetItems.map(({ category, amount, color, icon, description }, i) => {
             const pct = total ? (amount / total) * 100 : 0;
             return (
-              <View key={category}>
-                <View className="flex-row justify-between mb-1.5">
-                  <View className="flex-row items-center gap-2">
-                    <View className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-                    <Text className="text-xs text-muted-foreground">{category}</Text>
-                  </View>
-                  <View className="flex-row gap-3">
-                    <Text className="text-xs text-muted-foreground">{pct.toFixed(1)}%</Text>
-                    <Text className="text-xs font-medium text-foreground">₱{amount.toLocaleString()}</Text>
+              <View key={`${category}-${i}`}>
+                <View className="flex-row items-start gap-2 mb-1.5">
+                  <Ionicons name={icon} size={15} color={color} style={{ marginTop: 1 }} />
+                  <View className="flex-1">
+                    <View className="flex-row justify-between items-center">
+                      <Text className="text-xs font-semibold text-foreground">{category}</Text>
+                      <View className="flex-row gap-3">
+                        <Text className="text-xs text-muted-foreground">{pct.toFixed(1)}%</Text>
+                        <Text className="text-xs font-medium" style={{ color }}>
+                          ₱{amount.toLocaleString()}
+                        </Text>
+                      </View>
+                    </View>
+                    {description ? (
+                      <Text className="text-xs mt-0.5 text-muted-foreground">{description}</Text>
+                    ) : null}
                   </View>
                 </View>
                 <View className="h-1.5 rounded-full bg-muted">
@@ -128,12 +147,12 @@ export default function BudgetGenerator() {
       {/* Cost breakdown table */}
       <View className="rounded-xl p-5 bg-card border border-border">
         <Text className="font-semibold text-sm mb-4 text-foreground">Cost Breakdown</Text>
-        {budgetItems.map(({ category, amount, color }) => {
+        {budgetItems.map(({ category, amount, color, icon }, i) => {
           const pct = total ? (amount / total) * 100 : 0;
           return (
-            <View key={category} className="flex-row items-center justify-between py-2.5 border-t" style={{ borderColor: "#2a2f42" }}>
+            <View key={`${category}-${i}`} className="flex-row items-center justify-between py-2.5 border-t" style={{ borderColor: "#2a2f42" }}>
               <View className="flex-row items-center gap-2 flex-1">
-                <View className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                <Ionicons name={icon} size={14} color={color} />
                 <Text className="text-sm text-muted-foreground">{category}</Text>
               </View>
               <Text className="text-sm font-medium mr-3 text-foreground">₱{amount.toLocaleString()}</Text>
@@ -161,7 +180,7 @@ export default function BudgetGenerator() {
             <Text className="text-sm text-muted-foreground">Modify Assumptions</Text>
           </Pressable>
           <Pressable
-            onPress={() => brief && generate(brief)}
+            onPress={regenerate}
             disabled={loading}
             className="flex-1 py-3 rounded-xl items-center bg-muted border border-border"
             style={{ opacity: loading ? 0.6 : 1 }}

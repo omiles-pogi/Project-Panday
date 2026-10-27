@@ -1,5 +1,1 @@
-import ComingSoon from "@/components/ComingSoon";
-
-export default function Progress() {
-  return <ComingSoon title="Progress Monitor" />;
-}
+export { default } from "@/screens/homeowner/ProgressMonitor";

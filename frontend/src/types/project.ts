@@ -61,3 +61,36 @@ export interface ProjectSummary {
   startedAt: string;
   overallProgressPct: number;
 }
+
+export interface ActivityLogEntry {
+  phaseName: string;
+  taskDescription: string;
+  isDone: boolean;
+  time: string;
+}
+
+/** One calendar day's checklist activity, with the project's overall progress as of that day's
+ * last change — lets a homeowner see what progress looked like on any given day, not just now. */
+export interface ActivityLogDay {
+  date: string;
+  overallProgressPct: number;
+  entries: ActivityLogEntry[];
+}
+
+/** A real, homeowner-posted active project a worker isn't assigned to yet — for browsing and
+ * applying to. */
+export interface AvailableProject {
+  id: number;
+  title: string;
+  location: string | null;
+  budget: number;
+  totalEstimate: number;
+  timelineMonths: number;
+  startedAt: string;
+  overallProgressPct: number;
+  ownerName: string;
+  workerCount: number;
+  contractorCount: number;
+  /** This worker's own latest application status for this project, if they've applied. */
+  myApplicationStatus: "pending" | "approved" | "rejected" | null;
+}

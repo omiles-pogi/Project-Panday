@@ -11,6 +11,9 @@ import {
   unassignContractorFromProject,
   fetchDashboard,
 } from "@/services/api/projects";
+import { usePlan } from "@/context/PlanContext";
+import { useTheme } from "@/context/ThemeContext";
+import { recommendedSkillsForPlan } from "@/utils/teamRecommendations";
 import type { WorkerSearchResult } from "@/types/worker";
 import type { ContractorSearchResult } from "@/types/contractor";
 
@@ -73,17 +76,35 @@ function RatingForm({ onCancel, onSubmit }: { onCancel: () => void; onSubmit: (s
   );
 }
 
-function AssignButton({ assigned, assigning, onPress }: { assigned: boolean; assigning: boolean; onPress: () => void }) {
+/**
+ * Both workers and contractors now go through an invite (pending until they respond) rather
+ * than being assigned outright — this button has three states: not invited, pending, or on
+ * the project.
+ */
+function AssignButton({
+  assigned,
+  pending,
+  assigning,
+  onPress,
+}: {
+  assigned: boolean;
+  pending: boolean;
+  assigning: boolean;
+  onPress: () => void;
+}) {
+  const { chrome } = useTheme();
+  const color = assigned ? "#10b981" : pending ? chrome.mutedForeground : "#0f1117";
+  const label = assigning ? "Sending…" : assigned ? "On Project" : pending ? "Invite Sent" : "Invite to Project";
   return (
     <Pressable
       onPress={onPress}
-      disabled={assigning}
+      disabled={assigning || pending}
       className="flex-row items-center justify-center gap-1.5 py-2 rounded-xl mb-2"
-      style={{ backgroundColor: assigned ? "#10b98120" : "#f59e0b", opacity: assigning ? 0.6 : 1 }}
+      style={{ backgroundColor: assigned ? "#10b98120" : pending ? chrome.muted : "#f59e0b", opacity: assigning ? 0.6 : 1 }}
     >
-      <Ionicons name={assigned ? "checkmark-circle" : "add-circle-outline"} size={15} color={assigned ? "#10b981" : "#0f1117"} />
-      <Text className="text-xs font-semibold" style={{ color: assigned ? "#10b981" : "#0f1117" }}>
-        {assigning ? "Saving…" : assigned ? "Added to Project" : "Add to Project"}
+      <Ionicons name={assigned ? "checkmark-circle" : pending ? "time-outline" : "person-add-outline"} size={15} color={color} />
+      <Text className="text-xs font-semibold" style={{ color }}>
+        {label}
       </Text>
     </Pressable>
   );
@@ -103,20 +124,26 @@ function WorkerCard({
   const [rating, setRating] = useState(false);
   const [done, setDone] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  // Optimistic only — the search results don't carry pending-invite status, so this resets on a
+  // fresh search/remount. Re-inviting a still-pending worker is harmless: the backend rejects the
+  // duplicate with a clear error instead of sending a second invite.
+  const [invited, setInvited] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
 
   const toggleAssign = async () => {
     if (!projectId) return;
     setAssigning(true);
+    setInviteError(null);
     try {
       if (assigned) {
         await unassignWorkerFromProject(projectId, worker.id);
         onAssignedChange(worker.id, false);
       } else {
         await assignWorkerToProject(projectId, worker.id);
-        onAssignedChange(worker.id, true);
+        setInvited(true);
       }
-    } catch {
-      // Keep current state; the user can retry.
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : "Failed to send invite.");
     } finally {
       setAssigning(false);
     }
@@ -151,7 +178,10 @@ function WorkerCard({
         ))}
       </View>
 
-      {projectId && <AssignButton assigned={assigned} assigning={assigning} onPress={toggleAssign} />}
+      {projectId && (
+        <AssignButton assigned={assigned} pending={invited && !assigned} assigning={assigning} onPress={toggleAssign} />
+      )}
+      {inviteError && <Text className="text-xs text-danger mb-2">{inviteError}</Text>}
 
       {done ? (
         <Badge label="Rating submitted" color="#10b981" />
@@ -191,20 +221,24 @@ function ContractorCard({
   const [rating, setRating] = useState(false);
   const [done, setDone] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  // Optimistic only — see the same note on WorkerCard's `invited` state above.
+  const [invited, setInvited] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
 
   const toggleAssign = async () => {
     if (!projectId) return;
     setAssigning(true);
+    setInviteError(null);
     try {
       if (assigned) {
         await unassignContractorFromProject(projectId, contractor.id);
         onAssignedChange(contractor.id, false);
       } else {
         await assignContractorToProject(projectId, contractor.id);
-        onAssignedChange(contractor.id, true);
+        setInvited(true);
       }
-    } catch {
-      // Keep current state; the user can retry.
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : "Failed to send invite.");
     } finally {
       setAssigning(false);
     }
@@ -239,7 +273,10 @@ function ContractorCard({
         ))}
       </View>
 
-      {projectId && <AssignButton assigned={assigned} assigning={assigning} onPress={toggleAssign} />}
+      {projectId && (
+        <AssignButton assigned={assigned} pending={invited && !assigned} assigning={assigning} onPress={toggleAssign} />
+      )}
+      {inviteError && <Text className="text-xs text-danger mb-2">{inviteError}</Text>}
 
       {done ? (
         <Badge label="Rating submitted" color="#10b981" />
@@ -266,10 +303,14 @@ function ContractorCard({
 }
 
 export default function FindWorkers() {
+  const { plan } = usePlan();
+  // A plan's phases/budget categories drive an initial skills filter, so a homeowner arriving
+  // from their approved plan sees AI-suggested matches first, instead of an empty generic browse.
+  const recommendedSkills = plan ? recommendedSkillsForPlan(plan) : [];
   const [mode, setMode] = useState<Mode>("workers");
   const [query, setQuery] = useState("");
   const [skillInput, setSkillInput] = useState("");
-  const [skills, setSkills] = useState<string[]>([]);
+  const [skills, setSkills] = useState<string[]>(recommendedSkills);
   const [workerResults, setWorkerResults] = useState<WorkerSearchResult[] | null>(null);
   const [contractorResults, setContractorResults] = useState<ContractorSearchResult[] | null>(null);
   const [loading, setLoading] = useState(true); // starts true: we auto-load on mount below
@@ -295,7 +336,10 @@ export default function FindWorkers() {
   const loadResults = (targetMode: Mode) => {
     setLoading(true);
     setError(null);
-    const request = targetMode === "workers" ? searchWorkers({}) : searchContractors({});
+    const request =
+      targetMode === "workers"
+        ? searchWorkers({ skills: recommendedSkills })
+        : searchContractors({ skills: recommendedSkills });
     request
       .then((data) => {
         if (targetMode === "workers") setWorkerResults(data as WorkerSearchResult[]);
@@ -305,12 +349,15 @@ export default function FindWorkers() {
       .finally(() => setLoading(false));
   };
 
-  // Browse all available workers by default as soon as the screen opens.
+  // Browse workers as soon as the screen opens — ranked by the plan's AI-derived skills when one
+  // exists, otherwise an unfiltered browse (the backend's search scores trade/skill match, rating,
+  // and experience either way, so this reuses the same ranking rather than a separate AI call).
   useEffect(() => {
-    searchWorkers({})
+    searchWorkers({ skills: recommendedSkills })
       .then(setWorkerResults)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load."))
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const switchMode = (next: Mode) => {
@@ -373,7 +420,23 @@ export default function FindWorkers() {
 
   return (
     <Screen>
-      <PageHeader title="Find Your Team" subtitle="Browse workers and contractors who signed up on Project-Panday, ranked by rating and experience. Filter to narrow it down." />
+      <PageHeader
+        title="Find Your Team"
+        subtitle={
+          recommendedSkills.length > 0
+            ? "AI-suggested workers and contractors for your approved plan, ranked by skill match, rating, and experience. Filter to narrow it down."
+            : "Browse workers and contractors who signed up on Project-Panday, ranked by rating and experience. Filter to narrow it down."
+        }
+      />
+
+      {recommendedSkills.length > 0 && (
+        <View className="flex-row items-center gap-1.5 px-1">
+          <Ionicons name="sparkles-outline" size={13} color="#f59e0b" />
+          <Text className="text-xs" style={{ color: "#f59e0b" }}>
+            Recommended based on your project plan
+          </Text>
+        </View>
+      )}
 
       {projectId && (
         <View className="flex-row items-center gap-1.5 px-1">

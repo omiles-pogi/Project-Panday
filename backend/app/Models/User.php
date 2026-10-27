@@ -86,4 +86,28 @@ class User extends Authenticatable
         return $this->belongsToMany(Project::class, 'project_workers', 'worker_id', 'project_id')
             ->withTimestamps();
     }
+
+    /** This supplier's shop listings. */
+    public function supplierProducts(): HasMany
+    {
+        return $this->hasMany(SupplierProduct::class, 'supplier_id');
+    }
+
+    /** This user's in-app notification feed (invites, applications, decisions), newest first. */
+    public function appNotifications(): HasMany
+    {
+        return $this->hasMany(AppNotification::class)->latest();
+    }
+
+    /** Invite/application requests where this user is the worker side. */
+    public function workerRequests(): HasMany
+    {
+        return $this->hasMany(ProjectWorkerRequest::class, 'worker_id');
+    }
+
+    /** Invite/application requests where this user is the contractor side. */
+    public function contractorRequests(): HasMany
+    {
+        return $this->hasMany(ProjectContractorRequest::class, 'contractor_id');
+    }
 }

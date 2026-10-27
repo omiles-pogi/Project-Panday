@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ScrollView, Text, TextInput, View, Pressable } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { usePlan } from "@/context/PlanContext";
 import BriefPrompt from "@/components/BriefPrompt";
@@ -19,14 +20,22 @@ const CATEGORY_COLORS: Record<string, string> = {
 const FALLBACK_COLOR = "#6b7280";
 
 export default function MaterialEstimator() {
-  const { plan, brief, loading, generate } = usePlan();
+  const { plan, loading, send } = usePlan();
+  const insets = useSafeAreaInsets();
+  const regenerate = () => send("Please generate a fresh take on this plan.");
   const [search, setSearch] = useState("");
   const [approved, setApproved] = useState<Record<number, boolean>>({});
 
+  // This sits on the homeowner Drawer, which hides its header for every screen — without this,
+  // content would render right under the status bar instead of below it.
   if (!plan) {
     return (
       <KeyboardView>
-        <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          className="flex-1 bg-background"
+          contentContainerStyle={{ padding: 16, paddingTop: 16 + insets.top }}
+          keyboardShouldPersistTaps="handled"
+        >
           <Badge />
           <Text className="text-2xl font-bold mt-2 mb-1 text-foreground">Material Estimator</Text>
           <View className="mt-4">
@@ -50,7 +59,11 @@ export default function MaterialEstimator() {
 
   return (
     <KeyboardView>
-    <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
+    <ScrollView
+      className="flex-1 bg-background"
+      contentContainerStyle={{ padding: 16, paddingTop: 16 + insets.top, paddingBottom: 48 }}
+      keyboardShouldPersistTaps="handled"
+    >
       <Badge />
       <View className="flex-row items-center justify-between mt-2 mb-4">
         <View>
@@ -58,7 +71,7 @@ export default function MaterialEstimator() {
           <Text className="text-sm text-muted-foreground">{plan.projectTitle}</Text>
         </View>
         <Pressable
-          onPress={() => brief && generate(brief)}
+          onPress={regenerate}
           disabled={loading}
           className="px-3 py-2 rounded-xl bg-primary flex-row items-center gap-1.5"
           style={{ opacity: loading ? 0.6 : 1 }}

@@ -9,6 +9,7 @@ import Animated, {
   withTiming,
   Easing,
 } from "react-native-reanimated";
+import { useTheme } from "@/context/ThemeContext";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -34,6 +35,7 @@ export function GrowBar({
 
 /** Circular progress ring that sweeps from 0 to `pct`, with the % counting up in the middle. */
 export function ProgressRing({ pct, size = 64, color = "#f59e0b" }: { pct: number; size?: number; color?: string }) {
+  const { chrome } = useTheme();
   const p = useSharedValue(0);
   useEffect(() => {
     p.set(withTiming(Math.max(0, Math.min(100, pct)), { duration: 1000, easing: Easing.out(Easing.cubic) }));
@@ -42,7 +44,7 @@ export function ProgressRing({ pct, size = 64, color = "#f59e0b" }: { pct: numbe
   return (
     <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
       <Svg width={size} height={size} viewBox="0 0 36 36" style={{ transform: [{ rotate: "-90deg" }] }}>
-        <Circle cx="18" cy="18" r="15.9" fill="none" stroke="#252a3a" strokeWidth={3} />
+        <Circle cx="18" cy="18" r="15.9" fill="none" stroke={chrome.muted} strokeWidth={3} />
         <AnimatedCircle
           cx="18"
           cy="18"

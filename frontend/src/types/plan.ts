@@ -17,23 +17,24 @@ export interface MaterialLine {
   unitPrice: number;
 }
 
-export interface EquipmentLine {
-  name: string;
-  qty: number;
-  duration: string;
-  cost: number;
-  phase: string;
-}
-
 export interface ClarificationNeeded {
   needsClarification: true;
   questions: string[];
 }
 
-export function isClarificationNeeded(
-  result: ConstructionPlan | ClarificationNeeded
-): result is ClarificationNeeded {
+export interface ChatReply {
+  chatReply: true;
+  message: string;
+}
+
+export type PlanResult = ConstructionPlan | ClarificationNeeded | ChatReply;
+
+export function isClarificationNeeded(result: PlanResult): result is ClarificationNeeded {
   return (result as ClarificationNeeded).needsClarification === true;
+}
+
+export function isChatReply(result: PlanResult): result is ChatReply {
+  return (result as ChatReply).chatReply === true;
 }
 
 export interface ConstructionPlan {
@@ -49,7 +50,6 @@ export interface ConstructionPlan {
   phases: PlanPhase[];
   budgetBreakdown: BudgetLine[];
   materials: MaterialLine[];
-  equipment: EquipmentLine[];
   exteriorConcept: string;
   interiorConcept: string;
   totalEstimate: number;

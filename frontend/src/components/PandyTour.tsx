@@ -3,6 +3,7 @@ import { Modal, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Mascot from "@/components/Mascot";
 import { TOURS } from "@/data/tours";
+import { useTheme } from "@/context/ThemeContext";
 import type { Role } from "@/types/auth";
 
 // Pandy's step-by-step welcome tour, shown as a bottom sheet over the app.
@@ -15,6 +16,7 @@ export default function PandyTour({
   visible: boolean;
   onClose: () => void;
 }) {
+  const { chrome } = useTheme();
   const steps = TOURS[role];
   const [index, setIndex] = useState(0);
   const step = steps[index];
@@ -47,7 +49,7 @@ export default function PandyTour({
               <View
                 key={i}
                 className="h-1.5 rounded-full"
-                style={{ width: i === index ? 18 : 6, backgroundColor: i === index ? "#f59e0b" : "#2a2f42" }}
+                style={{ width: i === index ? 18 : 6, backgroundColor: i === index ? "#f59e0b" : chrome.border }}
               />
             ))}
           </View>

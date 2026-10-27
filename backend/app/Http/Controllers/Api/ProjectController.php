@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ApplyAsContractorRequest;
 use App\Http\Requests\AssignContractorRequest;
 use App\Http\Requests\AssignWorkerRequest;
 use App\Http\Requests\StoreProjectRequest;
@@ -36,6 +37,55 @@ class ProjectController extends Controller
         return response()->json($this->projects->listFor($request->user()));
     }
 
+    public function available(Request $request): JsonResponse
+    {
+        return response()->json($this->projects->availableFor($request->user()));
+    }
+
+    public function availableForContractors(Request $request): JsonResponse
+    {
+        return response()->json($this->projects->availableForContractors($request->user()));
+    }
+
+    public function applyAsWorker(Request $request, Project $project): JsonResponse
+    {
+        try {
+            $workerRequest = $this->projects->applyToProject($project, $request->user());
+        } catch (ValidationException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        return response()->json($workerRequest, 201);
+    }
+
+    public function applyAsContractor(ApplyAsContractorRequest $request, Project $project): JsonResponse
+    {
+        try {
+            $contractorRequest = $this->projects->applyAsContractor(
+                $project,
+                $request->user(),
+                $request->validated('quote_amount'),
+                $request->validated('estimated_days'),
+                $request->validated('message')
+            );
+        } catch (ValidationException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        return response()->json($contractorRequest, 201);
+    }
+
+    public function destroy(Request $request, Project $project): JsonResponse
+    {
+        try {
+            $this->projects->deleteProject($project, $request->user());
+        } catch (ValidationException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        return response()->json(null, 204);
+    }
+
     public function myProjects(Request $request): JsonResponse
     {
         return response()->json($this->projects->myProjectsFor($request->user()));
@@ -44,12 +94,12 @@ class ProjectController extends Controller
     public function assignWorker(AssignWorkerRequest $request, Project $project): JsonResponse
     {
         try {
-            $this->projects->assignWorker($project, $request->user(), User::findOrFail($request->validated('worker_id')));
+            $workerRequest = $this->projects->assignWorker($project, $request->user(), User::findOrFail($request->validated('worker_id')));
         } catch (ValidationException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         }
 
-        return response()->json(null, 204);
+        return response()->json($workerRequest, 201);
     }
 
     public function unassignWorker(Request $request, Project $project, User $worker): JsonResponse
@@ -66,12 +116,12 @@ class ProjectController extends Controller
     public function assignContractor(AssignContractorRequest $request, Project $project): JsonResponse
     {
         try {
-            $this->projects->assignContractor($project, $request->user(), User::findOrFail($request->validated('contractor_id')));
+            $contractorRequest = $this->projects->assignContractor($project, $request->user(), User::findOrFail($request->validated('contractor_id')));
         } catch (ValidationException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         }
 
-        return response()->json(null, 204);
+        return response()->json($contractorRequest, 201);
     }
 
     public function unassignContractor(Request $request, Project $project, User $contractor): JsonResponse
@@ -83,5 +133,16 @@ class ProjectController extends Controller
         }
 
         return response()->json(null, 204);
+    }
+
+    public function activityLog(Request $request, Project $project): JsonResponse
+    {
+        try {
+            $log = $this->projects->activityLogFor($project, $request->user());
+        } catch (ValidationException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        return response()->json($log);
     }
 }

@@ -1,13 +1,13 @@
 import { useCallback, useState } from "react";
 import { Text, View, Pressable, ActivityIndicator } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Card, PageHeader, Screen } from "@/components/ui";
 import { fetchMyProjects } from "@/services/api/projects";
 import type { MyProject } from "@/types/project";
 
-function ProjectCard({ project }: { project: MyProject }) {
-  const [expanded, setExpanded] = useState(false);
+function ProjectCard({ project, initiallyExpanded }: { project: MyProject; initiallyExpanded?: boolean }) {
+  const [expanded, setExpanded] = useState(!!initiallyExpanded);
 
   return (
     <Card>
@@ -72,6 +72,10 @@ function ProjectCard({ project }: { project: MyProject }) {
 }
 
 export default function Assignments() {
+  // Set when arriving from a specific assignment elsewhere (e.g. tapping it on the Dashboard) —
+  // that project's phases open pre-expanded instead of landing on the flat, collapsed list.
+  const { projectId } = useLocalSearchParams<{ projectId?: string }>();
+  const targetId = projectId ? Number(projectId) : null;
   const [projects, setProjects] = useState<MyProject[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -102,7 +106,7 @@ export default function Assignments() {
       )}
 
       {projects?.map((project) => (
-        <ProjectCard key={project.id} project={project} />
+        <ProjectCard key={project.id} project={project} initiallyExpanded={project.id === targetId} />
       ))}
     </Screen>
   );

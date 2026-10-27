@@ -1,12 +1,15 @@
-import { useCallback, useState } from "react";
-import { ScrollView, Text, View, Pressable, ActivityIndicator } from "react-native";
+import { useCallback, useRef, useState } from "react";
+import { ScrollView, Text, View, Pressable, ActivityIndicator, Modal } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProgressRing } from "@/components/charts";
 import { ProgressBar } from "@/components/ui";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { fetchDashboard, fetchMyHomeownerProjects } from "@/services/api/projects";
+import { deleteProject, fetchDashboard, fetchMyHomeownerProjects } from "@/services/api/projects";
 import type { DashboardData, ProjectSummary } from "@/types/project";
 import { peso } from "@/utils/currency";
+import { usePlan } from "@/context/PlanContext";
+import Mascot from "@/components/Mascot";
 
 const QUICK_ACTIONS = [
   { label: "AI Plan", icon: "sparkles-outline", href: "/homeowner/project-chat" },
@@ -21,25 +24,153 @@ function progressLabel(pct: number): { label: string; color: string } {
   return { label: "JUST STARTED", color: "#9ca3af" };
 }
 
+/* DELETE CONFIRMATION — Pandy reacts (sad, bobbing) instead of a plain system alert, to match
+ * the AI chat's own card styling (dark card, amber primary) rather than the OS's native dialog. */
+function DeleteProjectModal({
+  project,
+  deleting,
+  onCancel,
+  onConfirm,
+}: {
+  project: ProjectSummary | null;
+  deleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal visible={!!project} transparent animationType="fade" onRequestClose={onCancel}>
+      <View className="flex-1 items-center justify-center px-6" style={{ backgroundColor: "rgba(0,0,0,0.65)" }}>
+        <View className="w-full rounded-3xl p-6 items-center bg-card border border-border" style={{ maxWidth: 340 }}>
+          <Mascot size={88} mood="sad" bob />
+          <Text className="text-base font-extrabold mt-3 text-foreground">Delete this project?</Text>
+          <Text className="text-xs text-center mt-2 leading-5 text-muted-foreground">
+            <Text className="font-semibold text-foreground">{project?.title}</Text> will be permanently removed,
+            including its budget, phases, and checklist. Contractors and workers assigned to it will lose access
+            too. This can&apos;t be undone.
+          </Text>
+          <View className="flex-row gap-2 mt-5 w-full">
+            <Pressable
+              onPress={onCancel}
+              disabled={deleting}
+              className="flex-1 py-2.5 rounded-xl items-center bg-muted border border-border"
+            >
+              <Text className="text-sm font-semibold text-muted-foreground">Keep Project</Text>
+            </Pressable>
+            <Pressable
+              onPress={onConfirm}
+              disabled={deleting}
+              className="flex-1 py-2.5 rounded-xl items-center flex-row justify-center gap-1.5 bg-danger"
+              style={{ opacity: deleting ? 0.6 : 1 }}
+            >
+              {deleting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="trash-outline" size={14} color="#fff" />
+                  <Text className="text-sm font-bold text-white">Delete</Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/* NEW PROJECT CONFIRMATION — only shown when there's an active AI conversation to discard;
+ * starting fresh otherwise just navigates straight to the planner. */
+function NewProjectModal({ visible, onCancel, onConfirm }: { visible: boolean; onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <View className="flex-1 items-center justify-center px-6" style={{ backgroundColor: "rgba(0,0,0,0.65)" }}>
+        <View className="w-full rounded-3xl p-6 items-center bg-card border border-border" style={{ maxWidth: 340 }}>
+          <Mascot size={88} mood="happy" bob />
+          <Text className="text-base font-extrabold mt-3 text-foreground">Start a new project?</Text>
+          <Text className="text-xs text-center mt-2 leading-5 text-muted-foreground">
+            This clears your current AI conversation so Pandy can help you plan something new. Any project
+            you&apos;ve already finalized stays saved on your dashboard.
+          </Text>
+          <View className="flex-row gap-2 mt-5 w-full">
+            <Pressable onPress={onCancel} className="flex-1 py-2.5 rounded-xl items-center bg-muted border border-border">
+              <Text className="text-sm font-semibold text-muted-foreground">Keep Planning</Text>
+            </Pressable>
+            <Pressable onPress={onConfirm} className="flex-1 py-2.5 rounded-xl items-center bg-primary">
+              <Text className="text-sm font-bold text-primary-foreground">Start New</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/* Fixed to the bottom-left of the screen (outside the ScrollView), so it stays in place while
+ * the dashboard's content scrolls underneath it instead of scrolling away with it. */
+function NewProjectFab({ onPress }: { onPress: () => void }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <Pressable
+      onPress={onPress}
+      className="flex-row items-center gap-1.5 rounded-full bg-primary"
+      style={{
+        position: "absolute",
+        left: 16,
+        bottom: insets.bottom + 16,
+        paddingVertical: 12,
+        paddingHorizontal: 18,
+        elevation: 6,
+        shadowColor: "#000",
+        shadowOpacity: 0.25,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 3 },
+        zIndex: 50,
+      }}
+    >
+      <Ionicons name="add" size={18} color="#0f1117" />
+      <Text className="text-sm font-bold text-primary-foreground">New Project</Text>
+    </Pressable>
+  );
+}
+
 export default function Dashboard() {
+  const { plan, reset: resetPlan, selectProject: selectPlanProject } = usePlan();
   const [data, setData] = useState<DashboardData | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ProjectSummary | null>(null);
+  const [confirmNewProject, setConfirmNewProject] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Mirrors selectedProjectId but readable from inside the focus effect below without making it
+  // re-run on every selection change — this is what lets returning to Home re-fetch whichever
+  // project you'd picked, instead of the focus effect always defaulting back to the latest one.
+  const selectedProjectIdRef = useRef<number | null>(null);
+  // Set once, from a notification's "go to this project" deep link (?projectId=...) — consumed
+  // on the first focus only, so switching projects manually afterward isn't overridden by it.
+  const { projectId: deepLinkProjectId } = useLocalSearchParams<{ projectId?: string }>();
+  const consumedDeepLink = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
+      if (!consumedDeepLink.current && deepLinkProjectId) {
+        selectedProjectIdRef.current = Number(deepLinkProjectId);
+        consumedDeepLink.current = true;
+      }
       let cancelled = false;
       setLoading(true);
       setError(null);
-      Promise.all([fetchDashboard(), fetchMyHomeownerProjects()])
+      Promise.all([fetchDashboard(selectedProjectIdRef.current ?? undefined), fetchMyHomeownerProjects()])
         .then(([dashboard, list]) => {
           if (cancelled) return;
           setData(dashboard);
           setProjects(list);
-          setSelectedProjectId(dashboard.project?.id ?? null);
+          const id = dashboard.project?.id ?? null;
+          setSelectedProjectId(id);
+          selectedProjectIdRef.current = id;
+          selectPlanProject(id);
         })
         .catch((err) => {
           if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load dashboard.");
@@ -50,6 +181,7 @@ export default function Dashboard() {
       return () => {
         cancelled = true;
       };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
   );
 
@@ -57,11 +189,51 @@ export default function Dashboard() {
     if (projectId === selectedProjectId) return;
     setSwitching(true);
     setSelectedProjectId(projectId);
+    selectedProjectIdRef.current = projectId;
+    selectPlanProject(projectId);
     fetchDashboard(projectId)
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load project."))
       .finally(() => setSwitching(false));
-  }, [selectedProjectId]);
+  }, [selectedProjectId, selectPlanProject]);
+
+  const handleDelete = useCallback(
+    (projectId: number) => {
+      setDeletingId(projectId);
+      deleteProject(projectId)
+        .then(() => {
+          const remaining = projects.filter((p) => p.id !== projectId);
+          setProjects(remaining);
+          if (projectId !== selectedProjectId) return undefined;
+
+          const next = remaining[0]?.id;
+          setSelectedProjectId(next ?? null);
+          selectedProjectIdRef.current = next ?? null;
+          selectPlanProject(next ?? null);
+          return fetchDashboard(next).then(setData);
+        })
+        .catch((err) => setError(err instanceof Error ? err.message : "Failed to delete project."))
+        .finally(() => {
+          setDeletingId(null);
+          setDeleteTarget(null);
+        });
+    },
+    [projects, selectedProjectId, selectPlanProject]
+  );
+
+  const handleNewProject = useCallback(() => {
+    if (plan) {
+      setConfirmNewProject(true);
+    } else {
+      router.push("/homeowner/project-chat" as never);
+    }
+  }, [plan]);
+
+  const confirmNewProjectAction = useCallback(() => {
+    resetPlan();
+    setConfirmNewProject(false);
+    router.push("/homeowner/project-chat" as never);
+  }, [resetPlan]);
 
   if (loading) {
     return (
@@ -82,71 +254,112 @@ export default function Dashboard() {
 
   const project = data?.project ?? null;
 
-  const picker = projects.length > 1 && (
+  // Always shown (even with just one project), styled like browser tabs — compact, with
+  // their own close "x" — so there's always an obvious, consistent place to delete from.
+  const picker = projects.length > 0 && (
     <View>
       <Text className="text-xs font-semibold mb-2 text-muted-foreground">YOUR PROJECTS</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
         {projects.map((p) => {
           const active = p.id === selectedProjectId;
+          const isDeleting = deletingId === p.id;
           return (
-            <Pressable
+            <View
               key={p.id}
-              onPress={() => switchProject(p.id)}
-              disabled={switching}
-              className="flex-row items-center gap-1.5 px-3 py-2 rounded-xl border"
+              className="flex-row items-center rounded-lg border"
               style={{
-                maxWidth: 180,
-                backgroundColor: active ? "#f59e0b20" : "transparent",
+                backgroundColor: active ? "#f59e0b20" : "#1a1d27",
                 borderColor: active ? "#f59e0b50" : "#2a2f42",
-                opacity: switching ? 0.6 : 1,
+                opacity: isDeleting ? 0.5 : 1,
               }}
             >
-              {active && <Ionicons name="checkmark-circle" size={13} color="#f59e0b" />}
-              <Text
-                className="text-xs font-semibold"
-                style={{ color: active ? "#f59e0b" : "#9ca3af" }}
-                numberOfLines={1}
+              <Pressable
+                onPress={() => switchProject(p.id)}
+                disabled={switching || isDeleting}
+                className="flex-row items-center gap-1.5 py-2 pl-3 pr-1.5"
+                style={{ maxWidth: 140 }}
               >
-                {p.title}
-              </Text>
-            </Pressable>
+                {active && <Ionicons name="checkmark-circle" size={12} color="#f59e0b" />}
+                <Text
+                  className="text-xs font-semibold"
+                  style={{ color: active ? "#f59e0b" : "#9ca3af" }}
+                  numberOfLines={1}
+                >
+                  {p.title}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setDeleteTarget(p)}
+                disabled={isDeleting}
+                hitSlop={8}
+                className="py-2 pl-1 pr-2.5"
+              >
+                {isDeleting ? (
+                  <ActivityIndicator size="small" color="#6b7280" />
+                ) : (
+                  <Ionicons name="close" size={14} color="#6b7280" />
+                )}
+              </Pressable>
+            </View>
           );
         })}
       </ScrollView>
     </View>
   );
 
+  const deleteModal = (
+    <DeleteProjectModal
+      project={deleteTarget}
+      deleting={deletingId === deleteTarget?.id}
+      onCancel={() => setDeleteTarget(null)}
+      onConfirm={() => deleteTarget && handleDelete(deleteTarget.id)}
+    />
+  );
+
+  const newProjectModal = (
+    <NewProjectModal
+      visible={confirmNewProject}
+      onCancel={() => setConfirmNewProject(false)}
+      onConfirm={confirmNewProjectAction}
+    />
+  );
+
   if (!project) {
     return (
-      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 16 }}>
-        {picker}
-        <View className="rounded-3xl p-6 items-center bg-card border border-border">
-          <Ionicons name="sparkles-outline" size={28} color="#f59e0b" style={{ marginBottom: 8 }} />
-          <Text className="font-bold text-base mb-1 text-foreground">No active project yet</Text>
-          <Text className="text-sm text-center mb-4 text-muted-foreground">
-            Describe your project to the AI planner and approve the generated plan to see it here.
-          </Text>
-          <Pressable
-            onPress={() => router.push("/homeowner/project-chat" as never)}
-            className="px-5 py-2.5 rounded-xl bg-primary"
-          >
-            <Text className="font-bold text-sm text-primary-foreground">Start AI Plan</Text>
-          </Pressable>
-        </View>
-        <View className="flex-row flex-wrap gap-2">
-          {QUICK_ACTIONS.map(({ label, icon, href }) => (
+      <>
+        <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 16 }}>
+          {picker}
+          <View className="rounded-3xl p-6 items-center bg-card border border-border">
+            <Ionicons name="sparkles-outline" size={28} color="#f59e0b" style={{ marginBottom: 8 }} />
+            <Text className="font-bold text-base mb-1 text-foreground">No active project yet</Text>
+            <Text className="text-sm text-center mb-4 text-muted-foreground">
+              Describe your project to the AI planner and approve the generated plan to see it here.
+            </Text>
             <Pressable
-              key={href}
-              onPress={() => router.push(href as never)}
-              className="items-center gap-1.5 py-3.5 rounded-2xl bg-card border border-border"
-              style={{ width: "23%" }}
+              onPress={() => router.push("/homeowner/project-chat" as never)}
+              className="px-5 py-2.5 rounded-xl bg-primary"
             >
-              <Ionicons name={icon} size={22} color="#f59e0b" />
-              <Text className="text-xs font-semibold text-muted-foreground">{label}</Text>
+              <Text className="font-bold text-sm text-primary-foreground">Start AI Plan</Text>
             </Pressable>
-          ))}
-        </View>
-      </ScrollView>
+          </View>
+          <View className="flex-row flex-wrap gap-2">
+            {QUICK_ACTIONS.map(({ label, icon, href }) => (
+              <Pressable
+                key={href}
+                onPress={() => router.push(href as never)}
+                className="items-center gap-1.5 py-3.5 rounded-2xl bg-card border border-border"
+                style={{ width: "23%" }}
+              >
+                <Ionicons name={icon} size={22} color="#f59e0b" />
+                <Text className="text-xs font-semibold text-muted-foreground">{label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </ScrollView>
+        <NewProjectFab onPress={handleNewProject} />
+        {deleteModal}
+        {newProjectModal}
+      </>
     );
   }
 
@@ -161,7 +374,8 @@ export default function Dashboard() {
   ];
 
   return (
-    <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 16 }}>
+    <>
+      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 16 }}>
       {picker}
       {/* Hero project card */}
       <View className="rounded-3xl p-5 bg-card border border-border">
@@ -244,8 +458,8 @@ export default function Dashboard() {
           </Pressable>
         </View>
         <View style={{ gap: 12 }}>
-          {project.phases.map(({ name, progressPct }) => (
-            <View key={name}>
+          {project.phases.map(({ name, progressPct }, i) => (
+            <View key={`${name}-${i}`}>
               <View className="flex-row justify-between mb-1.5">
                 <Text className="text-xs text-muted-foreground">{name}</Text>
                 <Text
@@ -300,6 +514,10 @@ export default function Dashboard() {
           </View>
         )}
       </View>
-    </ScrollView>
+      </ScrollView>
+      <NewProjectFab onPress={handleNewProject} />
+      {deleteModal}
+      {newProjectModal}
+    </>
   );
 }

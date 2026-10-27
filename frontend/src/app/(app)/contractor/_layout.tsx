@@ -1,8 +1,9 @@
 import { Stack } from "expo-router";
-
-const header = { headerStyle: { backgroundColor: "#1a1d27" }, headerTintColor: "#f0f2f5" };
+import { useTheme } from "@/context/ThemeContext";
 
 export default function ContractorLayout() {
+  const { chrome } = useTheme();
+  const header = { headerStyle: { backgroundColor: chrome.card }, headerTintColor: chrome.foreground };
   return (
     <Stack screenOptions={header}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

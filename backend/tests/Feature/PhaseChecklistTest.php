@@ -181,4 +181,84 @@ class PhaseChecklistTest extends TestCase
 
         $this->assertDatabaseMissing('project_phase_tasks', ['id' => $task['id']]);
     }
+
+    public function test_checking_off_a_task_logs_an_activity_entry_with_the_overall_progress(): void
+    {
+        $owner = $this->homeowner();
+        $contractor = $this->contractor();
+        ['project' => $project, 'phase' => $phase] = $this->projectWithAssignedContractor($owner, $contractor);
+
+        Sanctum::actingAs($contractor);
+        $task = $this->postJson("/api/projects/{$project->id}/phases/{$phase->id}/tasks", ['description' => 'Land filling'])->json();
+        $this->patchJson("/api/projects/{$project->id}/phases/{$phase->id}/tasks/{$task['id']}", ['is_done' => true])
+            ->assertStatus(200);
+
+        $this->assertDatabaseHas('project_activity_logs', [
+            'project_id' => $project->id,
+            'phase_name' => 'Foundation',
+            'task_description' => 'Land filling',
+            'is_done' => true,
+        ]);
+
+        Sanctum::actingAs($owner);
+        $response = $this->getJson("/api/projects/{$project->id}/activity-log");
+
+        $response->assertStatus(200)->assertJsonCount(1);
+        $today = now()->toDateString();
+        $response->assertJsonPath('0.date', $today)
+            ->assertJsonCount(1, '0.entries')
+            ->assertJsonPath('0.entries.0.taskDescription', 'Land filling')
+            ->assertJsonPath('0.entries.0.isDone', true);
+    }
+
+    public function test_a_days_activity_log_carries_the_overall_progress_as_of_its_last_change(): void
+    {
+        $owner = $this->homeowner();
+        $contractor = $this->contractor();
+        ['project' => $project, 'phase' => $phase] = $this->projectWithAssignedContractor($owner, $contractor);
+
+        Sanctum::actingAs($contractor);
+        $task1 = $this->postJson("/api/projects/{$project->id}/phases/{$phase->id}/tasks", ['description' => 'Land filling'])->json();
+        $task2 = $this->postJson("/api/projects/{$project->id}/phases/{$phase->id}/tasks", ['description' => 'Excavation'])->json();
+
+        // Foundation is one of two equally-weighted phases, so finishing all of it brings the
+        // project's overall progress to 50%, not 100% — the log should reflect the overall
+        // figure, not just this one phase's.
+        $this->patchJson("/api/projects/{$project->id}/phases/{$phase->id}/tasks/{$task1['id']}", ['is_done' => true]);
+        $this->patchJson("/api/projects/{$project->id}/phases/{$phase->id}/tasks/{$task2['id']}", ['is_done' => true]);
+
+        Sanctum::actingAs($owner);
+        $response = $this->getJson("/api/projects/{$project->id}/activity-log");
+
+        $response->assertStatus(200)
+            ->assertJsonCount(1)
+            ->assertJsonCount(2, '0.entries')
+            ->assertJsonPath('0.overallProgressPct', 50);
+    }
+
+    public function test_only_someone_visible_on_the_project_can_view_its_activity_log(): void
+    {
+        $owner = $this->homeowner();
+        $contractor = $this->contractor();
+        ['project' => $project] = $this->projectWithAssignedContractor($owner, $contractor);
+        $stranger = $this->homeowner();
+
+        Sanctum::actingAs($stranger);
+        $this->getJson("/api/projects/{$project->id}/activity-log")->assertStatus(422);
+    }
+
+    public function test_the_activity_log_requires_authentication(): void
+    {
+        $owner = $this->homeowner();
+        $project = app(ProjectService::class)->createFromPlan($owner, [
+            'projectTitle' => 'My House Construction',
+            'location' => 'Quezon City',
+            'budget' => 2500000,
+            'totalEstimate' => 2420000,
+            'timelineMonths' => 7,
+            'phases' => [['name' => 'Foundation', 'percentComplete' => 100]],
+        ]);
+
+        $this->getJson("/api/projects/{$project->id}/activity-log")->assertStatus(401);
+    }
 }

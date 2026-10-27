@@ -4,9 +4,13 @@ use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ConstructionPlanController;
 use App\Http\Controllers\Api\ContractorController;
+use App\Http\Controllers\Api\ContractorRequestController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProjectController;
 use App\Http\Controllers\Api\ProjectPhaseTaskController;
+use App\Http\Controllers\Api\SupplierProductController;
 use App\Http\Controllers\Api\WorkerController;
+use App\Http\Controllers\Api\WorkerRequestController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:10,1');
@@ -19,16 +23,30 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/ai/plan', [ConstructionPlanController::class, 'store'])->middleware('throttle:20,1');
     Route::post('/projects', [ProjectController::class, 'store']);
     Route::get('/projects', [ProjectController::class, 'index']);
+    Route::get('/projects/available', [ProjectController::class, 'available']);
+    Route::get('/projects/available-for-contractors', [ProjectController::class, 'availableForContractors']);
+    Route::delete('/projects/{project}', [ProjectController::class, 'destroy']);
     Route::get('/dashboard', [ProjectController::class, 'dashboard']);
     Route::post('/projects/{project}/workers', [ProjectController::class, 'assignWorker']);
     Route::delete('/projects/{project}/workers/{worker}', [ProjectController::class, 'unassignWorker']);
     Route::post('/projects/{project}/contractors', [ProjectController::class, 'assignContractor']);
     Route::delete('/projects/{project}/contractors/{contractor}', [ProjectController::class, 'unassignContractor']);
     Route::get('/my-projects', [ProjectController::class, 'myProjects']);
+    Route::get('/projects/{project}/activity-log', [ProjectController::class, 'activityLog']);
+    Route::post('/projects/{project}/apply', [ProjectController::class, 'applyAsWorker'])->middleware('role:worker');
+    Route::post('/projects/{project}/apply-contractor', [ProjectController::class, 'applyAsContractor'])->middleware('role:contractor');
+    Route::patch('/worker-requests/{workerRequest}/respond', [WorkerRequestController::class, 'respond']);
+    Route::patch('/contractor-requests/{contractorRequest}/respond', [ContractorRequestController::class, 'respond']);
 
     Route::post('/projects/{project}/phases/{phase}/tasks', [ProjectPhaseTaskController::class, 'store']);
     Route::patch('/projects/{project}/phases/{phase}/tasks/{task}', [ProjectPhaseTaskController::class, 'update']);
     Route::delete('/projects/{project}/phases/{phase}/tasks/{task}', [ProjectPhaseTaskController::class, 'destroy']);
+
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
+    Route::patch('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
+    Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy']);
 
     Route::put('/worker-profile', [WorkerController::class, 'updateProfile'])->middleware('role:worker');
     Route::get('/workers', [WorkerController::class, 'search']);
@@ -39,6 +57,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/contractors', [ContractorController::class, 'search']);
     Route::get('/contractors/{contractor}', [ContractorController::class, 'show']);
     Route::post('/contractors/{contractor}/ratings', [ContractorController::class, 'rate']);
+
+    Route::get('/supplier-products', [SupplierProductController::class, 'index'])->middleware('role:supplier');
+    Route::post('/supplier-products', [SupplierProductController::class, 'store'])->middleware('role:supplier');
+    Route::patch('/supplier-products/{supplierProduct}', [SupplierProductController::class, 'update'])->middleware('role:supplier');
+    Route::delete('/supplier-products/{supplierProduct}', [SupplierProductController::class, 'destroy'])->middleware('role:supplier');
 });
 
 // Web admin portal — only the single configured superadmin account (see EnsurePortalAdmin).

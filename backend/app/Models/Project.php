@@ -42,6 +42,21 @@ class Project extends Model
             ->withTimestamps();
     }
 
+    public function activityLogs(): HasMany
+    {
+        return $this->hasMany(ProjectActivityLog::class)->orderBy('created_at');
+    }
+
+    public function workerRequests(): HasMany
+    {
+        return $this->hasMany(ProjectWorkerRequest::class);
+    }
+
+    public function contractorRequests(): HasMany
+    {
+        return $this->hasMany(ProjectContractorRequest::class);
+    }
+
     public function isOwnedBy(User $user): bool
     {
         return $this->user_id === $user->id;
@@ -67,6 +82,12 @@ class Project extends Model
     public function isManageableBy(User $user): bool
     {
         return $this->hasAssignedContractor($user);
+    }
+
+    /** Owner, or an assigned contractor acting on their behalf, can invite workers to the team. */
+    public function canManageTeam(User $user): bool
+    {
+        return $this->isOwnedBy($user) || $this->hasAssignedContractor($user);
     }
 
     /** Weighted by each phase's share of total project effort/cost. */

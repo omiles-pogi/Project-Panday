@@ -4,6 +4,7 @@ import KeyboardView from "@/components/KeyboardView";
 import { Link } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/context/AuthContext";
+import { useTheme } from "@/context/ThemeContext";
 import Logo from "@/components/Logo";
 import { roleColors } from "@/theme/colors";
 import type { Role } from "@/types/auth";
@@ -18,6 +19,7 @@ const ROLE_OPTIONS: { id: Role; label: string; icon: keyof typeof Ionicons.glyph
 
 export default function Register() {
   const { register } = useAuth();
+  const { chrome } = useTheme();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -88,14 +90,14 @@ export default function Register() {
                   className="rounded-xl px-4 py-3 flex-row items-center gap-2 border"
                   style={{
                     flexGrow: 1, flexBasis: "45%",
-                    backgroundColor: active ? `${color}20` : "#1a1d27",
-                    borderColor: active ? color : "#2a2f42",
+                    backgroundColor: active ? `${color}20` : chrome.card,
+                    borderColor: active ? color : chrome.border,
                   }}
                 >
-                  <Ionicons name={opt.icon} size={18} color={active ? color : "#9ca3af"} />
+                  <Ionicons name={opt.icon} size={18} color={active ? color : chrome.mutedForeground} />
                   <Text
                     className="text-xs font-semibold flex-shrink"
-                    style={{ color: active ? color : "#9ca3af" }}
+                    style={{ color: active ? color : chrome.mutedForeground }}
                   >
                     {opt.label}
                   </Text>

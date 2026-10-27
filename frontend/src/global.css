@@ -1,3 +1,18 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Fallback values for the theme's CSS variables (dark, matching theme/colors.ts's darkChrome) —
+   ThemeProvider overrides these at runtime via nativewind's vars(); this is just what resolves
+   before that, or if a style tree ever renders outside the provider. */
+:root {
+  --color-background: 15 17 23;
+  --color-foreground: 240 242 245;
+  --color-card: 26 29 39;
+  --color-card-foreground: 232 234 237;
+  --color-secondary: 30 34 53;
+  --color-secondary-foreground: 156 163 175;
+  --color-muted: 37 42 58;
+  --color-muted-foreground: 107 114 128;
+  --color-border: 42 47 66;
+}

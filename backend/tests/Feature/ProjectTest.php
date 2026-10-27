@@ -143,35 +143,201 @@ class ProjectTest extends TestCase
         $this->getJson('/api/dashboard')->assertStatus(401);
     }
 
-    public function test_the_project_owner_can_assign_a_worker(): void
+    public function test_the_project_owner_can_invite_a_worker_who_can_accept(): void
     {
         $owner = $this->homeowner();
         $project = $this->createProject($owner);
         $worker = $this->worker();
 
         Sanctum::actingAs($owner);
-        $this->postJson("/api/projects/{$project->id}/workers", ['worker_id' => $worker->id])
-            ->assertStatus(204);
+        $response = $this->postJson("/api/projects/{$project->id}/workers", ['worker_id' => $worker->id]);
+        $response->assertStatus(201)
+            ->assertJsonPath('status', 'pending')
+            ->assertJsonPath('initiatedBy', 'homeowner');
+
+        // Not assigned yet — only once the worker accepts.
+        $this->assertDatabaseMissing('project_workers', ['project_id' => $project->id, 'worker_id' => $worker->id]);
+        $this->assertDatabaseHas('app_notifications', ['user_id' => $worker->id, 'type' => 'worker_invite']);
+
+        $requestId = $response->json('id');
+
+        Sanctum::actingAs($worker);
+        $this->patchJson("/api/worker-requests/{$requestId}/respond", ['decision' => 'accept'])
+            ->assertStatus(200)
+            ->assertJsonPath('status', 'approved');
 
         $this->assertDatabaseHas('project_workers', ['project_id' => $project->id, 'worker_id' => $worker->id]);
+        $this->assertDatabaseHas('app_notifications', ['user_id' => $owner->id, 'type' => 'worker_invite_response']);
 
-        $response = $this->getJson('/api/dashboard');
-        $response->assertStatus(200)
+        Sanctum::actingAs($owner);
+        $this->getJson('/api/dashboard')
+            ->assertStatus(200)
             ->assertJsonCount(1, 'project.workers')
             ->assertJsonPath('project.workers.0.id', $worker->id);
     }
 
-    public function test_assigning_a_worker_is_idempotent(): void
+    public function test_a_worker_can_decline_an_invite(): void
     {
         $owner = $this->homeowner();
         $project = $this->createProject($owner);
         $worker = $this->worker();
 
         Sanctum::actingAs($owner);
-        $this->postJson("/api/projects/{$project->id}/workers", ['worker_id' => $worker->id])->assertStatus(204);
-        $this->postJson("/api/projects/{$project->id}/workers", ['worker_id' => $worker->id])->assertStatus(204);
+        $requestId = $this->postJson("/api/projects/{$project->id}/workers", ['worker_id' => $worker->id])->json('id');
 
-        $this->assertDatabaseCount('project_workers', 1);
+        Sanctum::actingAs($worker);
+        $this->patchJson("/api/worker-requests/{$requestId}/respond", ['decision' => 'decline'])
+            ->assertStatus(200)
+            ->assertJsonPath('status', 'rejected');
+
+        $this->assertDatabaseMissing('project_workers', ['project_id' => $project->id, 'worker_id' => $worker->id]);
+        $this->assertDatabaseHas('app_notifications', ['user_id' => $owner->id, 'type' => 'worker_invite_response']);
+    }
+
+    public function test_inviting_a_worker_twice_is_rejected_while_pending(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $worker = $this->worker();
+
+        Sanctum::actingAs($owner);
+        $this->postJson("/api/projects/{$project->id}/workers", ['worker_id' => $worker->id])->assertStatus(201);
+        $this->postJson("/api/projects/{$project->id}/workers", ['worker_id' => $worker->id])->assertStatus(422);
+
+        $this->assertDatabaseCount('project_worker_requests', 1);
+    }
+
+    public function test_only_the_invited_worker_can_respond_to_their_invite(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $worker = $this->worker();
+        $otherWorker = $this->worker();
+
+        Sanctum::actingAs($owner);
+        $requestId = $this->postJson("/api/projects/{$project->id}/workers", ['worker_id' => $worker->id])->json('id');
+
+        Sanctum::actingAs($otherWorker);
+        $this->patchJson("/api/worker-requests/{$requestId}/respond", ['decision' => 'accept'])->assertStatus(422);
+    }
+
+    public function test_an_assigned_contractor_can_also_invite_a_worker_to_the_project(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $contractor = $this->contractor();
+        $project->contractors()->attach($contractor->id);
+        $worker = $this->worker();
+
+        Sanctum::actingAs($contractor);
+        $response = $this->postJson("/api/projects/{$project->id}/workers", ['worker_id' => $worker->id]);
+        $response->assertStatus(201)->assertJsonPath('status', 'pending');
+
+        $this->assertDatabaseHas('project_worker_requests', [
+            'project_id' => $project->id,
+            'worker_id' => $worker->id,
+            'invited_by_user_id' => $contractor->id,
+        ]);
+
+        $requestId = $response->json('id');
+
+        Sanctum::actingAs($worker);
+        $this->patchJson("/api/worker-requests/{$requestId}/respond", ['decision' => 'accept'])->assertStatus(200);
+
+        // The contractor who actually sent the invite is notified of the response, not
+        // necessarily the homeowner.
+        $this->assertDatabaseHas('app_notifications', ['user_id' => $contractor->id, 'type' => 'worker_invite_response']);
+    }
+
+    public function test_a_non_assigned_contractor_cannot_invite_a_worker(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $notAssignedContractor = $this->contractor();
+        $worker = $this->worker();
+
+        Sanctum::actingAs($notAssignedContractor);
+        $this->postJson("/api/projects/{$project->id}/workers", ['worker_id' => $worker->id])->assertStatus(422);
+    }
+
+    public function test_a_worker_can_apply_to_a_project_and_the_homeowner_can_approve_it(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $worker = $this->worker();
+
+        Sanctum::actingAs($worker);
+        $response = $this->postJson("/api/projects/{$project->id}/apply");
+        $response->assertStatus(201)
+            ->assertJsonPath('status', 'pending')
+            ->assertJsonPath('initiatedBy', 'worker');
+
+        $this->assertDatabaseHas('app_notifications', ['user_id' => $owner->id, 'type' => 'worker_application']);
+
+        $requestId = $response->json('id');
+
+        Sanctum::actingAs($owner);
+        $this->patchJson("/api/worker-requests/{$requestId}/respond", ['decision' => 'accept'])
+            ->assertStatus(200)
+            ->assertJsonPath('status', 'approved');
+
+        $this->assertDatabaseHas('project_workers', ['project_id' => $project->id, 'worker_id' => $worker->id]);
+        $this->assertDatabaseHas('app_notifications', ['user_id' => $worker->id, 'type' => 'worker_application_decision']);
+    }
+
+    public function test_a_homeowner_can_reject_a_worker_application(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $worker = $this->worker();
+
+        Sanctum::actingAs($worker);
+        $requestId = $this->postJson("/api/projects/{$project->id}/apply")->json('id');
+
+        Sanctum::actingAs($owner);
+        $this->patchJson("/api/worker-requests/{$requestId}/respond", ['decision' => 'decline'])
+            ->assertStatus(200)
+            ->assertJsonPath('status', 'rejected');
+
+        $this->assertDatabaseMissing('project_workers', ['project_id' => $project->id, 'worker_id' => $worker->id]);
+        $this->assertDatabaseHas('app_notifications', ['user_id' => $worker->id, 'type' => 'worker_application_decision']);
+    }
+
+    public function test_only_the_project_owner_can_respond_to_an_application(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $worker = $this->worker();
+        $otherHomeowner = $this->homeowner();
+
+        Sanctum::actingAs($worker);
+        $requestId = $this->postJson("/api/projects/{$project->id}/apply")->json('id');
+
+        Sanctum::actingAs($otherHomeowner);
+        $this->patchJson("/api/worker-requests/{$requestId}/respond", ['decision' => 'accept'])->assertStatus(422);
+    }
+
+    public function test_a_worker_cannot_apply_twice_while_pending(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $worker = $this->worker();
+
+        Sanctum::actingAs($worker);
+        $this->postJson("/api/projects/{$project->id}/apply")->assertStatus(201);
+        $this->postJson("/api/projects/{$project->id}/apply")->assertStatus(422);
+
+        $this->assertDatabaseCount('project_worker_requests', 1);
+    }
+
+    public function test_only_worker_accounts_can_apply(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $contractor = $this->contractor();
+
+        Sanctum::actingAs($contractor);
+        $this->postJson("/api/projects/{$project->id}/apply")->assertStatus(403);
     }
 
     public function test_only_the_project_owner_can_assign_a_worker(): void
@@ -202,9 +368,9 @@ class ProjectTest extends TestCase
         $owner = $this->homeowner();
         $project = $this->createProject($owner);
         $worker = $this->worker();
+        $project->workers()->attach($worker->id);
 
         Sanctum::actingAs($owner);
-        $this->postJson("/api/projects/{$project->id}/workers", ['worker_id' => $worker->id])->assertStatus(204);
         $this->deleteJson("/api/projects/{$project->id}/workers/{$worker->id}")->assertStatus(204);
 
         $this->assertDatabaseMissing('project_workers', ['project_id' => $project->id, 'worker_id' => $worker->id]);
@@ -223,22 +389,53 @@ class ProjectTest extends TestCase
             ->assertStatus(401);
     }
 
-    public function test_the_project_owner_can_assign_a_contractor(): void
+    public function test_the_project_owner_can_invite_a_contractor_who_can_accept(): void
     {
         $owner = $this->homeowner();
         $project = $this->createProject($owner);
         $contractor = $this->contractor();
 
         Sanctum::actingAs($owner);
-        $this->postJson("/api/projects/{$project->id}/contractors", ['contractor_id' => $contractor->id])
-            ->assertStatus(204);
+        $response = $this->postJson("/api/projects/{$project->id}/contractors", ['contractor_id' => $contractor->id]);
+        $response->assertStatus(201)
+            ->assertJsonPath('status', 'pending')
+            ->assertJsonPath('initiatedBy', 'homeowner');
+
+        $this->assertDatabaseMissing('project_contractors', ['project_id' => $project->id, 'contractor_id' => $contractor->id]);
+        $this->assertDatabaseHas('app_notifications', ['user_id' => $contractor->id, 'type' => 'contractor_invite']);
+
+        $requestId = $response->json('id');
+
+        Sanctum::actingAs($contractor);
+        $this->patchJson("/api/contractor-requests/{$requestId}/respond", ['decision' => 'accept'])
+            ->assertStatus(200)
+            ->assertJsonPath('status', 'approved');
 
         $this->assertDatabaseHas('project_contractors', ['project_id' => $project->id, 'contractor_id' => $contractor->id]);
+        $this->assertDatabaseHas('app_notifications', ['user_id' => $owner->id, 'type' => 'contractor_invite_response']);
 
-        $response = $this->getJson('/api/dashboard');
-        $response->assertStatus(200)
+        Sanctum::actingAs($owner);
+        $this->getJson('/api/dashboard')
+            ->assertStatus(200)
             ->assertJsonCount(1, 'project.contractors')
             ->assertJsonPath('project.contractors.0.id', $contractor->id);
+    }
+
+    public function test_a_contractor_can_decline_an_invite(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $contractor = $this->contractor();
+
+        Sanctum::actingAs($owner);
+        $requestId = $this->postJson("/api/projects/{$project->id}/contractors", ['contractor_id' => $contractor->id])->json('id');
+
+        Sanctum::actingAs($contractor);
+        $this->patchJson("/api/contractor-requests/{$requestId}/respond", ['decision' => 'decline'])
+            ->assertStatus(200)
+            ->assertJsonPath('status', 'rejected');
+
+        $this->assertDatabaseMissing('project_contractors', ['project_id' => $project->id, 'contractor_id' => $contractor->id]);
     }
 
     public function test_only_contractor_role_accounts_can_be_assigned_as_contractors(): void
@@ -252,16 +449,200 @@ class ProjectTest extends TestCase
             ->assertStatus(422);
     }
 
-    public function test_the_project_owner_can_unassign_a_contractor(): void
+    public function test_inviting_a_contractor_twice_is_rejected_while_pending(): void
     {
         $owner = $this->homeowner();
         $project = $this->createProject($owner);
         $contractor = $this->contractor();
 
         Sanctum::actingAs($owner);
-        $this->postJson("/api/projects/{$project->id}/contractors", ['contractor_id' => $contractor->id])->assertStatus(204);
+        $this->postJson("/api/projects/{$project->id}/contractors", ['contractor_id' => $contractor->id])->assertStatus(201);
+        $this->postJson("/api/projects/{$project->id}/contractors", ['contractor_id' => $contractor->id])->assertStatus(422);
+    }
+
+    public function test_a_contractor_can_apply_to_a_project_with_a_quote_and_the_homeowner_can_approve_it(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $contractor = $this->contractor();
+
+        Sanctum::actingAs($contractor);
+        $response = $this->postJson("/api/projects/{$project->id}/apply-contractor", [
+            'quote_amount' => 2300000,
+            'estimated_days' => 180,
+            'message' => 'We can start next week.',
+        ]);
+        $response->assertStatus(201)
+            ->assertJsonPath('status', 'pending')
+            ->assertJsonPath('initiatedBy', 'contractor')
+            ->assertJsonPath('quoteAmount', 2300000)
+            ->assertJsonPath('estimatedDays', 180);
+
+        $this->assertDatabaseHas('app_notifications', ['user_id' => $owner->id, 'type' => 'contractor_application']);
+
+        $requestId = $response->json('id');
+
+        Sanctum::actingAs($owner);
+        $this->patchJson("/api/contractor-requests/{$requestId}/respond", ['decision' => 'accept'])
+            ->assertStatus(200)
+            ->assertJsonPath('status', 'approved');
+
+        $this->assertDatabaseHas('project_contractors', ['project_id' => $project->id, 'contractor_id' => $contractor->id]);
+        $this->assertDatabaseHas('app_notifications', ['user_id' => $contractor->id, 'type' => 'contractor_application_decision']);
+    }
+
+    public function test_only_worker_or_contractor_accounts_can_be_invited_or_apply_respectively(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+
+        Sanctum::actingAs($owner);
+        $this->postJson("/api/projects/{$project->id}/apply-contractor")->assertStatus(403);
+    }
+
+    public function test_the_project_owner_can_unassign_a_contractor(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $contractor = $this->contractor();
+        $project->contractors()->attach($contractor->id);
+
+        Sanctum::actingAs($owner);
         $this->deleteJson("/api/projects/{$project->id}/contractors/{$contractor->id}")->assertStatus(204);
 
         $this->assertDatabaseMissing('project_contractors', ['project_id' => $project->id, 'contractor_id' => $contractor->id]);
+    }
+
+    public function test_the_project_owner_can_delete_their_project(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+
+        Sanctum::actingAs($owner);
+        $this->deleteJson("/api/projects/{$project->id}")->assertStatus(204);
+
+        $this->assertDatabaseMissing('projects', ['id' => $project->id]);
+    }
+
+    public function test_only_the_project_owner_can_delete_it(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $otherHomeowner = $this->homeowner();
+
+        Sanctum::actingAs($otherHomeowner);
+        $this->deleteJson("/api/projects/{$project->id}")->assertStatus(422);
+
+        $this->assertDatabaseHas('projects', ['id' => $project->id]);
+    }
+
+    public function test_deleting_a_project_removes_it_from_assigned_contractors_and_workers(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $contractor = $this->contractor();
+        $worker = $this->worker();
+        $project->workers()->attach($worker->id);
+        $project->contractors()->attach($contractor->id);
+
+        Sanctum::actingAs($owner);
+        $anotherWorker = $this->worker();
+        $this->postJson("/api/projects/{$project->id}/workers", ['worker_id' => $anotherWorker->id])->assertStatus(201);
+        $anotherContractor = $this->contractor();
+        $this->postJson("/api/projects/{$project->id}/contractors", ['contractor_id' => $anotherContractor->id])->assertStatus(201);
+
+        $this->deleteJson("/api/projects/{$project->id}")->assertStatus(204);
+
+        $this->assertDatabaseMissing('project_contractors', ['project_id' => $project->id]);
+        $this->assertDatabaseMissing('project_workers', ['project_id' => $project->id]);
+        $this->assertDatabaseMissing('project_worker_requests', ['project_id' => $project->id]);
+        $this->assertDatabaseMissing('project_contractor_requests', ['project_id' => $project->id]);
+
+        Sanctum::actingAs($contractor);
+        $this->getJson('/api/my-projects')->assertStatus(200)->assertJsonCount(0);
+
+        Sanctum::actingAs($worker);
+        $this->getJson('/api/my-projects')->assertStatus(200)->assertJsonCount(0);
+    }
+
+    public function test_deleting_a_project_requires_authentication(): void
+    {
+        $owner = $this->homeowner();
+        $project = app(ProjectService::class)->createFromPlan($owner, $this->planPayload());
+
+        $this->deleteJson("/api/projects/{$project->id}")->assertStatus(401);
+    }
+
+    public function test_a_worker_can_browse_active_projects_they_are_not_assigned_to(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $worker = $this->worker();
+
+        Sanctum::actingAs($worker);
+        $response = $this->getJson('/api/projects/available');
+
+        $response->assertStatus(200)->assertJsonCount(1);
+        $response->assertJsonPath('0.id', $project->id)
+            ->assertJsonPath('0.title', $project->title)
+            ->assertJsonPath('0.ownerName', $owner->name)
+            ->assertJsonPath('0.workerCount', 0)
+            ->assertJsonPath('0.contractorCount', 0);
+    }
+
+    public function test_browsing_excludes_projects_the_worker_is_already_assigned_to(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $worker = $this->worker();
+        $project->workers()->attach($worker->id);
+
+        Sanctum::actingAs($worker);
+        $this->getJson('/api/projects/available')->assertStatus(200)->assertJsonCount(0);
+    }
+
+    public function test_browsing_excludes_completed_projects(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $project->update(['status' => 'completed']);
+        $worker = $this->worker();
+
+        Sanctum::actingAs($worker);
+        $this->getJson('/api/projects/available')->assertStatus(200)->assertJsonCount(0);
+    }
+
+    public function test_browsing_available_projects_requires_authentication(): void
+    {
+        $this->getJson('/api/projects/available')->assertStatus(401);
+    }
+
+    public function test_a_contractor_can_browse_available_projects_they_are_not_assigned_to(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $contractor = $this->contractor();
+
+        Sanctum::actingAs($contractor);
+        $response = $this->getJson('/api/projects/available-for-contractors');
+
+        $response->assertStatus(200)->assertJsonCount(1);
+        $response->assertJsonPath('0.id', $project->id)->assertJsonPath('0.ownerName', $owner->name);
+    }
+
+    public function test_contractor_browsing_excludes_projects_they_are_already_assigned_to(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $contractor = $this->contractor();
+        $project->contractors()->attach($contractor->id);
+
+        Sanctum::actingAs($contractor);
+        $this->getJson('/api/projects/available-for-contractors')->assertStatus(200)->assertJsonCount(0);
+    }
+
+    public function test_browsing_available_projects_for_contractors_requires_authentication(): void
+    {
+        $this->getJson('/api/projects/available-for-contractors')->assertStatus(401);
     }
 }

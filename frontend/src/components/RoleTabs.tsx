@@ -1,6 +1,7 @@
 import { type ColorValue } from "react-native";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "@/context/ThemeContext";
 
 export interface RoleTab {
   name: string;
@@ -9,16 +10,18 @@ export interface RoleTab {
   icon: keyof typeof Ionicons.glyphMap;
 }
 
-// Shared bottom-tab shell for the contractor and worker apps, styled like the homeowner tabs.
+// Shared bottom-tab shell for the contractor, supplier, and worker apps, styled like the
+// homeowner tabs.
 export default function RoleTabs({ tabs }: { tabs: RoleTab[] }) {
+  const { chrome } = useTheme();
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: "#1a1d27" },
-        headerTintColor: "#f0f2f5",
+        headerStyle: { backgroundColor: chrome.card },
+        headerTintColor: chrome.foreground,
         tabBarActiveTintColor: "#f59e0b",
-        tabBarInactiveTintColor: "#6b7280",
-        tabBarStyle: { backgroundColor: "#1a1d27", borderTopColor: "#2a2f42" },
+        tabBarInactiveTintColor: chrome.mutedForeground,
+        tabBarStyle: { backgroundColor: chrome.card, borderTopColor: chrome.border },
       }}
     >
       {tabs.map((t) => (

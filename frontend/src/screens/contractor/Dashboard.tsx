@@ -49,7 +49,13 @@ export default function Dashboard() {
       {error && <Text className="text-xs text-danger px-1">{error}</Text>}
 
       <StatGrid>
-        <StatTile label="Active Projects" value={active.length} color="#f59e0b" icon="business-outline" />
+        <StatTile
+          label="Active Projects"
+          value={active.length}
+          color="#f59e0b"
+          icon="business-outline"
+          onPress={() => router.push("/contractor/projects" as never)}
+        />
         <StatTile label="Completed" value={completed.length} color="#10b981" icon="checkmark-circle-outline" />
         <StatTile label="Avg. Progress" value={`${avgProgress}%`} color="#3b82f6" icon="trending-up-outline" />
       </StatGrid>
@@ -83,26 +89,28 @@ export default function Dashboard() {
         )}
 
         {active.map((p) => (
-          <Card key={p.id}>
-            <View className="flex-row items-start justify-between mb-3">
-              <View className="flex-1 pr-3">
-                <Text className="font-bold text-sm text-foreground">{p.title}</Text>
-                <Text className="text-xs mt-0.5 text-muted-foreground">
-                  {p.ownerName}
-                  {p.location ? ` · ${p.location}` : ""}
-                </Text>
+          <Pressable key={p.id} onPress={() => router.push(`/contractor/projects?projectId=${p.id}` as never)}>
+            <Card>
+              <View className="flex-row items-start justify-between mb-3">
+                <View className="flex-1 pr-3">
+                  <Text className="font-bold text-sm text-foreground">{p.title}</Text>
+                  <Text className="text-xs mt-0.5 text-muted-foreground">
+                    {p.ownerName}
+                    {p.location ? ` · ${p.location}` : ""}
+                  </Text>
+                </View>
+                <View className="items-end gap-1">
+                  <Text className="font-bold text-base" style={{ color: "#f59e0b" }}>
+                    {p.overallProgressPct}%
+                  </Text>
+                  <Badge label={peso(p.budget)} color="#9ca3af" />
+                </View>
               </View>
-              <View className="items-end gap-1">
-                <Text className="font-bold text-base" style={{ color: "#f59e0b" }}>
-                  {p.overallProgressPct}%
-                </Text>
-                <Badge label={peso(p.budget)} color="#9ca3af" />
+              <View className="h-2 rounded-full overflow-hidden bg-muted">
+                <View className="h-full rounded-full bg-primary" style={{ width: `${p.overallProgressPct}%` }} />
               </View>
-            </View>
-            <View className="h-2 rounded-full overflow-hidden bg-muted">
-              <View className="h-full rounded-full bg-primary" style={{ width: `${p.overallProgressPct}%` }} />
-            </View>
-          </Card>
+            </Card>
+          </Pressable>
         ))}
       </View>
     </Screen>

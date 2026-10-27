@@ -1,5 +1,8 @@
 /** @type {import('tailwindcss').Config} */
-// Colors must stay in sync with src/theme/colors.ts (transcribed from resources/css/app.css).
+// Brand colors must stay in sync with src/theme/colors.ts; the neutral "chrome" colors below are
+// CSS-variable-backed instead of fixed hex, so ThemeContext can flip them between light/dark at
+// runtime (via nativewind's vars()) without touching every screen that uses bg-background,
+// text-foreground, etc.
 module.exports = {
   darkMode: "class",
   content: ["./src/**/*.{js,jsx,ts,tsx}"],
@@ -7,19 +10,19 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        background: "#0f1117",
-        foreground: "#f0f2f5",
-        card: "#1a1d27",
-        "card-foreground": "#e8eaed",
+        background: "rgb(var(--color-background) / <alpha-value>)",
+        foreground: "rgb(var(--color-foreground) / <alpha-value>)",
+        card: "rgb(var(--color-card) / <alpha-value>)",
+        "card-foreground": "rgb(var(--color-card-foreground) / <alpha-value>)",
         primary: "#f59e0b",
         "primary-foreground": "#0f1117",
-        secondary: "#1e2235",
-        "secondary-foreground": "#9ca3af",
-        muted: "#252a3a",
-        "muted-foreground": "#6b7280",
+        secondary: "rgb(var(--color-secondary) / <alpha-value>)",
+        "secondary-foreground": "rgb(var(--color-secondary-foreground) / <alpha-value>)",
+        muted: "rgb(var(--color-muted) / <alpha-value>)",
+        "muted-foreground": "rgb(var(--color-muted-foreground) / <alpha-value>)",
         accent: "#f59e0b",
         "accent-foreground": "#0f1117",
-        border: "#2a2f42",
+        border: "rgb(var(--color-border) / <alpha-value>)",
         ring: "#f59e0b",
         danger: "#ef4444",
         role: {

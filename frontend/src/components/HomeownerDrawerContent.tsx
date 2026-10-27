@@ -1,9 +1,12 @@
 import { Text, View, Pressable, ScrollView } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import type { DrawerContentComponentProps } from "expo-router/drawer";
 import { Ionicons } from "@expo/vector-icons";
 import AdminSwitch from "@/components/AdminSwitch";
+import TourButton from "@/components/TourButton";
 import { useAuth } from "@/context/AuthContext";
+import { useTheme } from "@/context/ThemeContext";
 import Logo from "@/components/Logo";
 import { roleColors } from "@/theme/colors";
 
@@ -19,6 +22,8 @@ const NAV_ITEMS: { href: string; label: string; icon: keyof typeof Ionicons.glyp
 
 export default function HomeownerDrawerContent(props: DrawerContentComponentProps) {
   const { user, logout } = useAuth();
+  const { chrome } = useTheme();
+  const insets = useSafeAreaInsets();
   const color = roleColors.homeowner;
   const initials = (user?.name ?? "?")
     .split(" ")
@@ -34,7 +39,7 @@ export default function HomeownerDrawerContent(props: DrawerContentComponentProp
 
   return (
     <View className="flex-1 bg-card">
-      <View className="flex-row items-center gap-3 px-4 py-4 border-b border-border" style={{ paddingTop: 48 }}>
+      <View className="flex-row items-center gap-3 px-4 py-4 border-b border-border" style={{ paddingTop: insets.top + 16 }}>
         <Logo size={40} />
         <Text className="font-bold text-base text-foreground">Project-Panday</Text>
       </View>
@@ -66,7 +71,7 @@ export default function HomeownerDrawerContent(props: DrawerContentComponentProp
             className="flex-row items-center gap-3 px-3 py-3 rounded-xl"
           >
             <View className="w-6 items-center">
-              <Ionicons name={item.icon} size={18} color="#9ca3af" />
+              <Ionicons name={item.icon} size={18} color={chrome.mutedForeground} />
             </View>
             <Text className="font-medium text-sm text-muted-foreground">{item.label}</Text>
           </Pressable>
@@ -74,6 +79,7 @@ export default function HomeownerDrawerContent(props: DrawerContentComponentProp
       </ScrollView>
 
       <View className="px-3 py-3 border-t border-border">
+        <TourButton />
         <AdminSwitch />
         <Pressable onPress={logout} className="flex-row items-center gap-3 px-3 py-3 rounded-xl">
           <Ionicons name="log-out-outline" size={18} color="#ef4444" />

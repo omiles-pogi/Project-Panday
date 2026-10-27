@@ -2,6 +2,7 @@ import { type ReactNode } from "react";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import KeyboardView from "@/components/KeyboardView";
 import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "@/context/ThemeContext";
 
 // Bottom sheet for forms (submit bid, update order, edit product).
 export default function Sheet({
@@ -17,6 +18,7 @@ export default function Sheet({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const { chrome } = useTheme();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardView className="flex-1 justify-end" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
@@ -31,7 +33,7 @@ export default function Sheet({
               {subtitle ? <Text className="text-xs mt-0.5 text-muted-foreground">{subtitle}</Text> : null}
             </View>
             <Pressable onPress={onClose} hitSlop={8} className="w-8 h-8 rounded-full items-center justify-center bg-muted">
-              <Ionicons name="close" size={18} color="#9ca3af" />
+              <Ionicons name="close" size={18} color={chrome.mutedForeground} />
             </Pressable>
           </View>
           <ScrollView

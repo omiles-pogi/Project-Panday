@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ComponentRef, type ReactNode } from "react";
 import { Keyboard, Platform, View, type StyleProp, type ViewStyle } from "react-native";
 
 /**
@@ -17,7 +17,7 @@ export default function KeyboardView({
   className?: string;
   style?: StyleProp<ViewStyle>;
 }) {
-  const ref = useRef<View>(null);
+  const ref = useRef<ComponentRef<typeof View>>(null);
   const [inset, setInset] = useState(0);
 
   useEffect(() => {

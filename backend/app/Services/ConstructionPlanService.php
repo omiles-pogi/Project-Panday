@@ -7,35 +7,60 @@ use Illuminate\Support\Facades\Http;
 
 class ConstructionPlanService
 {
-    private const SYSTEM_PROMPT = <<<'PROMPT'
-        You are a construction estimation engine for a Philippine home-building app. Given a homeowner's freeform project brief, produce a realistic, internally-consistent construction plan by calling the submit_construction_plan tool.
+    public function __construct(private readonly SupplierProductService $supplierProducts) {}
 
-        Rules:
+    /** The only six categories budgetBreakdown may use — fixed so the UI can show a consistent icon/description per category. */
+    private const BUDGET_CATEGORIES = [
+        'Foundation and Excavation',
+        'Construction Materials',
+        'Labor Costs',
+        'Contractor and Project Management Fee',
+        'Electrical and Plumbing',
+        'Finishing Works',
+    ];
+
+    private const SYSTEM_PROMPT = <<<'PROMPT'
+        You are Pandy, a construction estimation assistant for a Philippine home-building app, having an ongoing conversation with a homeowner about their project.
+
+        Rules for any construction plan you submit:
         - All money amounts are Philippine pesos (PHP), as plain numbers (no currency symbols or commas).
         - Use realistic present-day Philippine construction market rates, cities, and suppliers.
-        - budgetBreakdown amounts must sum to approximately totalEstimate.
-        - materials[].qty * materials[].unitPrice and equipment[].cost line items must be consistent with the totals in budgetBreakdown.
-        - If the brief gives a budget, use it for the "budget" field; otherwise infer a reasonable one from scope.
-        - Only set "location" to a specific city/region if the brief explicitly names one. Never invent or guess a location — if the brief doesn't state one, set "location" to an empty string.
-        - Keep lists concise: 5-8 phases, 6-10 budgetBreakdown categories, 8-14 materials, 6-10 equipment items.
+        - budgetBreakdown must contain EXACTLY these six categories, each exactly once, in this order: "Foundation and Excavation", "Construction Materials", "Labor Costs", "Contractor and Project Management Fee", "Electrical and Plumbing", "Finishing Works". Base each category's amount on the project's floor area, floors, materials, and finishing level — never a fixed or generic split.
+        - budgetBreakdown amounts must sum to totalEstimate. Every cost belongs to exactly one category — never count the same material or labor expense in more than one category.
+        - materials[].qty * materials[].unitPrice line items must be consistent with the totals in budgetBreakdown.
+        - Base every field strictly on what the conversation actually states. Do not invent, change, or contradict any detail the homeowner gave (exact bedroom/bathroom count, exact budget, named location, named design style, etc.) — only fill in what's left unspecified.
+        - If the homeowner gives a budget, use it for the "budget" field; otherwise infer a reasonable one from scope.
+        - Only set "location" to a specific city/region if the conversation explicitly names one. Never invent or guess a location — leave it as an empty string otherwise.
+        - Keep other lists concise: 5-8 phases, 8-14 materials.
         - For each phase, include a tasks checklist of 3-6 short, concrete, checkable work items specific to that phase (e.g. for a "Foundation" phase: "Site clearing", "Land filling", "Excavation", "Rebar installation", "Concrete pouring"). These become a to-do checklist the contractor checks off as work is completed.
+        - submit_construction_plan always carries the COMPLETE current plan, never a partial update — when revising a plan from earlier in the conversation, restate every field, changing only what the homeowner's latest message asks you to change.
         PROMPT;
 
-    private const CLARIFICATION_PROMPT_ADDENDUM = <<<'PROMPT'
+    private const CONVERSATIONAL_ADDENDUM = <<<'PROMPT'
 
-        Before planning, decide if you have enough information:
-        - If the brief describes renovating, remodeling, or adding onto an EXISTING structure (not a new build) and does not state the size of the room/space involved, call request_clarification with 1-3 short, specific questions instead of guessing (e.g. "What is the approximate size of the room in square meters?").
-        - Otherwise, generate the plan directly. Do not ask about minor details, finishes, or preferences you can reasonably infer — only ask when a core quantity (like area) is missing for a renovation scope.
+        For each message, choose ONE:
+        - If the homeowner is asking a question, making conversation, or you need to discuss something before changing the plan, reply normally in plain text — do not call a tool.
+        - If you need a core detail before creating or updating the plan (e.g. a renovation's room size) that you don't already have from earlier in the conversation, call request_clarification with 1-3 short, specific questions.
+        - If the homeowner described a new project, or asked you to change or update an existing one, call submit_construction_plan.
+        Do not ask about minor details, finishes, or preferences you can reasonably infer — only ask when a core quantity is genuinely missing.
         PROMPT;
+
+    private const FORCE_PLAN_ADDENDUM = "\n\nSubmit the complete, updated construction plan now based on the conversation so far.";
 
     private const MAX_ATTEMPTS = 3;
 
     /**
-     * @return array<string, mixed> Either a full plan, or ['needsClarification' => true, 'questions' => string[]].
+     * @param  array<int, array{role: string, content: string}>  $messages  The full conversation so far.
+     * @param  callable(string): void  $onChunk  Called live with each piece of plain-text content as it
+     *                                            streams in — only for a chat reply, since a plan/clarification
+     *                                            is structured JSON behind a tool call with nothing meaningful
+     *                                            to show partially.
+     * @return array<string, mixed> One of: a full plan, ['needsClarification' => true, 'questions' => string[]],
+     *                               or ['chatReply' => true, 'message' => string] for a plain conversational reply.
      *
      * @throws ConstructionPlanGenerationException
      */
-    public function generate(string $brief, bool $allowClarification = true): array
+    public function generate(array $messages, bool $forcePlan, callable $onChunk): array
     {
         $apiKey = config('services.groq.key');
         if (! $apiKey) {
@@ -45,66 +70,205 @@ class ConstructionPlanService
             );
         }
 
-        // Bounded to one clarification round: the second call (allowClarification=false) forces
-        // the plan tool, so this always terminates within two AI calls — never an open loop.
-        $tools = $allowClarification ? [$this->planTool(), $this->clarificationTool()] : [$this->planTool()];
-        $toolChoice = $allowClarification
-            ? 'auto'
-            : ['type' => 'function', 'function' => ['name' => 'submit_construction_plan']];
-        // Only mention request_clarification in the prompt when it's actually an offered tool —
-        // otherwise the model tries to call it anyway and Groq rejects the whole response.
-        $systemPrompt = self::SYSTEM_PROMPT.($allowClarification ? self::CLARIFICATION_PROMPT_ADDENDUM : '');
+        // forcePlan is a safety valve, not the normal path: once the conversation has already gone
+        // through a couple of clarification rounds, the frontend sets this to force a plan on this
+        // turn instead of letting the AI ask yet another question — guarantees the chat can't loop
+        // forever. Normal turns leave the AI free to chat, ask, or plan via tool_choice "auto".
+        $tools = $forcePlan ? [$this->planTool()] : [$this->planTool(), $this->clarificationTool()];
+        $toolChoice = $forcePlan
+            ? ['type' => 'function', 'function' => ['name' => 'submit_construction_plan']]
+            : 'auto';
+        // Only mention request_clarification / plain-chat replies when they're actually available —
+        // otherwise the model tries to use them anyway and Groq rejects the whole response.
+        $systemPrompt = self::SYSTEM_PROMPT.($forcePlan ? self::FORCE_PLAN_ADDENDUM : self::CONVERSATIONAL_ADDENDUM);
+        // Grounds materials[].unitPrice in real supplier-listed prices where one exists, instead of
+        // an always-guessed market rate. Empty string (no-op) when no supplier has listed anything yet.
+        $systemPrompt .= $this->supplierProducts->pricingContextForPrompt();
 
+        $apiMessages = array_merge([['role' => 'system', 'content' => $systemPrompt]], $messages);
+
+        // Each attempt opens a fresh stream. A malformed/incoherent TOOL-CALL attempt is silently
+        // retried (nothing was shown to the homeowner for that path — see streamOnce). A CHAT REPLY
+        // is never retried once text starts streaming: it's already on screen, and plain text can't
+        // "fail to parse" the way tool-call JSON can.
         for ($attempt = 1; $attempt <= self::MAX_ATTEMPTS; $attempt++) {
-            $response = Http::withToken($apiKey)->post('https://api.groq.com/openai/v1/chat/completions', [
-                'model' => config('services.groq.model'),
-                'max_completion_tokens' => 4096,
-                'messages' => [
-                    ['role' => 'system', 'content' => $systemPrompt],
-                    ['role' => 'user', 'content' => $brief],
-                ],
-                'tools' => $tools,
-                'tool_choice' => $toolChoice,
-            ]);
-
-            // Groq itself sometimes reports these as API-level errors (not a 200 with bad
-            // content) when strict structured-output generation fails internally — transient
-            // glitches worth retrying, unlike auth/rate-limit/other failures.
-            $retryableGroqErrors = [
-                'Failed to parse tool call arguments',
-                'did not call a tool',
-                'did not match schema',
-            ];
-            $errorMessage = (string) $response->json('error.message');
-            $isRetryableGroqError = $response->failed() && collect($retryableGroqErrors)
-                ->contains(fn (string $needle) => str_contains($errorMessage, $needle));
-
-            if ($response->failed() && ! $isRetryableGroqError) {
-                throw new ConstructionPlanGenerationException(
-                    $response->json('error.message') ?? 'Groq API request failed.',
-                    $response->status()
-                );
+            $result = $this->streamOnce($apiKey, $apiMessages, $tools, $toolChoice, $onChunk);
+            if ($result !== null) {
+                return $result;
             }
-
-            $toolCallName = $response->json('choices.0.message.tool_calls.0.function.name');
-            $arguments = $isRetryableGroqError
-                ? null
-                : json_decode($response->json('choices.0.message.tool_calls.0.function.arguments', ''), true);
-
-            if (is_array($arguments) && $toolCallName === 'request_clarification') {
-                return ['needsClarification' => true, 'questions' => $arguments['questions'] ?? []];
-            }
-
-            if (is_array($arguments) && $toolCallName === 'submit_construction_plan') {
-                return $arguments;
-            }
-
             if ($attempt === self::MAX_ATTEMPTS) {
-                throw new ConstructionPlanGenerationException('AI returned a malformed plan. Please try again.', 502);
+                throw new ConstructionPlanGenerationException('AI returned a malformed response. Please try again.', 502);
             }
         }
 
-        throw new ConstructionPlanGenerationException('AI returned a malformed plan. Please try again.', 502);
+        throw new ConstructionPlanGenerationException('AI returned a malformed response. Please try again.', 502);
+    }
+
+    /**
+     * One streamed attempt. Returns null for a retryable failure (caller tries again with a fresh
+     * stream); throws directly for a non-retryable failure (rate limit, auth, etc.).
+     *
+     * @param  array<int, array<string, mixed>>  $apiMessages
+     * @param  array<int, array<string, mixed>>  $tools
+     * @param  string|array<string, mixed>  $toolChoice
+     * @param  callable(string): void  $onChunk
+     * @return array<string, mixed>|null
+     */
+    private function streamOnce(string $apiKey, array $apiMessages, array $tools, string|array $toolChoice, callable $onChunk): ?array
+    {
+        $response = Http::withToken($apiKey)->withOptions(['stream' => true])->timeout(30)->post(
+            'https://api.groq.com/openai/v1/chat/completions',
+            [
+                'model' => config('services.groq.model'),
+                'max_completion_tokens' => 4096,
+                // Low and fixed: this is a structured estimation task, not creative writing — we want
+                // the plan tightly grounded in the conversation, not a different interpretation every call.
+                'temperature' => 0.3,
+                'messages' => $apiMessages,
+                'tools' => $tools,
+                'tool_choice' => $toolChoice,
+                'stream' => true,
+            ]
+        );
+
+        if ($response->status() === 429) {
+            throw new ConstructionPlanGenerationException(
+                'The AI service is busy right now. Please wait a moment and try again.',
+                429
+            );
+        }
+
+        if ($response->failed()) {
+            // A request-level rejection (e.g. bad API key) arrives as an ordinary JSON body, not SSE —
+            // Groq never starts streaming if it's rejecting the request outright.
+            $retryableGroqErrors = ['Failed to parse tool call arguments', 'did not call a tool', 'did not match schema'];
+            $errorMessage = (string) $response->json('error.message');
+            $isRetryable = collect($retryableGroqErrors)->contains(fn (string $needle) => str_contains($errorMessage, $needle));
+            if ($isRetryable) {
+                return null;
+            }
+            throw new ConstructionPlanGenerationException($errorMessage ?: 'Groq API request failed.', $response->status());
+        }
+
+        $body = $response->toPsrResponse()->getBody();
+
+        $contentBuffer = '';
+        $toolCallName = null;
+        $toolArgsBuffer = '';
+        $sawContent = false;
+        $sawToolCall = false;
+        $lineBuffer = '';
+        $done = false;
+
+        while (! $done && ! $body->eof()) {
+            $chunk = $body->read(2048);
+            if ($chunk === '') {
+                continue;
+            }
+            $lineBuffer .= $chunk;
+
+            while (($newlinePos = strpos($lineBuffer, "\n")) !== false) {
+                $line = trim(substr($lineBuffer, 0, $newlinePos));
+                $lineBuffer = substr($lineBuffer, $newlinePos + 1);
+
+                if ($line === '' || ! str_starts_with($line, 'data:')) {
+                    continue;
+                }
+                $data = trim(substr($line, 5));
+                if ($data === '[DONE]') {
+                    $done = true;
+                    break;
+                }
+
+                $event = json_decode($data, true);
+                $delta = $event['choices'][0]['delta'] ?? null;
+                if (! is_array($delta)) {
+                    continue;
+                }
+
+                if (isset($delta['content']) && $delta['content'] !== '') {
+                    $sawContent = true;
+                    $contentBuffer .= $delta['content'];
+                    $onChunk($delta['content']);
+                }
+
+                foreach ($delta['tool_calls'] ?? [] as $toolCallDelta) {
+                    $sawToolCall = true;
+                    if (isset($toolCallDelta['function']['name'])) {
+                        $toolCallName = $toolCallDelta['function']['name'];
+                    }
+                    if (isset($toolCallDelta['function']['arguments'])) {
+                        $toolArgsBuffer .= $toolCallDelta['function']['arguments'];
+                    }
+                }
+            }
+        }
+
+        if ($sawContent && ! $sawToolCall) {
+            $content = trim($contentBuffer);
+
+            return $content !== '' ? ['chatReply' => true, 'message' => $content] : null;
+        }
+
+        if ($sawToolCall) {
+            $arguments = json_decode($toolArgsBuffer, true);
+            if (! is_array($arguments)) {
+                return null;
+            }
+            if ($toolCallName === 'request_clarification') {
+                return ['needsClarification' => true, 'questions' => $arguments['questions'] ?? []];
+            }
+            if ($toolCallName === 'submit_construction_plan' && $this->isCoherentPlan($arguments)) {
+                return $arguments;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Sanity-checks the numbers the AI generated rather than trusting the prompt's "must sum to
+     * approximately totalEstimate" instruction blindly — LLM arithmetic drifts. A plan that fails
+     * this is treated like a malformed response and retried.
+     *
+     * @param  array<string, mixed>  $plan
+     */
+    private function isCoherentPlan(array $plan): bool
+    {
+        $positiveFields = ['areaSqm', 'budget', 'totalEstimate', 'timelineMonths'];
+        foreach ($positiveFields as $field) {
+            if (! isset($plan[$field]) || ! is_numeric($plan[$field]) || $plan[$field] <= 0) {
+                return false;
+            }
+        }
+        if (! isset($plan['floors']) || ! is_numeric($plan['floors']) || $plan['floors'] < 1) {
+            return false;
+        }
+        if (! isset($plan['bedrooms'], $plan['bathrooms']) || $plan['bedrooms'] < 0 || $plan['bathrooms'] < 0) {
+            return false;
+        }
+
+        $budgetBreakdown = $plan['budgetBreakdown'] ?? [];
+        if (empty($budgetBreakdown)) {
+            return false;
+        }
+        // The UI shows a fixed icon/description per category, so the AI must return exactly these
+        // six, each exactly once — not a subset, not duplicates, not a freeform list.
+        $categories = array_column($budgetBreakdown, 'category');
+        sort($categories);
+        $expected = self::BUDGET_CATEGORIES;
+        sort($expected);
+        if ($categories !== $expected) {
+            return false;
+        }
+
+        $breakdownSum = array_sum(array_column($budgetBreakdown, 'amount'));
+        $totalEstimate = (float) $plan['totalEstimate'];
+        // Slack absorbs rounding without letting the two numbers drift apart enough to look
+        // obviously inconsistent to a homeowner reading both.
+        $withinTolerance = abs($breakdownSum - $totalEstimate) <= $totalEstimate * 0.2;
+
+        return $withinTolerance;
     }
 
     /**
@@ -176,10 +340,11 @@ class ConstructionPlanService
                         ],
                         'budgetBreakdown' => [
                             'type' => 'array',
+                            'description' => 'Exactly these six categories, each exactly once: '.implode(', ', self::BUDGET_CATEGORIES).'.',
                             'items' => [
                                 'type' => 'object',
                                 'properties' => [
-                                    'category' => ['type' => 'string'],
+                                    'category' => ['type' => 'string', 'enum' => self::BUDGET_CATEGORIES],
                                     'amount' => ['type' => 'number'],
                                 ],
                                 'required' => ['category', 'amount'],
@@ -201,28 +366,13 @@ class ConstructionPlanService
                                 'additionalProperties' => false,
                             ],
                         ],
-                        'equipment' => [
-                            'type' => 'array',
-                            'items' => [
-                                'type' => 'object',
-                                'properties' => [
-                                    'name' => ['type' => 'string'],
-                                    'qty' => ['type' => 'number'],
-                                    'duration' => ['type' => 'string'],
-                                    'cost' => ['type' => 'number'],
-                                    'phase' => ['type' => 'string'],
-                                ],
-                                'required' => ['name', 'qty', 'duration', 'cost', 'phase'],
-                                'additionalProperties' => false,
-                            ],
-                        ],
                         'exteriorConcept' => ['type' => 'string', 'description' => '1-2 sentence exterior design concept'],
                         'interiorConcept' => ['type' => 'string', 'description' => '1-2 sentence interior design concept'],
                         'totalEstimate' => ['type' => 'number'],
                     ],
                     'required' => [
                         'projectTitle', 'location', 'areaSqm', 'floors', 'bedrooms', 'bathrooms', 'designStyle',
-                        'budget', 'timelineMonths', 'phases', 'budgetBreakdown', 'materials', 'equipment',
+                        'budget', 'timelineMonths', 'phases', 'budgetBreakdown', 'materials',
                         'exteriorConcept', 'interiorConcept', 'totalEstimate',
                     ],
                     'additionalProperties' => false,

@@ -27,12 +27,6 @@ export const PROJECTS: {
   { name: "Lim Two-Story House", homeowner: "Lucy Lim", location: "Marikina", budget: 3100000, spent: 2800000, start: "Nov 1, 2025", completion: "Sep 30, 2026", phase: "Final Finishing", progress: 90, schedule: "on-schedule" },
 ];
 
-export const AVAILABLE_PROJECTS = [
-  { name: "Reyes Family Residence", location: "Antipolo, Rizal", type: "Residential", description: "3-bedroom modern house, 110 sqm, 2 floors. Requires earthquake-resistant design.", budget: "₱2,100,000", start: "Oct 1, 2026", target: "May 31, 2027", duration: "8 months", workers: "1 Foreman, 3 Carpenters, 3 Masons, 8 Laborers", ai: true },
-  { name: "Mercado Restaurant Build-out", location: "Pasig City", type: "Commercial", description: "Full restaurant build-out on ground floor of a commercial space. 80 sqm, complete MEP works.", budget: "₱1,400,000", start: "Sep 20, 2026", target: "Jan 31, 2027", duration: "4.5 months", workers: "1 Foreman, 2 Carpenters, 2 Masons, 1 Electrician, 1 Plumber, 6 Laborers", ai: false },
-  { name: "Cruz Apartment Complex", location: "Cavite City", type: "Residential", description: "4-unit apartment building, 3 stories. Separate meters, common areas.", budget: "₱5,800,000", start: "Nov 1, 2026", target: "Dec 31, 2027", duration: "14 months", workers: "2 Foremans, 6 Carpenters, 5 Masons, 2 Electricians, 2 Plumbers, 15 Laborers", ai: true },
-];
-
 export const PHASES = ["Foundation", "Structural Works", "Walls & Masonry", "Roofing", "Electrical", "Plumbing", "Finishing"];
 
 export const EQUIPMENT_SCHEDULE: {
