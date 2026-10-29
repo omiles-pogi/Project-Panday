@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['user_id', 'title', 'location', 'status', 'budget', 'total_estimate', 'timeline_months', 'started_at'])]
+#[Fillable(['user_id', 'title', 'location', 'status', 'budget', 'total_estimate', 'timeline_months', 'started_at', 'ai_materials'])]
 class Project extends Model
 {
     public const STATUSES = ['active', 'completed'];
@@ -17,6 +17,7 @@ class Project extends Model
     {
         return [
             'started_at' => 'date',
+            'ai_materials' => 'array',
         ];
     }
 

@@ -71,8 +71,10 @@ function summarizePlan(plan: ConstructionPlan): string {
   const phaseNames = plan.phases.map((p) => p.name).join(", ");
   return (
     `Plan: ${plan.projectTitle}${location} — ${plan.floors} floor(s), ${plan.bedrooms}BR/${plan.bathrooms}BA, ` +
-    `${plan.areaSqm} sqm, ${plan.designStyle} style. Budget ₱${plan.budget.toLocaleString()}, ` +
-    `estimate ₱${plan.totalEstimate.toLocaleString()}, timeline ${plan.timelineMonths} months. Phases: ${phaseNames}.`
+    `${plan.areaSqm} sqm, ${plan.designStyle} style. ` +
+    // Labeled explicitly so the AI never confuses the homeowner's budget with its own estimate.
+    `Homeowner's budget: ${plan.budget > 0 ? `₱${plan.budget.toLocaleString()}` : "not stated yet"}; ` +
+    `AI cost estimate: ₱${plan.totalEstimate.toLocaleString()}; timeline ${plan.timelineMonths} months. Phases: ${phaseNames}.`
   );
 }
 

@@ -27,6 +27,13 @@ class StoreProjectRequest extends FormRequest
             'phases.*.percentComplete' => ['required', 'numeric', 'min:0', 'max:100'],
             'phases.*.tasks' => ['nullable', 'array'],
             'phases.*.tasks.*' => ['string', 'max:255'],
+            // Optional — saved so the assigned contractor can import it into a material request.
+            'materials' => ['nullable', 'array', 'max:200'],
+            'materials.*.material' => ['required', 'string', 'max:255'],
+            'materials.*.category' => ['nullable', 'string', 'max:100'],
+            'materials.*.qty' => ['required', 'numeric', 'min:0', 'max:100000000'],
+            'materials.*.unit' => ['required', 'string', 'max:50'],
+            'materials.*.unitPrice' => ['required', 'numeric', 'min:0', 'max:100000000'],
         ];
     }
 }

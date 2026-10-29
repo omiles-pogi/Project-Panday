@@ -12,7 +12,7 @@ export default function BriefPrompt() {
     return (
       <View className="rounded-xl p-6 items-center bg-card border border-border">
         <Ionicons name="chatbubble-ellipses-outline" size={28} color="#f59e0b" style={{ marginBottom: 8 }} />
-        <Text className="font-bold mb-3 text-foreground text-base text-center">Pandy says:</Text>
+        <Text className="font-bold mb-3 text-foreground text-base text-center">PandAi says:</Text>
         <Text className="text-sm mb-3 text-muted-foreground">{lastAssistantMessage}</Text>
         <TextInput
           value={reply}

@@ -5,6 +5,7 @@ import { usePlan } from "@/context/PlanContext";
 import BriefPrompt from "@/components/BriefPrompt";
 import { KeyboardView } from "@/components/ui";
 import { budgetCategoryMeta } from "@/utils/budgetCategories";
+import { BUDGET_STATUS_META, compareBudget, formatBudget } from "@/utils/budget";
 
 export default function BudgetGenerator() {
   const { plan, loading, send } = usePlan();
@@ -31,14 +32,8 @@ export default function BudgetGenerator() {
 
   const budgetItems = plan.budgetBreakdown.map((b) => ({ ...b, ...budgetCategoryMeta(b.category) }));
   const total = budgetItems.reduce((s, b) => s + b.amount, 0) || plan.totalEstimate;
-  const buffer = plan.budget - plan.totalEstimate;
-  const status = buffer > plan.budget * 0.05 ? "within" : buffer >= 0 ? "near" : "over";
-  const statusMap = {
-    within: { label: "WITHIN BUDGET", color: "#10b981" },
-    near: { label: "NEAR BUDGET LIMIT", color: "#f59e0b" },
-    over: { label: "OVER BUDGET", color: "#ef4444" },
-  } as const;
-  const s = statusMap[status];
+  const cmp = compareBudget(plan.budget, plan.totalEstimate);
+  const s = BUDGET_STATUS_META[cmp.status];
 
   return (
     <ScrollView
@@ -67,23 +62,36 @@ export default function BudgetGenerator() {
 
       {/* Summary */}
       <View style={{ gap: 10 }}>
-        <SummaryTile label="Allowable Budget" value={`₱${plan.budget.toLocaleString()}`} note="Set by homeowner" color="#f0f2f5" />
         <SummaryTile
-          label="AI Estimated Budget"
+          label="Your Budget"
+          value={formatBudget(plan.budget)}
+          note={cmp.hasBudget ? "What you said you can spend" : 'Tell PandAi your budget, e.g. "my budget is ₱2.5M"'}
+          color="#f0f2f5"
+        />
+        <SummaryTile
+          label="AI Cost Estimate"
           value={`₱${plan.totalEstimate.toLocaleString()}`}
-          note="AI recommendation"
+          note="PandAi's independent estimate for this scope"
           color="#f59e0b"
         />
-        <SummaryTile label="Budget Buffer" value={`₱${buffer.toLocaleString()}`} note={s.label} color={s.color} />
+        {cmp.hasBudget && (
+          <SummaryTile
+            label={cmp.difference >= 0 ? "Left Over" : "Shortfall"}
+            value={`₱${Math.abs(cmp.difference).toLocaleString()}`}
+            note={s.label}
+            color={s.color}
+          />
+        )}
       </View>
 
-      {/* Comparison */}
+      {/* Comparison — only meaningful once the homeowner has a budget to compare against */}
+      {cmp.hasBudget && (
       <View className="rounded-xl p-5 bg-card border border-border">
         <Text className="font-semibold text-sm mb-4 text-foreground">Budget Comparison</Text>
         <View style={{ gap: 12 }}>
           <View>
             <View className="flex-row justify-between mb-1.5">
-              <Text className="text-xs text-muted-foreground">Allowable Budget</Text>
+              <Text className="text-xs text-muted-foreground">Your Budget</Text>
               <Text className="text-xs text-muted-foreground">₱{plan.budget.toLocaleString()}</Text>
             </View>
             <View className="h-3 rounded-full" style={{ backgroundColor: "#f0f2f510" }}>
@@ -100,15 +108,16 @@ export default function BudgetGenerator() {
             <View className="h-3 rounded-full" style={{ backgroundColor: "#f0f2f510" }}>
               <View
                 className="h-full rounded-full"
-                style={{ width: `${Math.min((plan.totalEstimate / plan.budget) * 100, 100)}%`, backgroundColor: "#f59e0b" }}
+                style={{ width: `${Math.min(cmp.pctOfBudget ?? 0, 100)}%`, backgroundColor: "#f59e0b" }}
               />
             </View>
           </View>
         </View>
         <Text className="mt-3 text-xs text-muted-foreground">
-          AI estimate is {((plan.totalEstimate / plan.budget) * 100).toFixed(1)}% of your allowable budget — {s.label.toLowerCase()}.
+          PandAi&apos;s estimate is {(cmp.pctOfBudget ?? 0).toFixed(1)}% of your budget — {s.label.toLowerCase()}.
         </Text>
       </View>
+      )}
 
       {/* Distribution */}
       <View className="rounded-xl p-5 bg-card border border-border">

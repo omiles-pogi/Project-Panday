@@ -19,6 +19,7 @@ function timeAgo(iso: string): string {
 }
 
 const ICON: Record<NotificationType, IconName> = {
+  new_message: "chatbubble-ellipses-outline",
   worker_invite: "person-add-outline",
   worker_invite_response: "checkmark-done-outline",
   worker_application: "document-text-outline",
@@ -27,6 +28,19 @@ const ICON: Record<NotificationType, IconName> = {
   contractor_invite_response: "checkmark-done-outline",
   contractor_application: "document-text-outline",
   contractor_application_decision: "checkmark-done-outline",
+  material_request_submitted: "clipboard-outline",
+  material_request_approved: "checkmark-circle-outline",
+  material_request_revision: "create-outline",
+  material_request_rejected: "close-circle-outline",
+  material_request_cancelled: "close-circle-outline",
+  material_request_completed: "checkmark-done-circle-outline",
+  supplier_order_received: "cube-outline",
+  supplier_order_confirmed: "checkmark-circle-outline",
+  supplier_price_confirmation: "pricetag-outline",
+  supplier_order_unavailable: "alert-circle-outline",
+  supplier_order_status: "car-outline",
+  supplier_order_cancelled: "close-circle-outline",
+  supplier_order_received_by_contractor: "checkmark-done-outline",
 };
 
 // Only these carry a pending request that this viewer can act on directly from the panel.
@@ -49,8 +63,35 @@ export default function NotificationsPanel({ visible, onClose }: { visible: bool
 
   const goToRelated = (n: AppNotification) => {
     if (!n.isRead) markRead(n.id).catch(() => undefined);
+    if (!user) return;
+
+    if (n.type === "new_message" && n.data.conversationId) {
+      onClose();
+      const conversationId = n.data.conversationId;
+      if (user.role === "homeowner") {
+        router.push(`/homeowner/messages/${conversationId}` as never);
+      } else if (user.role === "contractor" || user.role === "worker") {
+        router.push(`/${user.role}/chat/${conversationId}` as never);
+      }
+      return;
+    }
+
+    // Material workflow: open the request (homeowner/contractor) or the supplier's own order.
+    const materialRequestId = n.data.materialRequestId;
+    if (materialRequestId) {
+      onClose();
+      if (user.role === "supplier") {
+        router.push(`/supplier/orders${n.data.supplierOrderId ? `?orderId=${n.data.supplierOrderId}` : ""}` as never);
+      } else if (user.role === "homeowner") {
+        router.push(`/homeowner/approvals/${materialRequestId}` as never);
+      } else if (user.role === "contractor") {
+        router.push(`/contractor/material-request/${materialRequestId}` as never);
+      }
+      return;
+    }
+
     const projectId = n.data.projectId;
-    if (!projectId || !user) return;
+    if (!projectId) return;
     onClose();
     if (user.role === "homeowner") {
       router.push(`/homeowner?projectId=${projectId}` as never);

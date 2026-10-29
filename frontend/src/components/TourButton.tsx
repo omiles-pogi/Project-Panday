@@ -2,7 +2,7 @@ import { Pressable, Text, View } from "react-native";
 import Mascot from "@/components/Mascot";
 import { useTour } from "@/context/TourContext";
 
-// "Take a tour with Pandy" row for the More screens.
+// "Take a tour with PandAi" row for the More screens.
 export default function TourButton() {
   const { openTour } = useTour();
   return (
@@ -12,7 +12,7 @@ export default function TourButton() {
     >
       <Mascot size={36} />
       <View className="flex-1">
-        <Text className="text-sm font-semibold text-foreground">Take a tour with Pandy</Text>
+        <Text className="text-sm font-semibold text-foreground">Take a tour with PandAi</Text>
         <Text className="text-xs text-muted-foreground">A quick guide to how everything works</Text>
       </View>
     </Pressable>

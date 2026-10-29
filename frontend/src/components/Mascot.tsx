@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Animated, Easing, Platform } from "react-native";
 import Svg, { Circle, Ellipse, G, Path, Rect } from "react-native-svg";
 
-// "Pandy" — the AI chat's builder-bot: a round little robot in an orange hard hat.
+// "PandAi" — the AI chat's builder-bot: a round little robot in an orange hard hat.
 // mood "thinking" swaps in a wondering face and a gentle bob while the AI works.
 export type MascotMood = "happy" | "thinking" | "sad";
 
@@ -37,7 +37,7 @@ export default function Mascot({
 
   return (
     <Animated.View style={{ width: size, height: size, transform: [{ translateY: lift }] }}>
-      <Svg width={size} height={size} viewBox="0 0 120 120" accessibilityLabel="Pandy the AI assistant">
+      <Svg width={size} height={size} viewBox="0 0 120 120" accessibilityLabel="PandAi the AI assistant">
         {/* soft ground shadow */}
         <Ellipse cx="60" cy="112" rx="30" ry="4" fill="#000" opacity={0.25} />
 

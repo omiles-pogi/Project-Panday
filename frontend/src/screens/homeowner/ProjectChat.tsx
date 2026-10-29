@@ -14,6 +14,7 @@ import type { ChatHistoryMessage } from "@/services/ai/client";
 import type { ConstructionPlan } from "@/types/plan";
 import { budgetCategoryMeta } from "@/utils/budgetCategories";
 import { peso } from "@/utils/currency";
+import { compareBudget } from "@/utils/budget";
 import { createProject } from "@/services/api/projects";
 import Mascot from "@/components/Mascot";
 import KeyboardView from "@/components/KeyboardView";
@@ -89,7 +90,7 @@ function PlanCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => void
   // Every item starts approved — tapping a tile disapproves it (and tapping again re-approves),
   // so "what's left to review" is whatever the homeowner has actively flagged, not everything.
   const [disapproved, setDisapproved] = useState<Record<string, boolean>>({});
-  const buffer = plan.budget - plan.totalEstimate;
+  const cmp = compareBudget(plan.budget, plan.totalEstimate);
   const materialsTotal = plan.materials.reduce((s, m) => s + m.qty * m.unitPrice, 0);
   const phaseNames = plan.phases.map((p) => p.name);
   // Bounded summaries instead of joining a whole (potentially long) list into one line — the raw
@@ -98,7 +99,17 @@ function PlanCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => void
     phaseNames.length > 2 ? `${phaseNames.slice(0, 2).join(", ")} +${phaseNames.length - 2} more` : phaseNames.join(", ");
   const items: { icon: IconName; title: string; value: string; detail: string; color: string }[] = [
     { icon: "calendar-outline", title: "Timeline", value: `${plan.timelineMonths} months`, detail: `${plan.phases.length} phases planned`, color: "#3b82f6" },
-    { icon: "wallet-outline", title: "AI Budget Estimate", value: peso(plan.totalEstimate), detail: buffer >= 0 ? `Within budget · ${peso(buffer)} buffer` : `Over budget by ${peso(Math.abs(buffer))}`, color: "#f59e0b" },
+    {
+      icon: "wallet-outline",
+      title: "AI Cost Estimate",
+      value: peso(plan.totalEstimate),
+      detail: !cmp.hasBudget
+        ? "You haven't set a budget yet"
+        : cmp.difference >= 0
+          ? `Your budget ${peso(plan.budget)} · ${peso(cmp.difference)} to spare`
+          : `Your budget ${peso(plan.budget)} · short by ${peso(-cmp.difference)}`,
+      color: "#f59e0b",
+    },
     { icon: "layers-outline", title: "Key Materials", value: `${plan.materials.length} material types`, detail: `Est. ${peso(materialsTotal)} total`, color: "#10b981" },
     { icon: "home-outline", title: "Design", value: plan.designStyle, detail: `${plan.bedrooms}BR / ${plan.bathrooms}BA · ${plan.areaSqm} sqm`, color: "#8b5cf6" },
     { icon: "git-branch-outline", title: "Phases", value: `${plan.phases.length} phases`, detail: phasesDetail, color: "#06b6d4" },
@@ -179,7 +190,8 @@ function PlanCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => void
 function BudgetCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => void }) {
   const { chrome } = useTheme();
   const total = plan.budgetBreakdown.reduce((s, b) => s + b.amount, 0) || plan.totalEstimate;
-  const buffer = plan.budget - plan.totalEstimate;
+  const cmp = compareBudget(plan.budget, plan.totalEstimate);
+  const millions = (n: number) => `₱${(n / 1000000).toFixed(2)}M`;
 
   return (
     <CardShell>
@@ -189,9 +201,15 @@ function BudgetCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => vo
       <View className="p-4">
         <View className="flex-row gap-2 mb-4">
           {[
-            { label: "Your Budget", value: `₱${(plan.budget / 1000000).toFixed(2)}M`, color: chrome.mutedForeground },
-            { label: "AI Estimate", value: `₱${(plan.totalEstimate / 1000000).toFixed(2)}M`, color: "#f59e0b" },
-            { label: "Buffer", value: `${buffer >= 0 ? "₱" : "-₱"}${Math.abs(buffer / 1000).toFixed(0)}K`, color: buffer >= 0 ? "#10b981" : "#ef4444" },
+            { label: "Your Budget", value: cmp.hasBudget ? millions(plan.budget) : "Not set", color: chrome.mutedForeground },
+            { label: "AI Estimate", value: millions(plan.totalEstimate), color: "#f59e0b" },
+            cmp.hasBudget
+              ? {
+                  label: cmp.difference >= 0 ? "To Spare" : "Short By",
+                  value: `₱${Math.abs(cmp.difference / 1000).toFixed(0)}K`,
+                  color: cmp.difference >= 0 ? "#10b981" : "#ef4444",
+                }
+              : { label: "Difference", value: "—", color: chrome.mutedForeground },
           ].map(({ label, value, color }) => (
             <View key={label} className="flex-1 p-3 rounded-xl items-center bg-muted">
               <Text className="text-xs mb-1 text-muted-foreground" numberOfLines={1}>
@@ -392,7 +410,16 @@ type ResolvedStage = ApprovalStage;
 
 const STAGE_TEXT: Record<ResolvedStage, (p: ConstructionPlan) => string> = {
   plan: (p) => `Here's your construction plan for ${p.projectTitle}. Review each section below, or approve everything at once.`,
-  budget: (p) => `Budget breakdown ready. Your ₱${(p.budget / 1000000).toFixed(2)}M budget ${p.budget >= p.totalEstimate ? `comfortably covers the ₱${(p.totalEstimate / 1000000).toFixed(2)}M estimate` : `is below the ₱${(p.totalEstimate / 1000000).toFixed(2)}M estimate — you may want to adjust scope`}.`,
+  budget: (p) => {
+    const estimate = `₱${(p.totalEstimate / 1000000).toFixed(2)}M`;
+    if (!(p.budget > 0)) {
+      return `Budget breakdown ready. My estimate for this scope is ${estimate}. Tell me your budget (e.g. "my budget is ₱2.5M") and I'll compare it.`;
+    }
+    const yours = `₱${(p.budget / 1000000).toFixed(2)}M`;
+    return p.budget >= p.totalEstimate
+      ? `Budget breakdown ready. Your budget of ${yours} covers my ${estimate} estimate.`
+      : `Budget breakdown ready. Your budget of ${yours} is below my ${estimate} estimate — you may want to adjust the scope or the budget.`;
+  },
   materials: () => "Material estimates below, based on current market prices.",
   summary: (p) => `All sections approved. Your construction plan for ${p.projectTitle} is ready — next, find contractors who'll receive it.`,
 };
@@ -617,7 +644,7 @@ export default function ProjectChat() {
         {showSuggestions && (
           <View className="items-center mb-5">
             <Mascot size={110} />
-            <Text className="text-lg font-extrabold text-foreground mt-2">Hi, I&apos;m Pandy!</Text>
+            <Text className="text-lg font-extrabold text-foreground mt-2">Hi, I&apos;m PandAi!</Text>
             <Text className="text-xs text-muted-foreground mt-0.5">Your AI construction buddy</Text>
           </View>
         )}

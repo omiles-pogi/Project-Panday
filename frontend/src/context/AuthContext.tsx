@@ -24,7 +24,7 @@ interface AuthContextValue {
   status: AuthStatus;
   user: AuthUser | null;
   error: string | null;
-  /** An account that exists but is waiting for admin approval (drives Pandy's waiting screen). */
+  /** An account that exists but is waiting for admin approval (drives PandAi's waiting screen). */
   pending: PendingAccount | null;
   /** Leave the waiting screen; pass an email to pre-fill it on the sign-in page. */
   clearPending: (prefillEmail?: string) => void;
@@ -118,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const res = await registerRequest(fields);
         if (!("token" in res)) {
-          // Needs admin approval first: hand over to Pandy's waiting screen, which polls
+          // Needs admin approval first: hand over to PandAi's waiting screen, which polls
           // for the decision. Credentials stay in memory only.
           setPending({ name: fields.name, email: fields.email, password: fields.password });
           return;

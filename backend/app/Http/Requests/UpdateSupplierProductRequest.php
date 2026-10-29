@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests;
 
+use App\Models\SupplierProduct;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateSupplierProductRequest extends FormRequest
 {
@@ -18,12 +20,13 @@ class UpdateSupplierProductRequest extends FormRequest
     {
         return [
             'name' => ['sometimes', 'string', 'max:150'],
-            'category' => ['sometimes', 'string', 'max:50'],
+            'category' => ['sometimes', 'string', Rule::in(SupplierProduct::CATEGORIES)],
+            'description' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'unit' => ['sometimes', 'string', 'max:30'],
-            'price' => ['sometimes', 'integer', 'min:1'],
-            'stock' => ['sometimes', 'integer', 'min:0'],
-            'min_order' => ['sometimes', 'integer', 'min:1'],
-            'available' => ['sometimes', 'boolean'],
+            'price' => ['sometimes', 'integer', 'min:1', 'max:100000000'],
+            'stock' => ['sometimes', 'integer', 'min:0', 'max:100000000'],
+            'min_order' => ['sometimes', 'integer', 'min:1', 'max:100000000'],
+            'is_active' => ['sometimes', 'boolean'],
         ];
     }
 }

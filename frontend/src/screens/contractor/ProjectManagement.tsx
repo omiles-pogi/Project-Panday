@@ -1,9 +1,11 @@
 import { useCallback, useState } from "react";
 import { Text, View, Pressable, ActivityIndicator } from "react-native";
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Card, Field, PageHeader, Screen } from "@/components/ui";
+import MessageButton from "@/components/MessageButton";
 import { addPhaseTask, deletePhaseTask, fetchMyProjects, togglePhaseTask } from "@/services/api/projects";
+import { createMaterialRequest } from "@/services/api/materialRequests";
 import type { MyProject } from "@/types/project";
 import { peso } from "@/utils/currency";
 
@@ -122,6 +124,34 @@ function PhaseChecklist({
   );
 }
 
+/** Starts a draft material request for this project and opens it in the editor. */
+function CreateMaterialRequestButton({ projectId }: { projectId: number }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const create = () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    createMaterialRequest(projectId)
+      .then((r) => router.push(`/contractor/material-request/${r.id}` as never))
+      .catch((err) => setError(err instanceof Error ? err.message : "Could not create the request."))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <View style={{ gap: 4 }}>
+      <Pressable onPress={create} className="flex-row items-center gap-1.5 px-4 py-2.5 rounded-xl" style={{ backgroundColor: "#f59e0b20" }}>
+        {busy ? <ActivityIndicator size="small" color="#f59e0b" /> : <Ionicons name="clipboard-outline" size={16} color="#f59e0b" />}
+        <Text className="text-xs font-semibold" style={{ color: "#f59e0b" }}>
+          Create Material Request
+        </Text>
+      </Pressable>
+      {error && <Text className="text-xs text-danger">{error}</Text>}
+    </View>
+  );
+}
+
 function ProjectCard({
   project,
   onChanged,
@@ -167,6 +197,20 @@ function ProjectCard({
           <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={14} color="#f59e0b" />
         </View>
       </Pressable>
+
+      <View className="mt-2 flex-row flex-wrap gap-2">
+        <MessageButton projectId={project.id} chatPath={(id) => `/contractor/chat/${id}`} label="Message Homeowner" />
+        {project.workers.map((worker) => (
+          <MessageButton
+            key={worker.id}
+            projectId={project.id}
+            workerId={worker.id}
+            chatPath={(id) => `/contractor/chat/${id}`}
+            label={`Message ${worker.name}`}
+          />
+        ))}
+        <CreateMaterialRequestButton projectId={project.id} />
+      </View>
 
       {expanded && (
         <View style={{ gap: 10 }} className="mt-2">

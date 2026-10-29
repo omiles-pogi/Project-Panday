@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\SupplierProduct;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Validation\ValidationException;
 
 class SupplierProductService
@@ -31,6 +33,14 @@ class SupplierProductService
     public function update(SupplierProduct $product, User $actingUser, array $data): SupplierProduct
     {
         $this->authorizeOwner($product, $actingUser);
+
+        // Reserved units are already promised to confirmed orders — on-hand can't drop below them.
+        if (isset($data['stock']) && $data['stock'] < $product->reserved) {
+            throw ValidationException::withMessages([
+                'stock' => "{$product->reserved} {$product->unit} are reserved for confirmed orders, so stock cannot be set below that.",
+            ]);
+        }
+
         $product->update($data);
 
         return $product;
@@ -39,7 +49,55 @@ class SupplierProductService
     public function delete(SupplierProduct $product, User $actingUser): void
     {
         $this->authorizeOwner($product, $actingUser);
+
+        if ($product->reserved > 0) {
+            throw ValidationException::withMessages([
+                'product_id' => 'This material has stock reserved for confirmed orders. Deactivate it instead, or finish those orders first.',
+            ]);
+        }
+
         $product->delete();
+    }
+
+    /**
+     * The homeowner/contractor material catalog: every listed product across suppliers, with the
+     * supplier's public details. In-stock items sort first; out-of-stock ones stay visible so
+     * buyers can see the item exists, flagged as unavailable.
+     *
+     * Capped at 200 rows — search/filters narrow it down, and an unbounded list would only slow
+     * the phone down.
+     *
+     * @param  array{search?: ?string, category?: ?string, stock?: ?string}  $filters
+     * @return Collection<int, SupplierProduct>
+     */
+    public function catalog(array $filters): Collection
+    {
+        $search = trim((string) ($filters['search'] ?? ''));
+        $stock = $filters['stock'] ?? null;
+
+        return SupplierProduct::query()
+            ->listed()
+            ->with('supplier:id,name,business_name')
+            ->when($search !== '', fn (Builder $q) => $q->where('name', 'like', '%'.addcslashes($search, '%_\\').'%'))
+            ->when($filters['category'] ?? null, fn (Builder $q, string $category) => $q->where('category', $category))
+            // Compared column-to-column (not `stock - reserved`) so MySQL never evaluates an unsigned
+            // subtraction; "in stock" means available-to-promise > 0.
+            ->when($stock === 'in_stock', fn (Builder $q) => $q->whereColumn('stock', '>', 'reserved'))
+            ->when($stock === 'out_of_stock', fn (Builder $q) => $q->whereColumn('stock', '<=', 'reserved'))
+            ->orderByRaw('CASE WHEN stock > reserved THEN 0 ELSE 1 END')
+            ->orderBy('name')
+            ->limit(200)
+            ->get();
+    }
+
+    /** A single catalog listing — 404s for a deactivated listing or an unapproved supplier. */
+    public function catalogItem(SupplierProduct $product): SupplierProduct
+    {
+        if (! SupplierProduct::query()->listed()->whereKey($product->id)->exists()) {
+            throw (new ModelNotFoundException)->setModel(SupplierProduct::class, [$product->id]);
+        }
+
+        return $product->load('supplier:id,name,business_name');
     }
 
     private function authorizeOwner(SupplierProduct $product, User $actingUser): void
@@ -50,7 +108,7 @@ class SupplierProductService
     }
 
     /**
-     * A compact, prompt-ready list of real current supplier prices — the cheapest available listing
+     * A compact, prompt-ready list of real current supplier prices — the cheapest active listing
      * per distinct product name, across every supplier. Feeds the AI material estimator so
      * materials[].unitPrice is grounded in actual marketplace prices where one exists, instead of
      * an always-guessed figure.
@@ -61,9 +119,9 @@ class SupplierProductService
     public function pricingContextForPrompt(): string
     {
         $cheapestPerName = SupplierProduct::query()
-            ->where('available', true)
+            ->where('is_active', true)
             ->orderBy('price')
-            ->get(['name', 'unit', 'price'])
+            ->get(['name', 'unit', 'price', 'stock'])
             ->unique(fn (SupplierProduct $p) => mb_strtolower(trim($p->name)))
             ->take(80);
 

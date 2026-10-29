@@ -8,8 +8,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { deleteProject, fetchDashboard, fetchMyHomeownerProjects } from "@/services/api/projects";
 import type { DashboardData, ProjectSummary } from "@/types/project";
 import { peso } from "@/utils/currency";
+import { compareBudget, formatBudget } from "@/utils/budget";
 import { usePlan } from "@/context/PlanContext";
 import Mascot from "@/components/Mascot";
+import MessageButton from "@/components/MessageButton";
 
 const QUICK_ACTIONS = [
   { label: "AI Plan", icon: "sparkles-outline", href: "/homeowner/project-chat" },
@@ -24,7 +26,7 @@ function progressLabel(pct: number): { label: string; color: string } {
   return { label: "JUST STARTED", color: "#9ca3af" };
 }
 
-/* DELETE CONFIRMATION — Pandy reacts (sad, bobbing) instead of a plain system alert, to match
+/* DELETE CONFIRMATION — PandAi reacts (sad, bobbing) instead of a plain system alert, to match
  * the AI chat's own card styling (dark card, amber primary) rather than the OS's native dialog. */
 function DeleteProjectModal({
   project,
@@ -88,7 +90,7 @@ function NewProjectModal({ visible, onCancel, onConfirm }: { visible: boolean; o
           <Mascot size={88} mood="happy" bob />
           <Text className="text-base font-extrabold mt-3 text-foreground">Start a new project?</Text>
           <Text className="text-xs text-center mt-2 leading-5 text-muted-foreground">
-            This clears your current AI conversation so Pandy can help you plan something new. Any project
+            This clears your current AI conversation so PandAi can help you plan something new. Any project
             you&apos;ve already finalized stays saved on your dashboard.
           </Text>
           <View className="flex-row gap-2 mt-5 w-full">
@@ -365,12 +367,20 @@ export default function Dashboard() {
 
   const pct = project.overallProgressPct;
   const status = progressLabel(pct);
-  const remaining = project.budget - project.totalEstimate;
+  const cmp = compareBudget(project.budget, project.totalEstimate);
 
   const budgetPills = [
-    { label: "Your Budget", value: peso(project.budget), color: "#9ca3af" },
+    { label: "Your Budget", value: formatBudget(project.budget), color: "#9ca3af" },
     { label: "AI Estimate", value: peso(project.totalEstimate), color: "#f59e0b" },
-    { label: "Remaining", value: peso(remaining), color: remaining >= 0 ? "#10b981" : "#ef4444" },
+    ...(cmp.hasBudget
+      ? [
+          {
+            label: cmp.difference >= 0 ? "Left Over" : "Short By",
+            value: peso(Math.abs(cmp.difference)),
+            color: cmp.difference >= 0 ? "#10b981" : "#ef4444",
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -500,6 +510,13 @@ export default function Dashboard() {
                   <Text className="text-xs font-medium text-foreground">{c.companyName || c.name}</Text>
                   <Text className="text-xs text-muted-foreground">{c.specialization || "Contractor"}</Text>
                 </View>
+                <MessageButton
+                  compact
+                  projectId={project.id}
+                  contractorId={c.id}
+                  chatPath={(id) => `/homeowner/messages/${id}`}
+                  label={`Message ${c.companyName || c.name}`}
+                />
               </View>
             ))}
             {project.workers.map((w) => (
@@ -509,6 +526,13 @@ export default function Dashboard() {
                   <Text className="text-xs font-medium text-foreground">{w.name}</Text>
                   <Text className="text-xs text-muted-foreground">{w.trade || "Worker"}</Text>
                 </View>
+                <MessageButton
+                  compact
+                  projectId={project.id}
+                  workerId={w.id}
+                  chatPath={(id) => `/homeowner/messages/${id}`}
+                  label={`Message ${w.name}`}
+                />
               </View>
             ))}
           </View>

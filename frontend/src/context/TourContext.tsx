@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSegments } from "expo-router";
-import PandyTour from "@/components/PandyTour";
+import PandAiTour from "@/components/PandAiTour";
 import { useAuth } from "@/context/AuthContext";
 import { tokenStorage } from "@/utils/tokenStorage";
 import type { Role } from "@/types/auth";
@@ -8,7 +8,7 @@ import type { Role } from "@/types/auth";
 const TOUR_ROLES: Role[] = ["homeowner", "contractor", "supplier", "worker"];
 
 interface TourContextValue {
-  /** Replay Pandy's tour for the role section the user is currently in. */
+  /** Replay PandAi's tour for the role section the user is currently in. */
   openTour: () => void;
 }
 
@@ -16,7 +16,7 @@ const TourContext = createContext<TourContextValue>({ openTour: () => {} });
 
 export const useTour = () => useContext(TourContext);
 
-// Shows Pandy's tour automatically the first time each user enters a role section,
+// Shows PandAi's tour automatically the first time each user enters a role section,
 // and lets any screen replay it via useTour().openTour().
 export function TourProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -48,7 +48,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
   return (
     <TourContext.Provider value={value}>
       {children}
-      {role ? <PandyTour key={role} role={role} visible={visible} onClose={close} /> : null}
+      {role ? <PandAiTour key={role} role={role} visible={visible} onClose={close} /> : null}
     </TourContext.Provider>
   );
 }

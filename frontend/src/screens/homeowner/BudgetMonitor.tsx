@@ -7,15 +7,8 @@ import { fetchDashboard } from "@/services/api/projects";
 import { usePlan } from "@/context/PlanContext";
 import { budgetCategoryMeta } from "@/utils/budgetCategories";
 import { peso } from "@/utils/currency";
+import { BUDGET_STATUS_META, compareBudget, formatBudget } from "@/utils/budget";
 import type { DashboardProject } from "@/types/project";
-
-type Status = "within" | "near" | "over";
-
-const STATUS_META: Record<Status, { label: string; color: string }> = {
-  within: { label: "WITHIN BUDGET", color: "#10b981" },
-  near: { label: "NEAR BUDGET LIMIT", color: "#f59e0b" },
-  over: { label: "OVER BUDGET", color: "#ef4444" },
-};
 
 export default function BudgetMonitor() {
   const { plan, selectProject } = usePlan();
@@ -88,9 +81,9 @@ export default function BudgetMonitor() {
     );
   }
 
-  const buffer = project.budget - project.totalEstimate;
-  const status: Status = buffer > project.budget * 0.05 ? "within" : buffer >= 0 ? "near" : "over";
-  const statusMeta = STATUS_META[status];
+  const cmp = compareBudget(project.budget, project.totalEstimate);
+  const buffer = cmp.difference;
+  const statusMeta = BUDGET_STATUS_META[cmp.status];
   // The only real signal available for "how much of the budget is likely used" — there's no
   // actual expense tracking yet (see the Expenses screen), so this is explicitly labeled as an
   // estimate derived from completed work, not a recorded figure.
@@ -114,14 +107,16 @@ export default function BudgetMonitor() {
           </Text>
         </View>
         <StatGrid>
-          <StatTile label="Your Budget" value={peso(project.budget)} color="#9ca3af" icon="wallet-outline" />
+          <StatTile label="Your Budget" value={formatBudget(project.budget)} color="#9ca3af" icon="wallet-outline" />
           <StatTile label="AI Estimate" value={peso(project.totalEstimate)} color="#f59e0b" icon="sparkles-outline" />
-          <StatTile
-            label={buffer >= 0 ? "Buffer" : "Over By"}
-            value={peso(Math.abs(buffer))}
-            color={buffer >= 0 ? "#10b981" : "#ef4444"}
-            icon={buffer >= 0 ? "checkmark-circle-outline" : "warning-outline"}
-          />
+          {cmp.hasBudget && (
+            <StatTile
+              label={buffer >= 0 ? "Left Over" : "Short By"}
+              value={peso(Math.abs(buffer))}
+              color={buffer >= 0 ? "#10b981" : "#ef4444"}
+              icon={buffer >= 0 ? "checkmark-circle-outline" : "warning-outline"}
+            />
+          )}
         </StatGrid>
       </Card>
 

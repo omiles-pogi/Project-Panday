@@ -9,6 +9,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { NotificationProvider } from "@/context/NotificationContext";
+import { ChatProvider } from "@/context/ChatContext";
 import ThemeToggle from "@/components/ThemeToggle";
 import NotificationBell from "@/components/NotificationBell";
 import { useAppFonts } from "@/theme/fonts";
@@ -34,8 +35,10 @@ export default function RootLayout() {
         <ThemeProvider>
           <AuthProvider>
             <NotificationProvider>
-              <ThemedChrome />
-              <RootNavigator />
+              <ChatProvider>
+                <ThemedChrome />
+                <RootNavigator />
+              </ChatProvider>
             </NotificationProvider>
           </AuthProvider>
         </ThemeProvider>
@@ -50,7 +53,8 @@ export default function RootLayout() {
 function ThemedChrome() {
   const { mode } = useTheme();
   const { user } = useAuth();
-  const showNotifications = user?.role === "homeowner" || user?.role === "worker" || user?.role === "contractor";
+  const showNotifications =
+    user?.role === "homeowner" || user?.role === "worker" || user?.role === "contractor" || user?.role === "supplier";
   return (
     <>
       <StatusBar style={mode === "dark" ? "light" : "dark"} />

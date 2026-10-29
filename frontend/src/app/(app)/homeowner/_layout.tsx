@@ -18,6 +18,8 @@ export default function HomeownerLayout() {
         <Drawer.Screen name="budget-generator" />
         <Drawer.Screen name="material-estimator" />
         <Drawer.Screen name="marketplace" />
+        <Drawer.Screen name="supplier-catalog" />
+        <Drawer.Screen name="messages" />
         <Drawer.Screen name="equipment-estimator" />
         <Drawer.Screen name="labor-estimator" />
         <Drawer.Screen name="expenses" />

@@ -32,9 +32,10 @@ const NotificationContext = createContext<NotificationContextValue | null>(null)
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { status, user } = useAuth();
-  // Only homeowner/contractor/worker flows create these right now — skip polling for suppliers.
+  // Suppliers get material-order notifications; admins have none.
   const relevant =
-    status === "authed" && (user?.role === "homeowner" || user?.role === "worker" || user?.role === "contractor");
+    status === "authed" &&
+    (user?.role === "homeowner" || user?.role === "worker" || user?.role === "contractor" || user?.role === "supplier");
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);

@@ -6,8 +6,8 @@ import { TOURS } from "@/data/tours";
 import { useTheme } from "@/context/ThemeContext";
 import type { Role } from "@/types/auth";
 
-// Pandy's step-by-step welcome tour, shown as a bottom sheet over the app.
-export default function PandyTour({
+// PandAi's step-by-step welcome tour, shown as a bottom sheet over the app.
+export default function PandAiTour({
   role,
   visible,
   onClose,

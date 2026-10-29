@@ -5,9 +5,13 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ConstructionPlanController;
 use App\Http\Controllers\Api\ContractorController;
 use App\Http\Controllers\Api\ContractorRequestController;
+use App\Http\Controllers\Api\ConversationController;
+use App\Http\Controllers\Api\MaterialCatalogController;
+use App\Http\Controllers\Api\MaterialRequestController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProjectController;
 use App\Http\Controllers\Api\ProjectPhaseTaskController;
+use App\Http\Controllers\Api\SupplierOrderController;
 use App\Http\Controllers\Api\SupplierProductController;
 use App\Http\Controllers\Api\WorkerController;
 use App\Http\Controllers\Api\WorkerRequestController;
@@ -62,6 +66,52 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/supplier-products', [SupplierProductController::class, 'store'])->middleware('role:supplier');
     Route::patch('/supplier-products/{supplierProduct}', [SupplierProductController::class, 'update'])->middleware('role:supplier');
     Route::delete('/supplier-products/{supplierProduct}', [SupplierProductController::class, 'destroy'])->middleware('role:supplier');
+
+    // Read-only material catalog across all suppliers' active listings.
+    Route::middleware('role:homeowner,contractor')->group(function () {
+        Route::get('/materials', [MaterialCatalogController::class, 'index']);
+        Route::get('/materials/{supplierProduct}', [MaterialCatalogController::class, 'show']);
+    });
+
+    // Private project messaging for homeowners, assigned contractors, and assigned workers.
+    Route::middleware('role:homeowner,contractor,worker')->group(function () {
+        Route::get('/conversations', [ConversationController::class, 'index']);
+        Route::get('/conversations/unread-count', [ConversationController::class, 'unreadCount']);
+        Route::post('/conversations', [ConversationController::class, 'store']);
+        Route::get('/conversations/{conversation}', [ConversationController::class, 'show']);
+        Route::get('/conversations/{conversation}/messages', [ConversationController::class, 'messages']);
+        Route::post('/conversations/{conversation}/messages', [ConversationController::class, 'send'])->middleware('throttle:60,1');
+        Route::post('/conversations/{conversation}/read', [ConversationController::class, 'markRead']);
+    });
+
+    // Material workflow: contractor drafts → homeowner approves → suppliers fulfil → contractor receives.
+    Route::middleware('role:homeowner,contractor')->group(function () {
+        Route::get('/material-requests', [MaterialRequestController::class, 'index']);
+        Route::get('/material-requests/{materialRequest}', [MaterialRequestController::class, 'show']);
+        Route::post('/material-requests/{materialRequest}/cancel', [MaterialRequestController::class, 'cancel']);
+        Route::get('/projects/{project}/ai-materials', [MaterialRequestController::class, 'aiSuggestions']);
+    });
+    Route::middleware('role:contractor')->group(function () {
+        Route::post('/material-requests', [MaterialRequestController::class, 'store']);
+        Route::put('/material-requests/{materialRequest}', [MaterialRequestController::class, 'update']);
+        Route::post('/material-requests/{materialRequest}/submit', [MaterialRequestController::class, 'submit']);
+        Route::post('/supplier-orders/{supplierOrder}/receive', [MaterialRequestController::class, 'receive']);
+    });
+    Route::middleware('role:homeowner')->group(function () {
+        Route::post('/material-requests/{materialRequest}/approve', [MaterialRequestController::class, 'approve']);
+        Route::post('/material-requests/{materialRequest}/request-revision', [MaterialRequestController::class, 'requestRevision']);
+        Route::post('/material-requests/{materialRequest}/reject', [MaterialRequestController::class, 'reject']);
+        Route::post('/supplier-orders/{supplierOrder}/confirm-prices', [MaterialRequestController::class, 'confirmPrices']);
+        Route::post('/supplier-orders/{supplierOrder}/decline-prices', [MaterialRequestController::class, 'declinePrices']);
+    });
+    Route::middleware('role:supplier')->group(function () {
+        Route::get('/supplier-orders', [SupplierOrderController::class, 'index']);
+        Route::get('/supplier-orders/{supplierOrder}', [SupplierOrderController::class, 'show']);
+        Route::post('/supplier-orders/{supplierOrder}/confirm', [SupplierOrderController::class, 'confirm']);
+        Route::post('/supplier-orders/{supplierOrder}/insufficient', [SupplierOrderController::class, 'insufficient']);
+        Route::post('/supplier-orders/{supplierOrder}/decline', [SupplierOrderController::class, 'decline']);
+        Route::post('/supplier-orders/{supplierOrder}/status', [SupplierOrderController::class, 'advance']);
+    });
 });
 
 // Web admin portal — only the single configured superadmin account (see EnsurePortalAdmin).

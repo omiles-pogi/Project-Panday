@@ -3,6 +3,7 @@ import { Text, View, Pressable, ActivityIndicator } from "react-native";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Card, PageHeader, Screen } from "@/components/ui";
+import MessageButton from "@/components/MessageButton";
 import { fetchMyProjects } from "@/services/api/projects";
 import type { MyProject } from "@/types/project";
 
@@ -33,6 +34,19 @@ function ProjectCard({ project, initiallyExpanded }: { project: MyProject; initi
           <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={14} color="#f59e0b" />
         </View>
       </Pressable>
+
+      <View className="mt-2" style={{ gap: 8 }}>
+        <MessageButton projectId={project.id} chatPath={(id) => `/worker/chat/${id}`} label="Message Homeowner" />
+        {project.contractors.map((contractor) => (
+          <MessageButton
+            key={contractor.id}
+            projectId={project.id}
+            contractorId={contractor.id}
+            chatPath={(id) => `/worker/chat/${id}`}
+            label={`Message ${contractor.companyName || contractor.name}`}
+          />
+        ))}
+      </View>
 
       {expanded && (
         <View style={{ gap: 10 }} className="mt-2">

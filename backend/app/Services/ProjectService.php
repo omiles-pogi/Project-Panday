@@ -29,6 +29,7 @@ class ProjectService
             'budget' => (int) round($plan['budget']),
             'total_estimate' => (int) round($plan['totalEstimate']),
             'timeline_months' => (int) $plan['timelineMonths'],
+            'ai_materials' => $this->normalizeAiMaterials($plan['materials'] ?? []),
             'started_at' => Carbon::today(),
         ]);
 
@@ -50,6 +51,28 @@ class ProjectService
         }
 
         return $project->load('phases.tasks');
+    }
+
+    /**
+     * Keeps only the fields a material request import needs, so the stored JSON stays small and
+     * predictable regardless of what else the AI plan carried.
+     *
+     * @param  array<int, array<string, mixed>>  $materials
+     * @return array<int, array<string, mixed>>|null
+     */
+    private function normalizeAiMaterials(array $materials): ?array
+    {
+        if ($materials === []) {
+            return null;
+        }
+
+        return array_values(array_map(fn (array $m) => [
+            'material' => (string) $m['material'],
+            'category' => $m['category'] ?? null,
+            'qty' => (float) $m['qty'],
+            'unit' => (string) $m['unit'],
+            'unitPrice' => (float) $m['unitPrice'],
+        ], $materials));
     }
 
     /**

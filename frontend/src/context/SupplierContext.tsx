@@ -1,63 +1,121 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import {
-  INITIAL_BIDS,
-  INITIAL_ORDERS,
-  type BidRequest,
-  type Order,
-  type OrderStatus,
-  type Product,
-} from "@/data/supplier";
+import { INITIAL_BIDS, type BidRequest, type Product, type ProductInput } from "@/data/supplier";
 import {
   createSupplierProduct,
   deleteSupplierProduct,
   fetchMySupplierProducts,
   updateSupplierProduct,
   type SupplierProductDto,
+  type SupplierProductInput,
 } from "@/services/api/supplierProducts";
+import { fetchSupplierOrders } from "@/services/api/materialRequests";
+import type { SupplierOrder } from "@/types/materialRequest";
 
 interface SupplierContextValue {
   bids: BidRequest[];
-  orders: Order[];
+  /** Real material orders routed to this supplier from homeowner-approved requests. */
+  orders: SupplierOrder[];
+  ordersLoading: boolean;
+  ordersError: string | null;
+  reloadOrders: () => void;
+  /** Swaps in the server's copy after an order action, and refreshes inventory (reservations move stock). */
+  replaceOrder: (order: SupplierOrder) => void;
   products: Product[];
+  productsLoading: boolean;
+  productsError: string | null;
+  reloadProducts: () => void;
   submitBid: (id: number, bid: { total: number; deliveryDate: string; paymentTerms: string; notes: string }) => void;
-  updateOrder: (id: string, status: OrderStatus, note: string) => void;
-  updateProduct: (id: number, patch: Partial<Omit<Product, "id">>) => void;
-  addProduct: (product: Omit<Product, "id" | "demand" | "trend">) => void;
-  removeProduct: (id: number) => void;
+  /** Inventory mutations resolve once the backend has saved, and reject with its validation
+   * message — callers show that error instead of the change silently not sticking. */
+  addProduct: (product: ProductInput) => Promise<void>;
+  updateProduct: (id: number, patch: Partial<ProductInput>) => Promise<void>;
+  removeProduct: (id: number) => Promise<void>;
 }
 
 const SupplierContext = createContext<SupplierContextValue | null>(null);
 
-// The backend doesn't track demand/trend analytics yet — these stay cosmetic defaults client-side
-// until that's built; everything else (name/category/unit/price/stock/minOrder/available) is real,
-// persisted data the AI material estimator reads from directly.
 function toProduct(dto: SupplierProductDto): Product {
   return {
     id: dto.id,
     name: dto.name,
     category: dto.category,
+    description: dto.description ?? "",
     unit: dto.unit,
     price: dto.price,
     stock: dto.stock,
+    reserved: dto.reserved,
+    availableQuantity: dto.available_quantity,
     minOrder: dto.min_order,
-    available: dto.available,
-    demand: "Medium",
-    trend: "flat",
+    isActive: dto.is_active,
+    stockStatus: dto.stock_status,
   };
 }
 
-// Bids/orders are still in-memory sample data (no backend yet) — only product pricing/stock is
-// real, since that's what the AI material estimator needs.
+function toInput(patch: Partial<ProductInput>): Partial<SupplierProductInput> {
+  return {
+    ...(patch.name !== undefined ? { name: patch.name } : {}),
+    ...(patch.category !== undefined ? { category: patch.category } : {}),
+    ...(patch.description !== undefined ? { description: patch.description.trim() || null } : {}),
+    ...(patch.unit !== undefined ? { unit: patch.unit } : {}),
+    ...(patch.price !== undefined ? { price: patch.price } : {}),
+    ...(patch.stock !== undefined ? { stock: patch.stock } : {}),
+    ...(patch.minOrder !== undefined ? { min_order: patch.minOrder } : {}),
+    ...(patch.isActive !== undefined ? { is_active: patch.isActive } : {}),
+  };
+}
+
+// Bids are still in-memory sample data (no backend yet) — inventory and orders are real and persisted.
 export function SupplierProvider({ children }: { children: ReactNode }) {
   const [bids, setBids] = useState(INITIAL_BIDS);
-  const [orders, setOrders] = useState(INITIAL_ORDERS);
+  const [orders, setOrders] = useState<SupplierOrder[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [productsError, setProductsError] = useState<string | null>(null);
+
+  const fetchProducts = useCallback(() => {
+    fetchMySupplierProducts()
+      .then((dtos) => {
+        setProducts(dtos.map(toProduct));
+        setProductsError(null);
+      })
+      .catch((err) => setProductsError(err instanceof Error ? err.message : "Failed to load inventory."))
+      .finally(() => setProductsLoading(false));
+  }, []);
+
+  const fetchOrders = useCallback(() => {
+    fetchSupplierOrders()
+      .then((list) => {
+        setOrders(list);
+        setOrdersError(null);
+      })
+      .catch((err) => setOrdersError(err instanceof Error ? err.message : "Failed to load orders."))
+      .finally(() => setOrdersLoading(false));
+  }, []);
 
   useEffect(() => {
-    fetchMySupplierProducts()
-      .then((dtos) => setProducts(dtos.map(toProduct)))
-      .catch(() => undefined);
-  }, []);
+    fetchProducts();
+    fetchOrders();
+  }, [fetchProducts, fetchOrders]);
+
+  const reloadProducts = useCallback(() => {
+    setProductsLoading(true);
+    fetchProducts();
+  }, [fetchProducts]);
+
+  const reloadOrders = useCallback(() => {
+    setOrdersLoading(true);
+    fetchOrders();
+  }, [fetchOrders]);
+
+  const replaceOrder = useCallback(
+    (order: SupplierOrder) => {
+      setOrders((list) => list.map((o) => (o.id === order.id ? order : o)));
+      fetchProducts();
+    },
+    [fetchProducts]
+  );
 
   const submitBid = useCallback<SupplierContextValue["submitBid"]>((id, bid) => {
     setBids((list) =>
@@ -69,59 +127,54 @@ export function SupplierProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  const updateOrder = useCallback<SupplierContextValue["updateOrder"]>((id, status, note) => {
-    setOrders((list) =>
-      list.map((o) =>
-        o.id === id
-          ? {
-              ...o,
-              status,
-              note: note.trim() || o.note,
-              // a delivered order has been paid in full once the client receives it
-              amountPaid: status === "delivered" ? o.amount : o.amountPaid,
-            }
-          : o
-      )
-    );
+  const addProduct = useCallback<SupplierContextValue["addProduct"]>(async (product) => {
+    const dto = await createSupplierProduct(toInput(product) as SupplierProductInput);
+    setProducts((list) => [toProduct(dto), ...list]);
   }, []);
 
-  const updateProduct = useCallback<SupplierContextValue["updateProduct"]>((id, patch) => {
-    updateSupplierProduct(id, {
-      ...("price" in patch ? { price: patch.price } : {}),
-      ...("stock" in patch ? { stock: patch.stock } : {}),
-      ...("minOrder" in patch ? { min_order: patch.minOrder } : {}),
-      ...("available" in patch ? { available: patch.available } : {}),
-      ...("name" in patch ? { name: patch.name } : {}),
-      ...("category" in patch ? { category: patch.category } : {}),
-      ...("unit" in patch ? { unit: patch.unit } : {}),
-    })
-      .then((dto) => setProducts((list) => list.map((p) => (p.id === id ? toProduct(dto) : p))))
-      .catch(() => undefined);
+  const updateProduct = useCallback<SupplierContextValue["updateProduct"]>(async (id, patch) => {
+    const dto = await updateSupplierProduct(id, toInput(patch));
+    setProducts((list) => list.map((p) => (p.id === id ? toProduct(dto) : p)));
   }, []);
 
-  const addProduct = useCallback<SupplierContextValue["addProduct"]>((product) => {
-    createSupplierProduct({
-      name: product.name,
-      category: product.category,
-      unit: product.unit,
-      price: product.price,
-      stock: product.stock,
-      min_order: product.minOrder,
-      available: product.available,
-    })
-      .then((dto) => setProducts((list) => [toProduct(dto), ...list]))
-      .catch(() => undefined);
-  }, []);
-
-  const removeProduct = useCallback<SupplierContextValue["removeProduct"]>((id) => {
-    deleteSupplierProduct(id)
-      .then(() => setProducts((list) => list.filter((p) => p.id !== id)))
-      .catch(() => undefined);
+  const removeProduct = useCallback<SupplierContextValue["removeProduct"]>(async (id) => {
+    await deleteSupplierProduct(id);
+    setProducts((list) => list.filter((p) => p.id !== id));
   }, []);
 
   const value = useMemo(
-    () => ({ bids, orders, products, submitBid, updateOrder, updateProduct, addProduct, removeProduct }),
-    [bids, orders, products, submitBid, updateOrder, updateProduct, addProduct, removeProduct]
+    () => ({
+      bids,
+      orders,
+      ordersLoading,
+      ordersError,
+      reloadOrders,
+      replaceOrder,
+      products,
+      productsLoading,
+      productsError,
+      reloadProducts,
+      submitBid,
+      addProduct,
+      updateProduct,
+      removeProduct,
+    }),
+    [
+      bids,
+      orders,
+      ordersLoading,
+      ordersError,
+      reloadOrders,
+      replaceOrder,
+      products,
+      productsLoading,
+      productsError,
+      reloadProducts,
+      submitBid,
+      addProduct,
+      updateProduct,
+      removeProduct,
+    ]
   );
 
   return <SupplierContext.Provider value={value}>{children}</SupplierContext.Provider>;

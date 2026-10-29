@@ -10,6 +10,8 @@ const ITEMS = [
   { href: "/contractor/equipment-schedule", label: "Equipment", icon: "calendar-outline" },
   { href: "/contractor/progress-analysis", label: "Analysis", icon: "trending-up-outline" },
   { href: "/contractor/weekly-analytics", label: "Weekly", icon: "stats-chart-outline" },
+  { href: "/contractor/material-requests", label: "Material Requests", icon: "clipboard-outline" },
+  { href: "/contractor/materials", label: "Supplier Materials", icon: "storefront-outline" },
 ] as const;
 
 export default function More() {

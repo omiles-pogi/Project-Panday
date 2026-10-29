@@ -1,14 +1,18 @@
-import { Stack } from "expo-router";
+import RoleDrawer from "@/components/RoleDrawer";
+import type { DrawerNavItem } from "@/components/RoleDrawerContent";
 import { SupplierProvider } from "@/context/SupplierContext";
-import { useTheme } from "@/context/ThemeContext";
+
+const NAV_ITEMS: DrawerNavItem[] = [
+  { href: "/supplier", label: "Dashboard", icon: "home-outline" },
+  { href: "/supplier/pricing", label: "Inventory", icon: "layers-outline" },
+  { href: "/supplier/orders", label: "Material Orders", icon: "cube-outline" },
+  { href: "/supplier/bids", label: "Bid Requests", icon: "pricetag-outline" },
+];
 
 export default function SupplierLayout() {
-  const { chrome } = useTheme();
   return (
     <SupplierProvider>
-      <Stack screenOptions={{ headerStyle: { backgroundColor: chrome.card }, headerTintColor: chrome.foreground }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      </Stack>
+      <RoleDrawer role="supplier" items={NAV_ITEMS} pages={[]} />
     </SupplierProvider>
   );
 }

@@ -1,41 +1,85 @@
-import { Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Button, Card, InfoBox, MONO, PageHeader, Screen, StatGrid, StatTile } from "@/components/ui";
+import StockBadge from "@/components/StockBadge";
 import { useAuth } from "@/context/AuthContext";
 import { useSupplier } from "@/context/SupplierContext";
-import { DEMAND_COLORS, TREND_ICON } from "@/data/supplier";
+import { CAT_COLORS } from "@/data/supplier";
 import { peso } from "@/utils/currency";
+import InventoryStats from "./InventoryStats";
 
 const QUICK_ACTIONS = [
+  { label: "Inventory", icon: "layers-outline", href: "/supplier/pricing" },
   { label: "Bids", icon: "pricetag-outline", href: "/supplier/bids" },
   { label: "Orders", icon: "cube-outline", href: "/supplier/orders" },
-  { label: "Pricing", icon: "cash-outline", href: "/supplier/pricing" },
   { label: "More", icon: "ellipsis-horizontal", href: "/supplier/more" },
 ] as const;
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const { bids, orders, products } = useSupplier();
+  const { bids, orders, products, productsLoading, productsError } = useSupplier();
 
   const activeBids = bids.filter((b) => b.status === "open" || b.status === "submitted").length;
-  const openOrders = orders.filter((o) => o.status !== "delivered" && o.status !== "cancelled").length;
-  const fulfilled = orders.filter((o) => o.status === "delivered").length;
-  const revenue = orders.reduce((sum, o) => sum + o.amountPaid, 0);
+  const goToOrders = () => router.push("/supplier/orders" as never);
+  const pendingRequests = orders.filter((o) => o.status === "supplier_review").length;
+  const acceptedRequests = orders.filter((o) =>
+    ["awaiting_homeowner_confirmation", "confirmed", "preparing", "for_delivery"].includes(o.status)
+  ).length;
+  const completedRequests = orders.filter((o) => o.status === "delivered" || o.status === "received").length;
 
   const openBids = bids.filter((b) => b.status === "open").slice(0, 3);
-  const hot = products.filter((p) => p.available && p.demand === "High").slice(0, 4);
+  // Out-of-stock items first — they're the ones that need the supplier's attention.
+  const inventoryPreview = [...products]
+    .sort((a, b) => (a.stockStatus === b.stockStatus ? 0 : a.stockStatus === "out_of_stock" ? -1 : 1))
+    .slice(0, 5);
+
+  const goToInventory = () => router.push("/supplier/pricing" as never);
 
   return (
     <Screen>
       <PageHeader title={`Hello, ${user?.name ?? "Supplier"}`} subtitle="Your supplier portal at a glance." />
 
-      <StatGrid>
-        <StatTile label="Active Bids" value={activeBids} color="#f59e0b" icon="pricetag-outline" />
-        <StatTile label="Open Orders" value={openOrders} color="#3b82f6" icon="cube-outline" />
-        <StatTile label="Fulfilled Orders" value={fulfilled} color="#10b981" icon="checkmark-circle-outline" />
-        <StatTile label="Collected" value={peso(revenue)} color="#8b5cf6" icon="wallet-outline" />
-      </StatGrid>
+      <InventoryStats products={products} onPress={goToInventory} />
+
+      <Card
+        title="Material Inventory"
+        gap={8}
+        right={
+          <Pressable onPress={goToInventory}>
+            <Text className="text-xs font-semibold text-primary">Manage all</Text>
+          </Pressable>
+        }
+      >
+        {productsLoading && products.length === 0 ? (
+          <ActivityIndicator color="#f59e0b" />
+        ) : productsError && products.length === 0 ? (
+          <Text className="text-xs text-danger">{productsError}</Text>
+        ) : products.length === 0 ? (
+          <Text className="text-xs text-muted-foreground">{"You haven't listed any materials yet."}</Text>
+        ) : (
+          inventoryPreview.map((p) => (
+            <Pressable key={p.id} onPress={goToInventory} className="px-3 py-2.5 rounded-xl bg-muted" style={{ gap: 6 }}>
+              <View className="flex-row items-center justify-between gap-2">
+                <Text className="flex-1 text-sm font-semibold text-foreground" numberOfLines={1}>
+                  {p.name}
+                </Text>
+                <Text className="text-xs font-semibold text-foreground" style={{ fontFamily: MONO }}>
+                  {peso(p.price)}/{p.unit}
+                </Text>
+              </View>
+              <View className="flex-row flex-wrap items-center gap-2">
+                <Badge label={p.category} color={CAT_COLORS[p.category] ?? CAT_COLORS.Other} />
+                <StockBadge status={p.stockStatus} quantity={p.availableQuantity} unit={p.unit} />
+                {!p.isActive && <Badge label="Hidden" color="#6b7280" />}
+              </View>
+            </Pressable>
+          ))
+        )}
+        <View className="flex-row mt-1">
+          <Button label="+ Add Material" onPress={() => router.push("/supplier/pricing?add=1" as never)} />
+        </View>
+      </Card>
 
       <View className="flex-row flex-wrap gap-2">
         {QUICK_ACTIONS.map(({ label, icon, href }) => (
@@ -50,6 +94,13 @@ export default function Dashboard() {
           </Pressable>
         ))}
       </View>
+
+      <StatGrid>
+        <StatTile label="Pending Requests" value={pendingRequests} color="#f59e0b" icon="mail-unread-outline" onPress={goToOrders} />
+        <StatTile label="Accepted Requests" value={acceptedRequests} color="#3b82f6" icon="cube-outline" onPress={goToOrders} />
+        <StatTile label="Completed Requests" value={completedRequests} color="#10b981" icon="checkmark-circle-outline" onPress={goToOrders} />
+        <StatTile label="Active Bids" value={activeBids} color="#8b5cf6" icon="pricetag-outline" />
+      </StatGrid>
 
       <Card
         title="New Bid Requests"
@@ -91,23 +142,6 @@ export default function Dashboard() {
         3 new residential projects in Metro Manila were approved and need cement, steel and aggregate. Keep your prices
         competitive to win more bids.
       </InfoBox>
-
-      <Card title="In-Demand Products" gap={8}>
-        {hot.map((p) => (
-          <View key={p.id} className="flex-row items-center justify-between px-3 py-2.5 rounded-xl bg-muted">
-            <Text className="flex-1 text-sm text-secondary-foreground" numberOfLines={1}>
-              {p.name}
-            </Text>
-            <View className="flex-row items-center gap-2">
-              <Text className="text-xs font-semibold text-foreground" style={{ fontFamily: MONO }}>
-                {peso(p.price)}/{p.unit}
-              </Text>
-              <Badge label={p.demand} color={DEMAND_COLORS[p.demand]} />
-              <Ionicons name={TREND_ICON[p.trend].icon} size={16} color={TREND_ICON[p.trend].color} />
-            </View>
-          </View>
-        ))}
-      </Card>
     </Screen>
   );
 }

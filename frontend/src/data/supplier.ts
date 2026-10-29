@@ -1,5 +1,6 @@
-// Static sample data mirrored from the web app's supplier screens (since removed). There is no
-// supplier API yet — SupplierContext holds this in memory, like the contractor/worker samples.
+// Bids below are still static sample data mirrored from the web app's supplier screens
+// (no backend for them yet) — SupplierContext holds them in memory. Inventory (Product, at the
+// bottom) is real and persisted through /api/supplier-products; orders come from /api/supplier-orders.
 
 export type BidStatus = "open" | "submitted" | "won" | "lost";
 
@@ -42,87 +43,63 @@ export const PAYMENT_TERMS = [
   "Full payment on delivery",
 ];
 
-export type OrderStatus = "processing" | "ready" | "in-transit" | "delivered" | "cancelled";
+// ---- Inventory (real, persisted via /api/supplier-products) ----
 
-export interface Order {
-  id: string;
-  project: string;
-  homeowner: string;
-  location: string;
-  material: string;
-  qty: number;
-  unit: string;
-  amount: number;
-  orderDate: string;
-  deliveryDate: string;
-  status: OrderStatus;
-  amountPaid: number;
-  note: string;
-}
-
-export const INITIAL_ORDERS: Order[] = [
-  { id: "ORD-001", project: "Garcia Renovation", homeowner: "Pedro Garcia", location: "Makati", material: "Deformed Steel Bars 10mm", qty: 2000, unit: "kg", amount: 132000, orderDate: "Sep 2, 2026", deliveryDate: "Sep 4, 2026", status: "delivered", amountPaid: 132000, note: "" },
-  { id: "ORD-002", project: "Lim Two-Story House", homeowner: "Lucy Lim", location: "Marikina", material: 'CHB 4" Hollow Blocks', qty: 4200, unit: "pcs", amount: 74200, orderDate: "Sep 3, 2026", deliveryDate: "Sep 7, 2026", status: "in-transit", amountPaid: 37100, note: "" },
-  { id: "ORD-003", project: "Dela Cruz Residence", homeowner: "Juan Dela Cruz", location: "Quezon City", material: "Portland Cement", qty: 800, unit: "bags", amount: 224000, orderDate: "Sep 5, 2026", deliveryDate: "Sep 9, 2026", status: "ready", amountPaid: 112000, note: "" },
-  { id: "ORD-004", project: "Santos Commercial Bldg", homeowner: "Maria Santos", location: "Pasig City", material: "Sand & Gravel (Washed)", qty: 100, unit: "cu.m", amount: 190000, orderDate: "Sep 6, 2026", deliveryDate: "Sep 11, 2026", status: "processing", amountPaid: 0, note: "" },
-];
-
-export const ORDER_FLOW: OrderStatus[] = ["processing", "ready", "in-transit", "delivered"];
-
-export const ORDER_STATUS: Record<OrderStatus, { color: string; label: string; icon: "time-outline" | "cube-outline" | "car-outline" | "checkmark-circle-outline" | "close-circle-outline" }> = {
-  processing: { color: "#3b82f6", label: "Processing", icon: "time-outline" },
-  ready: { color: "#8b5cf6", label: "Ready", icon: "cube-outline" },
-  "in-transit": { color: "#f59e0b", label: "In Transit", icon: "car-outline" },
-  delivered: { color: "#10b981", label: "Delivered", icon: "checkmark-circle-outline" },
-  cancelled: { color: "#ef4444", label: "Cancelled", icon: "close-circle-outline" },
-};
-
-export type Demand = "High" | "Medium" | "Low";
+export type StockStatus = "in_stock" | "out_of_stock";
 
 export interface Product {
   id: number;
   name: string;
   category: string;
+  description: string;
   unit: string;
   price: number;
+  /** Physical on-hand quantity. */
   stock: number;
-  demand: Demand;
-  trend: "up" | "flat" | "down";
+  /** Held for supplier-confirmed orders until delivery. */
+  reserved: number;
+  /** stock − reserved (what can still be promised to new requests). */
+  availableQuantity: number;
   minOrder: number;
-  available: boolean;
+  /** Shown in the homeowner/contractor catalog. Deactivated listings stay in the supplier's list. */
+  isActive: boolean;
+  /** Derived by the backend from `stock` — the single source of truth for In/Out of Stock. */
+  stockStatus: StockStatus;
 }
 
-export const INITIAL_PRODUCTS: Product[] = [
-  { id: 1, name: "Portland Cement (Type I)", category: "Cement", unit: "bag", price: 280, stock: 5000, demand: "High", trend: "up", minOrder: 50, available: true },
-  { id: 2, name: "Deformed Steel Bars 10mm", category: "Steel", unit: "kg", price: 68, stock: 12000, demand: "High", trend: "flat", minOrder: 100, available: true },
-  { id: 3, name: "Deformed Steel Bars 12mm", category: "Steel", unit: "kg", price: 72, stock: 8000, demand: "High", trend: "up", minOrder: 100, available: true },
-  { id: 4, name: "Deformed Steel Bars 16mm", category: "Steel", unit: "kg", price: 76, stock: 4500, demand: "Medium", trend: "flat", minOrder: 100, available: true },
-  { id: 5, name: "Sand (Washed)", category: "Aggregate", unit: "cu.m", price: 1200, stock: 300, demand: "Medium", trend: "up", minOrder: 5, available: true },
-  { id: 6, name: 'Gravel 3/4"', category: "Aggregate", unit: "cu.m", price: 1400, stock: 250, demand: "Medium", trend: "flat", minOrder: 5, available: true },
-  { id: 7, name: 'CHB 4" Hollow Blocks', category: "Masonry", unit: "pc", price: 18, stock: 20000, demand: "Medium", trend: "flat", minOrder: 200, available: true },
-  { id: 8, name: 'CHB 6" Hollow Blocks', category: "Masonry", unit: "pc", price: 22, stock: 8000, demand: "Low", trend: "down", minOrder: 200, available: true },
-  { id: 9, name: "Metal Roofing (Long Span)", category: "Roofing", unit: "sheet", price: 650, stock: 500, demand: "Medium", trend: "up", minOrder: 10, available: false },
+export type ProductInput = Omit<Product, "id" | "stockStatus" | "reserved" | "availableQuantity">;
+
+/** Must match SupplierProduct::CATEGORIES on the backend (it validates against that list). */
+export const CATEGORIES = [
+  "Cement",
+  "Sand",
+  "Gravel",
+  "Aggregate",
+  "Steel",
+  "Lumber",
+  "Masonry",
+  "Paint",
+  "Electrical",
+  "Plumbing",
+  "Roofing",
+  "Hardware",
+  "Other",
 ];
 
-export const CATEGORIES = ["Cement", "Steel", "Aggregate", "Masonry", "Roofing", "Other"];
+export const UNITS = ["piece", "bag", "kg", "meter", "cu.m", "sheet", "liter", "gallon", "roll", "box", "set"];
 
 export const CAT_COLORS: Record<string, string> = {
   Cement: "#f59e0b",
-  Steel: "#3b82f6",
+  Sand: "#d97706",
+  Gravel: "#78716c",
   Aggregate: "#10b981",
+  Steel: "#3b82f6",
+  Lumber: "#a16207",
   Masonry: "#8b5cf6",
+  Paint: "#ec4899",
+  Electrical: "#eab308",
+  Plumbing: "#06b6d4",
   Roofing: "#f43f5e",
+  Hardware: "#64748b",
   Other: "#6b7280",
-};
-
-export const DEMAND_COLORS: Record<Demand, string> = {
-  High: "#10b981",
-  Medium: "#f59e0b",
-  Low: "#6b7280",
-};
-
-export const TREND_ICON: Record<Product["trend"], { icon: "trending-up" | "remove" | "trending-down"; color: string }> = {
-  up: { icon: "trending-up", color: "#10b981" },
-  flat: { icon: "remove", color: "#6b7280" },
-  down: { icon: "trending-down", color: "#ef4444" },
 };

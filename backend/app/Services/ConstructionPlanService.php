@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Exceptions\ConstructionPlanGenerationException;
+use App\Support\HomeownerBudget;
 use Illuminate\Support\Facades\Http;
 
 class ConstructionPlanService
@@ -20,7 +21,7 @@ class ConstructionPlanService
     ];
 
     private const SYSTEM_PROMPT = <<<'PROMPT'
-        You are Pandy, a construction estimation assistant for a Philippine home-building app, having an ongoing conversation with a homeowner about their project.
+        You are PandAi, a construction estimation assistant for a Philippine home-building app, having an ongoing conversation with a homeowner about their project.
 
         Rules for any construction plan you submit:
         - All money amounts are Philippine pesos (PHP), as plain numbers (no currency symbols or commas).
@@ -29,7 +30,10 @@ class ConstructionPlanService
         - budgetBreakdown amounts must sum to totalEstimate. Every cost belongs to exactly one category — never count the same material or labor expense in more than one category.
         - materials[].qty * materials[].unitPrice line items must be consistent with the totals in budgetBreakdown.
         - Base every field strictly on what the conversation actually states. Do not invent, change, or contradict any detail the homeowner gave (exact bedroom/bathroom count, exact budget, named location, named design style, etc.) — only fill in what's left unspecified.
-        - If the homeowner gives a budget, use it for the "budget" field; otherwise infer a reasonable one from scope.
+        - "budget" and "totalEstimate" are two DIFFERENT numbers and must never be confused:
+          * "budget" is the HOMEOWNER'S OWN budget — the amount they said they can spend, converted exactly (e.g. "₱2.5M" or "2.5 million" = 2500000, "800k" = 800000). If they have not stated a budget, set budget to 0. Never estimate, round, raise or lower it, and never copy totalEstimate into it.
+          * "totalEstimate" is YOUR independent estimate of what the described scope will realistically cost in the Philippines today (floor area × floors × a realistic cost per sqm for the finish level, plus site, MEP and fees). Work it out from the scope alone. Do NOT scale, cap or fit it to the homeowner's budget — if the real cost is above or well below their budget, report the real cost anyway; the app shows the difference to the homeowner.
+        - When you talk about money in a plain chat reply, always say clearly which number is "your budget" and which is "my estimate".
         - Only set "location" to a specific city/region if the conversation explicitly names one. Never invent or guess a location — leave it as an empty string otherwise.
         - Keep other lists concise: 5-8 phases, 8-14 materials.
         - For each phase, include a tasks checklist of 3-6 short, concrete, checkable work items specific to that phase (e.g. for a "Foundation" phase: "Site clearing", "Land filling", "Excavation", "Rebar installation", "Concrete pouring"). These become a to-do checklist the contractor checks off as work is completed.
@@ -94,7 +98,9 @@ class ConstructionPlanService
         for ($attempt = 1; $attempt <= self::MAX_ATTEMPTS; $attempt++) {
             $result = $this->streamOnce($apiKey, $apiMessages, $tools, $toolChoice, $onChunk);
             if ($result !== null) {
-                return $result;
+                $isPlan = ! isset($result['chatReply']) && ! isset($result['needsClarification']);
+
+                return $isPlan ? $this->finalizeBudget($result, $messages) : $result;
             }
             if ($attempt === self::MAX_ATTEMPTS) {
                 throw new ConstructionPlanGenerationException('AI returned a malformed response. Please try again.', 502);
@@ -227,6 +233,30 @@ class ConstructionPlanService
     }
 
     /**
+     * Keeps the two money figures honest and separate, rather than trusting the model with either:
+     *
+     * - budget: the homeowner's own words decide it (HomeownerBudget). The AI's value survives only
+     *   if the homeowner actually typed that amount somewhere; otherwise it's 0 = "not set", so a
+     *   guessed number is never shown as "Your Budget".
+     * - totalEstimate: always exactly the sum of the category breakdown, so the headline estimate
+     *   and the breakdown the homeowner reads can never disagree.
+     *
+     * @param  array<string, mixed>  $plan
+     * @param  array<int, array{role: string, content: string}>  $messages
+     * @return array<string, mixed>
+     */
+    public function finalizeBudget(array $plan, array $messages): array
+    {
+        $stated = HomeownerBudget::fromMessages($messages);
+        $aiBudget = (float) ($plan['budget'] ?? 0);
+
+        $plan['budget'] = $stated ?? (HomeownerBudget::wasMentioned($messages, $aiBudget) ? (int) round($aiBudget) : 0);
+        $plan['totalEstimate'] = (int) round(array_sum(array_column($plan['budgetBreakdown'] ?? [], 'amount')));
+
+        return $plan;
+    }
+
+    /**
      * Sanity-checks the numbers the AI generated rather than trusting the prompt's "must sum to
      * approximately totalEstimate" instruction blindly — LLM arithmetic drifts. A plan that fails
      * this is treated like a malformed response and retried.
@@ -235,11 +265,15 @@ class ConstructionPlanService
      */
     private function isCoherentPlan(array $plan): bool
     {
-        $positiveFields = ['areaSqm', 'budget', 'totalEstimate', 'timelineMonths'];
+        $positiveFields = ['areaSqm', 'totalEstimate', 'timelineMonths'];
         foreach ($positiveFields as $field) {
             if (! isset($plan[$field]) || ! is_numeric($plan[$field]) || $plan[$field] <= 0) {
                 return false;
             }
+        }
+        // 0 is valid: it means the homeowner hasn't stated a budget (see finalizeBudget).
+        if (! isset($plan['budget']) || ! is_numeric($plan['budget']) || $plan['budget'] < 0) {
+            return false;
         }
         if (! isset($plan['floors']) || ! is_numeric($plan['floors']) || $plan['floors'] < 1) {
             return false;
@@ -319,7 +353,7 @@ class ConstructionPlanService
                         'bedrooms' => ['type' => 'integer'],
                         'bathrooms' => ['type' => 'integer'],
                         'designStyle' => ['type' => 'string'],
-                        'budget' => ['type' => 'number', 'description' => "Homeowner's allowable budget in PHP"],
+                        'budget' => ['type' => 'number', 'description' => "The homeowner's OWN stated budget in PHP, exactly as they said it (\"2.5M\" = 2500000). 0 if they never stated one. Never your estimate."],
                         'timelineMonths' => ['type' => 'integer'],
                         'phases' => [
                             'type' => 'array',
@@ -368,7 +402,7 @@ class ConstructionPlanService
                         ],
                         'exteriorConcept' => ['type' => 'string', 'description' => '1-2 sentence exterior design concept'],
                         'interiorConcept' => ['type' => 'string', 'description' => '1-2 sentence interior design concept'],
-                        'totalEstimate' => ['type' => 'number'],
+                        'totalEstimate' => ['type' => 'number', 'description' => 'YOUR independent realistic cost estimate for the scope in PHP — the sum of budgetBreakdown. Never fitted to the homeowner budget.'],
                     ],
                     'required' => [
                         'projectTitle', 'location', 'areaSqm', 'floors', 'bedrooms', 'bathrooms', 'designStyle',
