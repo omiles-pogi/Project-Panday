@@ -4,7 +4,8 @@ import { Stack, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import Avatar from "@/components/Avatar";
-import KeyboardView from "@/components/KeyboardView";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
+import { useKeyboardState, useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import { MAX_CONTENT_WIDTH } from "@/components/ui";
 import { useChat } from "@/context/ChatContext";
 import { useNotifications } from "@/context/NotificationContext";
@@ -45,6 +46,12 @@ const newClientKey = () => `${Date.now().toString(36)}-${Math.random().toString(
 export default function ChatWindow({ conversationId }: { conversationId: number }) {
   const { chrome } = useTheme();
   const insets = useSafeAreaInsets();
+  const keyboardVisible = useKeyboardState((s) => s.isVisible);
+  // This screen fills the whole window down to the bottom edge, so lifting everything by exactly
+  // the keyboard's height puts the message box right on top of it — no layout maths involved, which
+  // is what made the generic avoider unreliable under this screen's navigation header.
+  const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
+  const liftStyle = useAnimatedStyle(() => ({ paddingBottom: Math.max(0, -keyboardHeight.value) }));
   const { refreshUnread } = useChat();
   const { refresh: refreshNotifications } = useNotifications();
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -201,7 +208,8 @@ export default function ChatWindow({ conversationId }: { conversationId: number 
   }
 
   return (
-    <KeyboardView>
+    <View className="flex-1 bg-background">
+    <Animated.View style={[{ flex: 1 }, liftStyle]}>
       <Stack.Screen options={{ title: other.name }} />
 
       <View className="flex-row items-center gap-3 px-4 py-2.5 border-b border-border bg-card">
@@ -252,39 +260,45 @@ export default function ChatWindow({ conversationId }: { conversationId: number 
       )}
       {sendError && <Text className="px-4 pt-2 text-xs text-danger bg-card">{sendError}</Text>}
 
+      {/* Same message box as the AI chat: a rounded card, text on the left, round send button. */}
       <View
-        className="flex-row items-end gap-2 px-3 pt-2 border-t border-border bg-card"
-        style={{ paddingBottom: Math.max(insets.bottom, 8) }}
+        className="px-4 pt-2 border-t border-border bg-background"
+        // The home-indicator / nav-bar inset only matters while the keyboard is down; with it up the
+        // box sits just above the keyboard.
+        style={{ paddingBottom: keyboardVisible ? 12 : Math.max(insets.bottom, 12) }}
       >
-        <TextInput
-          value={draft}
-          onChangeText={setDraft}
-          placeholder={conversation.canSend ? "Type a message…" : "Read-only conversation"}
-          placeholderTextColor="#6b7280"
-          editable={conversation.canSend}
-          multiline
-          maxLength={MAX_LENGTH}
-          className="flex-1 px-3 py-2.5 rounded-2xl text-sm bg-muted border border-border text-foreground"
-          style={{ maxHeight: 120 }}
-          accessibilityLabel="Message"
-        />
-        <Pressable
-          onPress={send}
-          disabled={!canSubmit}
-          accessibilityRole="button"
-          accessibilityLabel="Send message"
-          className="w-11 h-11 rounded-full items-center justify-center bg-primary"
-          style={{ opacity: canSubmit ? 1 : 0.4 }}
-        >
-          <Ionicons name="send" size={18} color="#0f1117" />
-        </Pressable>
+        <View className="flex-row gap-3 items-end rounded-2xl p-3 bg-card border border-border">
+          <TextInput
+            value={draft}
+            onChangeText={setDraft}
+            placeholder={conversation.canSend ? "Type a message…" : "Read-only conversation"}
+            placeholderTextColor={chrome.mutedForeground}
+            editable={conversation.canSend}
+            multiline
+            maxLength={MAX_LENGTH}
+            className="flex-1 text-sm text-foreground"
+            style={{ minHeight: 24, maxHeight: 120 }}
+            accessibilityLabel="Message"
+          />
+          <Pressable
+            onPress={send}
+            disabled={!canSubmit}
+            accessibilityRole="button"
+            accessibilityLabel="Send message"
+            className="w-9 h-9 rounded-xl items-center justify-center"
+            style={{ backgroundColor: canSubmit ? "#f59e0b" : chrome.muted }}
+          >
+            <Ionicons name="arrow-up" size={18} color={canSubmit ? "#0f1117" : chrome.mutedForeground} />
+          </Pressable>
+        </View>
       </View>
       {draft.length > MAX_LENGTH - 200 && (
         <Text className="px-4 pb-2 text-xs text-right text-muted-foreground bg-card">
           {draft.length}/{MAX_LENGTH}
         </Text>
       )}
-    </KeyboardView>
+    </Animated.View>
+    </View>
   );
 }
 

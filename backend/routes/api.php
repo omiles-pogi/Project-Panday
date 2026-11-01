@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\MaterialRequestController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProjectController;
 use App\Http\Controllers\Api\ProjectPhaseTaskController;
+use App\Http\Controllers\Api\ProjectRatingController;
 use App\Http\Controllers\Api\SupplierOrderController;
 use App\Http\Controllers\Api\SupplierProductController;
 use App\Http\Controllers\Api\WorkerController;
@@ -37,6 +38,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/projects/{project}/contractors/{contractor}', [ProjectController::class, 'unassignContractor']);
     Route::get('/my-projects', [ProjectController::class, 'myProjects']);
     Route::get('/projects/{project}/activity-log', [ProjectController::class, 'activityLog']);
+    // End-of-project reviews: the homeowner rates their team once the project is 100% complete.
+    Route::get('/projects/{project}/ratings', [ProjectRatingController::class, 'show']);
+    Route::post('/projects/{project}/ratings', [ProjectRatingController::class, 'store']);
     Route::post('/projects/{project}/apply', [ProjectController::class, 'applyAsWorker'])->middleware('role:worker');
     Route::post('/projects/{project}/apply-contractor', [ProjectController::class, 'applyAsContractor'])->middleware('role:contractor');
     Route::patch('/worker-requests/{workerRequest}/respond', [WorkerRequestController::class, 'respond']);

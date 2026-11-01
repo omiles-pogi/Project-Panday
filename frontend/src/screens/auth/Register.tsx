@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Text, TextInput, View, Pressable, ScrollView } from "react-native";
+import { Text, TextInput, View, Pressable } from "react-native";
 import KeyboardView from "@/components/KeyboardView";
+import KeyboardAwareScrollView from "@/components/KeyboardAwareScrollView";
 import { Link } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/context/AuthContext";
@@ -69,7 +70,7 @@ export default function Register() {
 
   return (
     <KeyboardView className="flex-1 bg-background">
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
         <View className="px-6 py-10">
           <View className="items-center mb-8">
             <View className="mb-4">
@@ -158,7 +159,7 @@ export default function Register() {
             </Link>
           </View>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </KeyboardView>
   );
 }

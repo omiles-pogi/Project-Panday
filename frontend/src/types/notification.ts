@@ -20,7 +20,8 @@ export type NotificationType =
   | "supplier_order_unavailable"
   | "supplier_order_status"
   | "supplier_order_cancelled"
-  | "supplier_order_received_by_contractor";
+  | "supplier_order_received_by_contractor"
+  | "rating_received";
 
 export interface NotificationData {
   /** Chat notifications open the recipient's private conversation. */

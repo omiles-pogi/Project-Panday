@@ -8,12 +8,12 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import KeyboardView from "./KeyboardView";
+import KeyboardAwareScrollView from "./KeyboardAwareScrollView";
 import { CountUp } from "./charts";
 import { useTheme } from "@/context/ThemeContext";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   Pressable,
-  ScrollView,
   Text,
   TextInput,
   View,
@@ -48,7 +48,7 @@ export function Screen({ children, topInset = true }: { children: ReactNode; top
   const insets = useSafeAreaInsets();
   return (
     <KeyboardView>
-    <ScrollView
+    <KeyboardAwareScrollView
       className="flex-1 bg-background"
       contentContainerStyle={{
         padding: 16,
@@ -62,7 +62,7 @@ export function Screen({ children, topInset = true }: { children: ReactNode; top
       keyboardShouldPersistTaps="handled"
     >
       {children}
-    </ScrollView>
+    </KeyboardAwareScrollView>
     </KeyboardView>
   );
 }

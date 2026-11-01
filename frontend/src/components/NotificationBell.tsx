@@ -11,7 +11,7 @@ import NotificationsPanel from "@/components/NotificationsPanel";
  * badge is otherwise always 0 and this never need render for other roles). */
 export default function NotificationBell() {
   const { chrome } = useTheme();
-  const { unreadCount, refresh } = useNotifications();
+  const { unreadCount, refresh, dismissPopup } = useNotifications();
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
 
@@ -19,6 +19,7 @@ export default function NotificationBell() {
     <>
       <Pressable
         onPress={() => {
+          dismissPopup();
           refresh();
           setOpen(true);
         }}

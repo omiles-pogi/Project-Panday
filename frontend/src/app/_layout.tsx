@@ -4,6 +4,7 @@ import { View, ActivityIndicator } from "react-native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
@@ -12,6 +13,7 @@ import { NotificationProvider } from "@/context/NotificationContext";
 import { ChatProvider } from "@/context/ChatContext";
 import ThemeToggle from "@/components/ThemeToggle";
 import NotificationBell from "@/components/NotificationBell";
+import NotificationToast from "@/components/NotificationToast";
 import { useAppFonts } from "@/theme/fonts";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -31,6 +33,7 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      <KeyboardProvider>
       <SafeAreaProvider>
         <ThemeProvider>
           <AuthProvider>
@@ -43,6 +46,7 @@ export default function RootLayout() {
           </AuthProvider>
         </ThemeProvider>
       </SafeAreaProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }
@@ -59,6 +63,7 @@ function ThemedChrome() {
     <>
       <StatusBar style={mode === "dark" ? "light" : "dark"} />
       {showNotifications && <NotificationBell />}
+      {showNotifications && <NotificationToast />}
       <ThemeToggle />
     </>
   );

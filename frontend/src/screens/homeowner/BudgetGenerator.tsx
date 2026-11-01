@@ -1,14 +1,18 @@
+import { useState } from "react";
 import { ScrollView, Text, View, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { usePlan } from "@/context/PlanContext";
 import BriefPrompt from "@/components/BriefPrompt";
+import KeyboardAwareScrollView from "@/components/KeyboardAwareScrollView";
+import PlanEditorSheet from "@/components/PlanEditorSheet";
 import { KeyboardView } from "@/components/ui";
 import { budgetCategoryMeta } from "@/utils/budgetCategories";
 import { BUDGET_STATUS_META, compareBudget, formatBudget } from "@/utils/budget";
 
 export default function BudgetGenerator() {
-  const { plan, loading, send } = usePlan();
+  const { plan, loading, send, updatePlan } = usePlan();
+  const [editing, setEditing] = useState(false);
   const insets = useSafeAreaInsets();
   const regenerate = () => send("Please generate a fresh take on this plan.");
 
@@ -17,7 +21,7 @@ export default function BudgetGenerator() {
   if (!plan) {
     return (
       <KeyboardView>
-        <ScrollView
+        <KeyboardAwareScrollView
           className="flex-1 bg-background"
           contentContainerStyle={{ padding: 16, paddingTop: 16 + insets.top }}
           keyboardShouldPersistTaps="handled"
@@ -25,7 +29,7 @@ export default function BudgetGenerator() {
           <Badge />
           <Text className="text-2xl font-bold mb-6 text-foreground">AI Budget Generator</Text>
           <BriefPrompt />
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </KeyboardView>
     );
   }
@@ -185,7 +189,7 @@ export default function BudgetGenerator() {
           <Text className="font-bold text-sm text-primary-foreground">Approve Budget Plan</Text>
         </Pressable>
         <View className="flex-row gap-2">
-          <Pressable className="flex-1 py-3 rounded-xl items-center bg-muted border border-border">
+          <Pressable onPress={() => setEditing(true)} className="flex-1 py-3 rounded-xl items-center bg-muted border border-border">
             <Text className="text-sm text-muted-foreground">Modify Assumptions</Text>
           </Pressable>
           <Pressable
@@ -198,6 +202,17 @@ export default function BudgetGenerator() {
           </Pressable>
         </View>
       </View>
+      {editing && (
+        <PlanEditorSheet
+          plan={plan}
+          initialTab="budget"
+          onClose={() => setEditing(false)}
+          onSave={(next) => {
+            updatePlan(next);
+            setEditing(false);
+          }}
+        />
+      )}
     </ScrollView>
   );
 }

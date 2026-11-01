@@ -94,3 +94,23 @@ export interface AvailableProject {
   /** This worker's own latest application status for this project, if they've applied. */
   myApplicationStatus: "pending" | "approved" | "rejected" | null;
 }
+
+/** One contractor or worker on a project's team, with the homeowner's end-of-project rating state. */
+export interface TeamRatingMember {
+  userId: number;
+  role: "worker" | "contractor";
+  name: string;
+  subtitle: string;
+  rated: boolean;
+  score: number | null;
+  comment: string | null;
+}
+
+/** Whether the homeowner can rate the team yet (project at 100%) and who still needs a rating. */
+export interface ProjectRatingStatus {
+  projectId: number;
+  overallProgressPct: number;
+  canRate: boolean;
+  pendingCount: number;
+  team: TeamRatingMember[];
+}

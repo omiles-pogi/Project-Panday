@@ -12,6 +12,7 @@ import { compareBudget, formatBudget } from "@/utils/budget";
 import { usePlan } from "@/context/PlanContext";
 import Mascot from "@/components/Mascot";
 import MessageButton from "@/components/MessageButton";
+import ProjectRatingPrompt from "@/components/ProjectRatingPrompt";
 
 const QUICK_ACTIONS = [
   { label: "AI Plan", icon: "sparkles-outline", href: "/homeowner/project-chat" },
@@ -428,6 +429,9 @@ export default function Dashboard() {
           <ProgressBar pct={pct} color="#f59e0b" height={10} />
         </View>
       </View>
+
+      {/* At 100%, invites the homeowner to rate the contractor and workers who built it */}
+      <ProjectRatingPrompt key={project.id} projectId={project.id} progressPct={pct} />
 
       {/* Quick actions */}
       <View className="flex-row flex-wrap gap-2">

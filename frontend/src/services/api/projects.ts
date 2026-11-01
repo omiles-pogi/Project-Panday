@@ -7,6 +7,7 @@ import type {
   DashboardProject,
   MyProject,
   PhaseTask,
+  ProjectRatingStatus,
   ProjectSummary,
 } from "@/types/project";
 import type { ContractorRequest, WorkerRequest } from "@/types/notification";
@@ -161,4 +162,24 @@ export async function respondToContractorRequest(requestId: number, accept: bool
     body: JSON.stringify({ decision: accept ? "accept" : "decline" }),
   });
   return data as ContractorRequest;
+}
+
+/** The team's end-of-project rating state — homeowner (project owner) only. */
+export async function fetchProjectRatings(projectId: number): Promise<ProjectRatingStatus> {
+  const data = await apiFetch(`/api/projects/${projectId}/ratings`);
+  return data as ProjectRatingStatus;
+}
+
+/** Rates one team member once the project is 100% complete; resolves to the refreshed status. */
+export async function rateProjectTeamMember(
+  projectId: number,
+  userId: number,
+  score: number,
+  comment?: string
+): Promise<ProjectRatingStatus> {
+  const data = await apiFetch(`/api/projects/${projectId}/ratings`, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, score, comment }),
+  });
+  return data as ProjectRatingStatus;
 }

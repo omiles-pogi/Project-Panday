@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['contractor_id', 'rater_id', 'score', 'comment'])]
+#[Fillable(['contractor_id', 'rater_id', 'project_id', 'score', 'comment'])]
 class ContractorRating extends Model
 {
     public function contractor(): BelongsTo

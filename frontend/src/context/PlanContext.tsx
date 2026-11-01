@@ -39,6 +39,10 @@ interface PlanContextValue {
    * a chat reply streams in (never fires for a plan/clarification — see services/ai/client.ts).
    */
   send: (text: string, onChunk?: (partial: string) => void) => Promise<SendResult>;
+  /** Replaces the current plan with the homeowner's own hand-edited version. The total estimate is
+   * recomputed from the budget breakdown (same rule the backend applies to AI plans), and the
+   * edited plan is what the AI sees on its next turn. */
+  updatePlan: (next: ConstructionPlan) => void;
   /** Starts a fresh, blank draft conversation — never touches any existing project's own saved
    * conversation, only the not-yet-created draft slot. */
   reset: () => void;
@@ -146,7 +150,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
         // Safety valve: after a couple of clarification rounds, force a plan on this turn so the
         // conversation can't loop forever asking questions.
         const forcePlan = clarificationRounds >= 2;
-        const result = await generateConstructionPlan(historyForRequest, forcePlan, onChunk);
+        const result = await generateConstructionPlan(historyForRequest, forcePlan, onChunk, plan);
 
         if (isChatReply(result)) {
           const assistantMessage: ChatHistoryMessage = { role: "assistant", content: result.message };
@@ -179,8 +183,13 @@ export function PlanProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     },
-    [messages, clarificationRounds]
+    [messages, clarificationRounds, plan]
   );
+
+  const updatePlan = useCallback((next: ConstructionPlan) => {
+    const breakdownTotal = next.budgetBreakdown.reduce((s, b) => s + b.amount, 0);
+    setPlan({ ...next, totalEstimate: breakdownTotal > 0 ? Math.round(breakdownTotal) : next.totalEstimate });
+  }, []);
 
   const applyConversation = useCallback((conversation: Conversation) => {
     setPlan(conversation.plan);
@@ -233,6 +242,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
         ready,
         activeProjectKey,
         send,
+        updatePlan,
         reset,
         selectProject,
         linkToProject,

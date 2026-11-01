@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { ScrollView, Text, TextInput, View, Pressable } from "react-native";
+import { Text, TextInput, View, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { usePlan } from "@/context/PlanContext";
 import BriefPrompt from "@/components/BriefPrompt";
 import { KeyboardView } from "@/components/ui";
+import KeyboardAwareScrollView from "@/components/KeyboardAwareScrollView";
 
 const CATEGORY_COLORS: Record<string, string> = {
   Concrete: "#f59e0b",
@@ -31,7 +32,7 @@ export default function MaterialEstimator() {
   if (!plan) {
     return (
       <KeyboardView>
-        <ScrollView
+        <KeyboardAwareScrollView
           className="flex-1 bg-background"
           contentContainerStyle={{ padding: 16, paddingTop: 16 + insets.top }}
           keyboardShouldPersistTaps="handled"
@@ -41,7 +42,7 @@ export default function MaterialEstimator() {
           <View className="mt-4">
             <BriefPrompt />
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </KeyboardView>
     );
   }
@@ -59,7 +60,7 @@ export default function MaterialEstimator() {
 
   return (
     <KeyboardView>
-    <ScrollView
+    <KeyboardAwareScrollView
       className="flex-1 bg-background"
       contentContainerStyle={{ padding: 16, paddingTop: 16 + insets.top, paddingBottom: 48 }}
       keyboardShouldPersistTaps="handled"
@@ -153,7 +154,7 @@ export default function MaterialEstimator() {
           Total: ₱{total.toLocaleString()}
         </Text>
       </View>
-    </ScrollView>
+    </KeyboardAwareScrollView>
     </KeyboardView>
   );
 }

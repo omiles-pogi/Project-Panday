@@ -17,7 +17,9 @@ import { peso } from "@/utils/currency";
 import { compareBudget } from "@/utils/budget";
 import { createProject } from "@/services/api/projects";
 import Mascot from "@/components/Mascot";
-import KeyboardView from "@/components/KeyboardView";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
+import { useKeyboardState, useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
+import PlanEditorSheet, { type PlanEditorTab } from "@/components/PlanEditorSheet";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -85,7 +87,7 @@ function CardHeader({ children }: { children: React.ReactNode }) {
 }
 
 /* PLAN OVERVIEW CARD */
-function PlanCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => void }) {
+function PlanCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: () => void; onEdit: () => void }) {
   const { chrome } = useTheme();
   // Every item starts approved — tapping a tile disapproves it (and tapping again re-approves),
   // so "what's left to review" is whatever the homeowner has actively flagged, not everything.
@@ -163,6 +165,16 @@ function PlanCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => void
         })}
       </View>
       <View className="px-4 pb-4" style={{ gap: 8 }}>
+        <Pressable
+          onPress={onEdit}
+          className="py-2 rounded-xl items-center flex-row justify-center gap-1.5 border"
+          style={{ backgroundColor: "#f59e0b15", borderColor: "#f59e0b30" }}
+        >
+          <Ionicons name="create-outline" size={15} color="#f59e0b" />
+          <Text className="text-sm font-semibold" style={{ color: "#f59e0b" }}>
+            Edit Plan Yourself
+          </Text>
+        </Pressable>
         {!allApproved && (
           <Text className="text-xs text-danger">
             Disapproved: {disapprovedItems.map((i) => i.title).join(", ")}. Tap to re-approve, or tell the AI what to change below.
@@ -187,7 +199,7 @@ function PlanCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => void
 }
 
 /* BUDGET CARD */
-function BudgetCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => void }) {
+function BudgetCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: () => void; onEdit: () => void }) {
   const { chrome } = useTheme();
   const total = plan.budgetBreakdown.reduce((s, b) => s + b.amount, 0) || plan.totalEstimate;
   const cmp = compareBudget(plan.budget, plan.totalEstimate);
@@ -258,7 +270,7 @@ function BudgetCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => vo
             <Ionicons name="checkmark" size={15} color="#0f1117" />
             <Text className="text-sm font-bold text-primary-foreground">Approve Budget · Next →</Text>
           </Pressable>
-          <Pressable className="px-4 py-2.5 rounded-xl items-center bg-muted border border-border">
+          <Pressable onPress={onEdit} className="px-4 py-2.5 rounded-xl items-center bg-muted border border-border">
             <Text className="text-sm text-muted-foreground">Modify</Text>
           </Pressable>
         </View>
@@ -268,7 +280,7 @@ function BudgetCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => vo
 }
 
 /* MATERIALS CARD */
-function MaterialsCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () => void }) {
+function MaterialsCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: () => void; onEdit: () => void }) {
   const { chrome } = useTheme();
   const [approved, setApproved] = useState<Record<number, boolean>>({});
   const total = plan.materials.reduce((s, m) => s + m.qty * m.unitPrice, 0);
@@ -323,6 +335,13 @@ function MaterialsCard({ plan, onNext }: { plan: ConstructionPlan; onNext: () =>
             Prices are AI estimates. Actual costs may vary based on supplier and market conditions.
           </Text>
         </View>
+        <Pressable
+          onPress={onEdit}
+          className="py-2 mb-2 rounded-xl items-center bg-muted border border-border flex-row justify-center gap-1.5"
+        >
+          <Ionicons name="create-outline" size={15} color={chrome.mutedForeground} />
+          <Text className="text-sm text-muted-foreground">Edit Materials</Text>
+        </Pressable>
         <View className="flex-row gap-2">
           <Pressable
             onPress={() => setApproved(Object.fromEntries(plan.materials.map((_, i) => [i, true])))}
@@ -474,11 +493,13 @@ function AIBubble({
   plan,
   onQuickReply,
   onAdvance,
+  onEdit,
 }: {
   msg: ChatMessage;
   plan: ConstructionPlan | null;
   onQuickReply: (text: string) => void;
   onAdvance: () => void;
+  onEdit: (tab: PlanEditorTab) => void;
 }) {
   return (
     <View className="flex-row gap-3 items-start mb-4">
@@ -493,9 +514,11 @@ function AIBubble({
             <Text className="text-sm leading-relaxed text-card-foreground">{msg.text}</Text>
           </View>
         )}
-        {!msg.typing && plan && msg.card === "plan" && <PlanCard plan={plan} onNext={onAdvance} />}
-        {!msg.typing && plan && msg.card === "budget" && <BudgetCard plan={plan} onNext={onAdvance} />}
-        {!msg.typing && plan && msg.card === "materials" && <MaterialsCard plan={plan} onNext={onAdvance} />}
+        {!msg.typing && plan && msg.card === "plan" && <PlanCard plan={plan} onNext={onAdvance} onEdit={() => onEdit("details")} />}
+        {!msg.typing && plan && msg.card === "budget" && <BudgetCard plan={plan} onNext={onAdvance} onEdit={() => onEdit("budget")} />}
+        {!msg.typing && plan && msg.card === "materials" && (
+          <MaterialsCard plan={plan} onNext={onAdvance} onEdit={() => onEdit("materials")} />
+        )}
         {!msg.typing && plan && msg.card === "summary" && <SummaryCard plan={plan} />}
         {!msg.typing && msg.quickReplies && (
           <View className="flex-row flex-wrap gap-2">
@@ -521,8 +544,24 @@ function UserBubble({ msg }: { msg: ChatMessage }) {
 
 export default function ProjectChat() {
   const { chrome } = useTheme();
-  const { plan, messages: planMessages, approvalStage, setApprovalStage, ready, activeProjectKey, linkToProject, send } =
-    usePlan();
+  const {
+    plan,
+    messages: planMessages,
+    approvalStage,
+    setApprovalStage,
+    ready,
+    activeProjectKey,
+    linkToProject,
+    send,
+    updatePlan,
+  } = usePlan();
+  const [editorTab, setEditorTab] = useState<PlanEditorTab | null>(null);
+  // The AI Plan tab hides its tab bar while the keyboard is up (see the tabs layout), so this
+  // screen reaches the very bottom of the window; lifting it by exactly the keyboard's height puts
+  // the message box right on top of the keyboard, the same way the messages chat does it.
+  const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
+  const liftStyle = useAnimatedStyle(() => ({ paddingBottom: Math.max(0, -keyboardHeight.value) }));
+  const keyboardVisible = useKeyboardState((k) => k.isVisible);
   const [messages, setMessages] = useState<ChatMessage[]>(() => reconstructMessages(plan, planMessages, approvalStage));
   const [input, setInput] = useState("");
   const [stage, setStage] = useState<Stage>(() => approvalStage ?? (plan ? "plan" : "idle"));
@@ -632,6 +671,15 @@ export default function ProjectChat() {
     }, 650);
   };
 
+  const handleSaveEdit = (next: ConstructionPlan) => {
+    updatePlan(next);
+    setEditorTab(null);
+    setMessages((p) => [
+      ...p,
+      { id: nextId(), role: "ai", text: "Got it — I've applied your changes. Everything above now reflects your edited plan, and I'll build on it from here." },
+    ]);
+  };
+
   const handleQuickReply = (text: string) => {
     if (stage === "idle") handleSend(text);
   };
@@ -639,7 +687,8 @@ export default function ProjectChat() {
   const showSuggestions = messages.length <= 1;
 
   return (
-    <KeyboardView>
+    <View className="flex-1 bg-background">
+    <Animated.View style={[{ flex: 1 }, liftStyle]}>
       <ScrollView ref={scrollRef} className="flex-1 px-4 py-5" contentContainerStyle={{ paddingBottom: 8 }}>
         {showSuggestions && (
           <View className="items-center mb-5">
@@ -650,14 +699,25 @@ export default function ProjectChat() {
         )}
         {messages.map((msg) =>
           msg.role === "ai" ? (
-            <AIBubble key={msg.id} msg={msg} plan={plan} onQuickReply={handleQuickReply} onAdvance={advance} />
+            <AIBubble
+              key={msg.id}
+              msg={msg}
+              plan={plan}
+              onQuickReply={handleQuickReply}
+              onAdvance={advance}
+              onEdit={setEditorTab}
+            />
           ) : (
             <UserBubble key={msg.id} msg={msg} />
           )
         )}
       </ScrollView>
 
-      <View className="px-4 pb-4">
+      {plan && editorTab && (
+        <PlanEditorSheet plan={plan} initialTab={editorTab} onClose={() => setEditorTab(null)} onSave={handleSaveEdit} />
+      )}
+
+      <View className="px-4" style={{ paddingBottom: keyboardVisible ? 12 : 16 }}>
         <View className="flex-row gap-3 items-end rounded-2xl p-3 bg-card border border-border">
           <TextInput
             value={input}
@@ -688,6 +748,7 @@ export default function ProjectChat() {
           AI recommends · You decide · All items require your approval
         </Text>
       </View>
-    </KeyboardView>
+    </Animated.View>
+    </View>
   );
 }

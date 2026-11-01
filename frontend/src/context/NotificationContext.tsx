@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   deleteNotification,
   fetchNotifications,
@@ -13,10 +13,20 @@ import { useAuth } from "@/context/AuthContext";
 // Polling, not a websocket — "near real-time" (worst case ~20s stale) without new infra.
 const POLL_MS = 20_000;
 
+/** What the pop-up banner shows: the newest notification that just arrived, plus how many other
+ * new ones came in alongside it. */
+export interface NotificationPopup {
+  notification: AppNotification;
+  more: number;
+}
+
 interface NotificationContextValue {
   notifications: AppNotification[];
   unreadCount: number;
   loading: boolean;
+  /** Set when unread notifications the user hasn't been shown yet arrive; null once dismissed. */
+  popup: NotificationPopup | null;
+  dismissPopup: () => void;
   refresh: () => void;
   markRead: (id: number) => Promise<void>;
   markAllRead: () => Promise<void>;
@@ -39,12 +49,23 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [popup, setPopup] = useState<NotificationPopup | null>(null);
+  // Every notification id already fetched this session. Anything unread that isn't in here is new
+  // to the user and earns a pop-up; the first fetch after login counts too, so unread items that
+  // piled up while they were away are announced once rather than silently sitting behind the bell.
+  const seenIds = useRef<Set<number>>(new Set());
 
   const refresh = useCallback(() => {
     if (!relevant) return;
     setLoading(true);
     Promise.all([fetchNotifications(), fetchUnreadNotificationCount()])
       .then(([list, count]) => {
+        const fresh = list.filter((n) => !n.isRead && !seenIds.current.has(n.id));
+        list.forEach((n) => seenIds.current.add(n.id));
+        if (fresh.length > 0) {
+          const newest = fresh.reduce((a, b) => (b.id > a.id ? b : a));
+          setPopup({ notification: newest, more: fresh.length - 1 });
+        }
         setNotifications(list);
         setUnreadCount(count);
       })
@@ -58,6 +79,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setNotifications([]);
       setUnreadCount(0);
+      setPopup(null);
+      seenIds.current = new Set();
       return;
     }
     refresh();
@@ -65,6 +88,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [relevant]);
+
+  const dismissPopup = useCallback(() => setPopup(null), []);
 
   const markRead = useCallback(
     async (id: number) => {
@@ -106,7 +131,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   return (
     <NotificationContext.Provider
-      value={{ notifications, unreadCount, loading, refresh, markRead, markAllRead, remove, respond }}
+      value={{ notifications, unreadCount, loading, popup, dismissPopup, refresh, markRead, markAllRead, remove, respond }}
     >
       {children}
     </NotificationContext.Provider>

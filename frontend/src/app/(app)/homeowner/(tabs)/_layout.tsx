@@ -47,6 +47,8 @@ export default function HomeownerTabsLayout() {
           title: "AI Construction Planner",
           tabBarIcon: tabIcon("project-chat"),
           tabBarLabel: TAB_TITLE["project-chat"],
+          // Hidden while typing so the chat's message box can sit directly on top of the keyboard.
+          tabBarHideOnKeyboard: true,
         }}
       />
       <Tabs.Screen

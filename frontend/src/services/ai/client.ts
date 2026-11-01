@@ -1,5 +1,5 @@
 import { apiFetchStream } from "@/services/api/client";
-import type { PlanResult } from "@/types/plan";
+import type { ConstructionPlan, PlanResult } from "@/types/plan";
 
 export interface ChatHistoryMessage {
   role: "user" | "assistant";
@@ -16,18 +16,21 @@ type StreamEvent =
  * For a chat reply, onChunk fires live with each piece of text as the AI generates it — a plan or
  * clarification has nothing meaningful to stream (it's structured JSON behind a tool call), so
  * onChunk simply never fires for those, same as before.
+ * currentPlan is the plan as the homeowner has it now (including manual edits), so the AI revises
+ * that version rather than only the one-line summary of it kept in the conversation text.
  */
 export async function generateConstructionPlan(
   messages: ChatHistoryMessage[],
   forcePlan = false,
-  onChunk?: (text: string) => void
+  onChunk?: (text: string) => void,
+  currentPlan?: ConstructionPlan | null
 ): Promise<PlanResult> {
   let result: PlanResult | null = null;
   let streamError: string | null = null;
 
   await apiFetchStream(
     "/api/ai/plan",
-    { method: "POST", body: JSON.stringify({ messages, force_plan: forcePlan }) },
+    { method: "POST", body: JSON.stringify({ messages, force_plan: forcePlan, current_plan: currentPlan ?? null }) },
     (raw) => {
       const event = raw as StreamEvent;
       if (event.type === "chunk") {

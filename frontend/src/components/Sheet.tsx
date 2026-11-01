@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
-import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { Modal, Pressable, Text, View } from "react-native";
 import KeyboardView from "@/components/KeyboardView";
+import KeyboardAwareScrollView from "@/components/KeyboardAwareScrollView";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/context/ThemeContext";
 
@@ -21,7 +22,7 @@ export default function Sheet({
   const { chrome } = useTheme();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardView className="flex-1 justify-end" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
+      <KeyboardView modal className="flex-1 justify-end" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
         <Pressable className="flex-1" onPress={onClose} accessibilityLabel="Close" />
         <View
           className="bg-card border border-border rounded-t-3xl self-center w-full"
@@ -36,12 +37,12 @@ export default function Sheet({
               <Ionicons name="close" size={18} color={chrome.mutedForeground} />
             </Pressable>
           </View>
-          <ScrollView
+          <KeyboardAwareScrollView
             contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32, gap: 16 }}
             keyboardShouldPersistTaps="handled"
           >
             {children}
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </View>
       </KeyboardView>
     </Modal>

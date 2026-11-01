@@ -23,8 +23,13 @@ class ConstructionPlanController extends Controller
     {
         $messages = $request->validated('messages');
         $forcePlan = $request->boolean('force_plan', false);
+        // input(), not validated(): Laravel drops un-ruled keys inside an array that has nested rules,
+        // which would strip the plan's own scalar fields (title, area, ...). The size caps in
+        // GeneratePlanRequest still apply, and the plan is only ever fed to the model as data.
+        $currentPlan = $request->input('current_plan');
+        $currentPlan = is_array($currentPlan) ? $currentPlan : null;
 
-        return response()->stream(function () use ($messages, $forcePlan) {
+        return response()->stream(function () use ($messages, $forcePlan, $currentPlan) {
             $emit = function (array $event) {
                 echo json_encode($event)."\n";
                 if (ob_get_level() > 0) {
@@ -37,7 +42,8 @@ class ConstructionPlanController extends Controller
                 $result = $this->planService->generate(
                     $messages,
                     $forcePlan,
-                    fn (string $text) => $emit(['type' => 'chunk', 'text' => $text])
+                    fn (string $text) => $emit(['type' => 'chunk', 'text' => $text]),
+                    $currentPlan
                 );
                 $emit(['type' => 'done', 'result' => $result]);
             } catch (ConstructionPlanGenerationException $e) {
