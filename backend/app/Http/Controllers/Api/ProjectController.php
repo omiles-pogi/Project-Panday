@@ -25,6 +25,35 @@ class ProjectController extends Controller
         return response()->json($project, 201);
     }
 
+    /** "New Project": adds a "not started yet" placeholder (or returns the one already waiting). */
+    public function storeDraft(Request $request): JsonResponse
+    {
+        $project = $this->projects->startDraft($request->user());
+
+        return response()->json([
+            'id' => $project->id,
+            'title' => $project->title,
+            'status' => $project->status,
+            'startedAt' => $project->started_at->toDateString(),
+            'overallProgressPct' => 0,
+            // False when this is the placeholder they already had waiting — the app resumes its chat
+            // rather than wiping it.
+            'created' => $project->wasRecentlyCreated,
+        ], $project->wasRecentlyCreated ? 201 : 200);
+    }
+
+    /** Approves an AI plan into a "not started yet" placeholder, starting it. */
+    public function activate(StoreProjectRequest $request, Project $project): JsonResponse
+    {
+        try {
+            $project = $this->projects->activateFromPlan($project, $request->user(), $request->validated());
+        } catch (ValidationException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        return response()->json($project);
+    }
+
     public function dashboard(Request $request): JsonResponse
     {
         $projectId = $request->query('project_id');

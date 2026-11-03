@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProjectController;
 use App\Http\Controllers\Api\ProjectPhaseTaskController;
 use App\Http\Controllers\Api\ProjectRatingController;
+use App\Http\Controllers\Api\ProjectTimelineController;
 use App\Http\Controllers\Api\SupplierOrderController;
 use App\Http\Controllers\Api\SupplierProductController;
 use App\Http\Controllers\Api\WorkerController;
@@ -27,6 +28,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/ai/plan', [ConstructionPlanController::class, 'store'])->middleware('throttle:20,1');
     Route::post('/projects', [ProjectController::class, 'store']);
+    // "New Project" adds a not-started placeholder right away; approving its AI plan fills it in and starts it.
+    Route::post('/projects/draft', [ProjectController::class, 'storeDraft'])->middleware('role:homeowner');
+    Route::post('/projects/{project}/plan', [ProjectController::class, 'activate'])->middleware('role:homeowner');
     Route::get('/projects', [ProjectController::class, 'index']);
     Route::get('/projects/available', [ProjectController::class, 'available']);
     Route::get('/projects/available-for-contractors', [ProjectController::class, 'availableForContractors']);
@@ -38,6 +42,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/projects/{project}/contractors/{contractor}', [ProjectController::class, 'unassignContractor']);
     Route::get('/my-projects', [ProjectController::class, 'myProjects']);
     Route::get('/projects/{project}/activity-log', [ProjectController::class, 'activityLog']);
+    // Calendar monitoring (AI-proposed schedule vs actual progress): homeowner and contractor only.
+    Route::get('/projects/{project}/timeline', [ProjectTimelineController::class, 'show'])->middleware('role:homeowner,contractor');
     // End-of-project reviews: the homeowner rates their team once the project is 100% complete.
     Route::get('/projects/{project}/ratings', [ProjectRatingController::class, 'show']);
     Route::post('/projects/{project}/ratings', [ProjectRatingController::class, 'store']);

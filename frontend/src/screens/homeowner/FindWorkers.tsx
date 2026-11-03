@@ -324,7 +324,8 @@ export default function FindWorkers() {
   useEffect(() => {
     fetchDashboard()
       .then(({ project }) => {
-        if (!project) return;
+        // A team can only join a started project — a "not started yet" one has no plan to work from.
+        if (!project || project.status === "not_started") return;
         setProjectId(project.id);
         setProjectTitle(project.title);
         setAssignedWorkerIds(new Set(project.workers.map((w) => w.id)));

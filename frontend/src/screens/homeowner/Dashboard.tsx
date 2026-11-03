@@ -5,7 +5,7 @@ import { ProgressRing } from "@/components/charts";
 import { ProgressBar } from "@/components/ui";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { deleteProject, fetchDashboard, fetchMyHomeownerProjects } from "@/services/api/projects";
+import { createDraftProject, deleteProject, fetchDashboard, fetchMyHomeownerProjects } from "@/services/api/projects";
 import type { DashboardData, ProjectSummary } from "@/types/project";
 import { peso } from "@/utils/currency";
 import { compareBudget, formatBudget } from "@/utils/budget";
@@ -81,25 +81,52 @@ function DeleteProjectModal({
   );
 }
 
-/* NEW PROJECT CONFIRMATION — only shown when there's an active AI conversation to discard;
- * starting fresh otherwise just navigates straight to the planner. */
-function NewProjectModal({ visible, onCancel, onConfirm }: { visible: boolean; onCancel: () => void; onConfirm: () => void }) {
+/* NEW PROJECT CONFIRMATION — shown when the homeowner already has projects, so they don't spin up
+ * another by accident. Confirming adds it to YOUR PROJECTS right away as "not started yet"; their
+ * other projects and their AI chats are untouched. A first-ever project skips this. */
+function NewProjectModal({
+  visible,
+  creating,
+  projectCount,
+  onCancel,
+  onConfirm,
+}: {
+  visible: boolean;
+  creating: boolean;
+  projectCount: number;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View className="flex-1 items-center justify-center px-6" style={{ backgroundColor: "rgba(0,0,0,0.65)" }}>
         <View className="w-full rounded-3xl p-6 items-center bg-card border border-border" style={{ maxWidth: 340 }}>
           <Mascot size={88} mood="happy" bob />
-          <Text className="text-base font-extrabold mt-3 text-foreground">Start a new project?</Text>
+          <Text className="text-base font-extrabold mt-3 text-foreground">Create another project?</Text>
           <Text className="text-xs text-center mt-2 leading-5 text-muted-foreground">
-            This clears your current AI conversation so PandAi can help you plan something new. Any project
-            you&apos;ve already finalized stays saved on your dashboard.
+            You already have {projectCount} project{projectCount === 1 ? "" : "s"}. Are you sure you want to make a
+            new one? It will be added to your projects as &quot;Not started yet&quot; until you plan it with PandAi
+            and approve the plan. Your other projects stay exactly as they are.
           </Text>
           <View className="flex-row gap-2 mt-5 w-full">
-            <Pressable onPress={onCancel} className="flex-1 py-2.5 rounded-xl items-center bg-muted border border-border">
-              <Text className="text-sm font-semibold text-muted-foreground">Keep Planning</Text>
+            <Pressable
+              onPress={onCancel}
+              disabled={creating}
+              className="flex-1 py-2.5 rounded-xl items-center bg-muted border border-border"
+            >
+              <Text className="text-sm font-semibold text-muted-foreground">Cancel</Text>
             </Pressable>
-            <Pressable onPress={onConfirm} className="flex-1 py-2.5 rounded-xl items-center bg-primary">
-              <Text className="text-sm font-bold text-primary-foreground">Start New</Text>
+            <Pressable
+              onPress={onConfirm}
+              disabled={creating}
+              className="flex-1 py-2.5 rounded-xl items-center bg-primary"
+              style={{ opacity: creating ? 0.6 : 1 }}
+            >
+              {creating ? (
+                <ActivityIndicator size="small" color="#0f1117" />
+              ) : (
+                <Text className="text-sm font-bold text-primary-foreground">Yes, Create It</Text>
+              )}
             </Pressable>
           </View>
         </View>
@@ -137,7 +164,7 @@ function NewProjectFab({ onPress }: { onPress: () => void }) {
 }
 
 export default function Dashboard() {
-  const { plan, reset: resetPlan, selectProject: selectPlanProject } = usePlan();
+  const { selectProject: selectPlanProject, startFresh: startFreshPlan } = usePlan();
   const [data, setData] = useState<DashboardData | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
@@ -146,6 +173,8 @@ export default function Dashboard() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProjectSummary | null>(null);
   const [confirmNewProject, setConfirmNewProject] = useState(false);
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Mirrors selectedProjectId but readable from inside the focus effect below without making it
   // re-run on every selection change — this is what lets returning to Home re-fetch whichever
@@ -224,19 +253,49 @@ export default function Dashboard() {
     [projects, selectedProjectId, selectPlanProject]
   );
 
+  // Opens the AI planner on this project's own conversation — each project keeps its own chat, so
+  // a new project's planning never mixes into another project's.
+  const openPlanner = useCallback(
+    (projectId: number, fresh = false) => {
+      // A just-created project starts from a completely blank chat; an existing one resumes its own.
+      if (fresh) startFreshPlan(projectId);
+      else selectPlanProject(projectId);
+      selectedProjectIdRef.current = projectId;
+      router.push("/homeowner/project-chat" as never);
+    },
+    [selectPlanProject, startFreshPlan]
+  );
+
+  // Adds the project to YOUR PROJECTS right away as "not started yet" (see createDraftProject), then
+  // opens its chat.
+  const createNewProject = useCallback(() => {
+    setCreatingProject(true);
+    setCreateError(null);
+    createDraftProject()
+      .then((draft) => {
+        setProjects((list) => (list.some((p) => p.id === draft.id) ? list : [draft, ...list]));
+        setConfirmNewProject(false);
+        openPlanner(draft.id, draft.created);
+      })
+      .catch((err) => {
+        setConfirmNewProject(false);
+        setCreateError(err instanceof Error ? err.message : "Couldn't create the project.");
+      })
+      .finally(() => setCreatingProject(false));
+  }, [openPlanner]);
+
   const handleNewProject = useCallback(() => {
-    if (plan) {
+    // One not-started project at a time: if one is already waiting, pick it back up instead of
+    // adding another blank.
+    const waiting = projects.find((p) => p.status === "not_started");
+    if (waiting) {
+      openPlanner(waiting.id);
+    } else if (projects.length > 0) {
       setConfirmNewProject(true);
     } else {
-      router.push("/homeowner/project-chat" as never);
+      createNewProject();
     }
-  }, [plan]);
-
-  const confirmNewProjectAction = useCallback(() => {
-    resetPlan();
-    setConfirmNewProject(false);
-    router.push("/homeowner/project-chat" as never);
-  }, [resetPlan]);
+  }, [projects, openPlanner, createNewProject]);
 
   if (loading) {
     return (
@@ -289,6 +348,7 @@ export default function Dashboard() {
                   numberOfLines={1}
                 >
                   {p.title}
+                  {p.status === "not_started" ? " · Not started" : ""}
                 </Text>
               </Pressable>
               <Pressable
@@ -322,29 +382,54 @@ export default function Dashboard() {
   const newProjectModal = (
     <NewProjectModal
       visible={confirmNewProject}
+      creating={creatingProject}
+      projectCount={projects.length}
       onCancel={() => setConfirmNewProject(false)}
-      onConfirm={confirmNewProjectAction}
+      onConfirm={createNewProject}
     />
   );
 
-  if (!project) {
+  const createErrorNote = createError ? <Text className="text-xs text-danger">{createError}</Text> : null;
+
+  // Nothing to show yet for a project still waiting on its plan (no phases, budget or progress).
+  if (!project || project.status === "not_started") {
     return (
       <>
         <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 16 }}>
           {picker}
-          <View className="rounded-3xl p-6 items-center bg-card border border-border">
-            <Ionicons name="sparkles-outline" size={28} color="#f59e0b" style={{ marginBottom: 8 }} />
-            <Text className="font-bold text-base mb-1 text-foreground">No active project yet</Text>
-            <Text className="text-sm text-center mb-4 text-muted-foreground">
-              Describe your project to the AI planner and approve the generated plan to see it here.
-            </Text>
-            <Pressable
-              onPress={() => router.push("/homeowner/project-chat" as never)}
-              className="px-5 py-2.5 rounded-xl bg-primary"
-            >
-              <Text className="font-bold text-sm text-primary-foreground">Start AI Plan</Text>
-            </Pressable>
-          </View>
+          {createErrorNote}
+          {project ? (
+            <View className="rounded-3xl p-6 items-center bg-card border border-border">
+              <View className="px-2 py-0.5 rounded-full mb-2" style={{ backgroundColor: "#9ca3af20" }}>
+                <Text className="text-xs font-bold" style={{ color: "#9ca3af" }}>
+                  NOT STARTED YET
+                </Text>
+              </View>
+              <Ionicons name="hourglass-outline" size={28} color="#f59e0b" style={{ marginBottom: 8 }} />
+              <Text className="font-bold text-base mb-1 text-foreground">{project.title}</Text>
+              <Text className="text-sm text-center mb-4 text-muted-foreground">
+                This project hasn&apos;t started yet. Describe it to PandAi and approve the plan to get its budget,
+                phases and schedule.
+              </Text>
+              <Pressable onPress={() => openPlanner(project.id)} className="px-5 py-2.5 rounded-xl bg-primary">
+                <Text className="font-bold text-sm text-primary-foreground">Continue with PandAi</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View className="rounded-3xl p-6 items-center bg-card border border-border">
+              <Ionicons name="sparkles-outline" size={28} color="#f59e0b" style={{ marginBottom: 8 }} />
+              <Text className="font-bold text-base mb-1 text-foreground">No active project yet</Text>
+              <Text className="text-sm text-center mb-4 text-muted-foreground">
+                Describe your project to the AI planner and approve the generated plan to see it here.
+              </Text>
+              <Pressable
+                onPress={() => router.push("/homeowner/project-chat" as never)}
+                className="px-5 py-2.5 rounded-xl bg-primary"
+              >
+                <Text className="font-bold text-sm text-primary-foreground">Start AI Plan</Text>
+              </Pressable>
+            </View>
+          )}
           <View className="flex-row flex-wrap gap-2">
             {QUICK_ACTIONS.map(({ label, icon, href }) => (
               <Pressable
@@ -388,6 +473,7 @@ export default function Dashboard() {
     <>
       <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 16 }}>
       {picker}
+      {createErrorNote}
       {/* Hero project card */}
       <View className="rounded-3xl p-5 bg-card border border-border">
         <View className="flex-row items-start justify-between mb-4">

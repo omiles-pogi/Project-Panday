@@ -97,3 +97,23 @@ see the project's port plan for the full checklist of what's left.
 Sanctum tokens issued by `/api/auth/login` and `/api/auth/register` don't expire by
 default (no refresh flow exists). The token is stored in `expo-secure-store`, not
 `AsyncStorage`, since it's a credential.
+
+## Install it on a phone as a real app (Android APK)
+
+`npx expo start` + Expo Go is the quick way to try changes. To get an installable app with its own
+icon — no Expo Go and no dev server running — build an APK in Expo's cloud:
+
+```bash
+npx eas-cli login                                  # free Expo account, one time
+npx eas-cli build -p android --profile preview     # ~10-20 min; say yes to creating the project/keystore
+```
+
+When it finishes, open the build's link on the phone (or scan its QR) and install the `.apk`
+(allow "install unknown apps" for your browser when asked).
+
+- The app's backend address is baked in at build time from `eas.json`
+  (`build.preview.env.EXPO_PUBLIC_API_BASE_URL`; the local `.env` is not used by cloud builds). It must be
+  your PC's LAN IP, and the phone must be on the same Wi-Fi with `php artisan serve --host=0.0.0.0 --port=8000`
+  running. If your PC's IP changes, update that value and rebuild.
+- `usesCleartextTraffic` is enabled in `app.json` (via `expo-build-properties`) because release Android
+  builds otherwise refuse the plain `http://` Laravel dev server. Remove it once the API is on HTTPS.

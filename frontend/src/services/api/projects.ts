@@ -21,6 +21,23 @@ export async function createProject(plan: ConstructionPlan): Promise<DashboardPr
   return data as DashboardProject;
 }
 
+/** "New Project": adds a "not started yet" placeholder to the homeowner's projects right away (or
+ * returns the one already waiting), so the AI chat for it has a project of its own. */
+export async function createDraftProject(): Promise<ProjectSummary & { created: boolean }> {
+  const data = await apiFetch("/api/projects/draft", { method: "POST" });
+  return data as ProjectSummary & { created: boolean };
+}
+
+/** Approves an AI plan into a "not started yet" placeholder — fills it in and starts it, instead
+ * of creating a second project (createProject) next to it. */
+export async function startProjectFromPlan(projectId: number, plan: ConstructionPlan): Promise<DashboardProject> {
+  const data = await apiFetch(`/api/projects/${projectId}/plan`, {
+    method: "POST",
+    body: JSON.stringify(plan),
+  });
+  return data as DashboardProject;
+}
+
 export async function fetchDashboard(projectId?: number): Promise<DashboardData> {
   const query = projectId ? `?project_id=${projectId}` : "";
   const data = await apiFetch(`/api/dashboard${query}`);

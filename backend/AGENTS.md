@@ -40,6 +40,7 @@ instead: `php artisan serve --host=0.0.0.0 --port=8000`.
 - `app/Services/ChatService.php` - Homeowner ↔ contractor project messaging (`/api/conversations/*`). One thread per project + pair (unique index); access requires the real `project_contractors` link to start/send, and participation to read. Delivery is client polling (`after_id`), not websockets; `client_key` makes sends idempotent
 - `app/Services/MaterialRequestService.php` / `SupplierOrderService.php` / `MaterialWorkflow.php` - Material workflow: contractor drafts a request (`/api/material-requests`) → homeowner approves/revises/rejects → approval splits items into one `SupplierOrder` per supplier (`/api/supplier-orders`, supplier sees only their own) → supplier confirms (reserves stock) or reports insufficient/declines (request returns for revision) → changed prices need homeowner confirmation → preparing → for_delivery → delivered (deducts stock) → contractor confirms receipt → request `completed`. `material_requests.status` is approval only; fulfillment lives on `supplier_orders.status`; every transition is logged in `material_request_status_logs`
 - `app/Services/StockService.php` - The only code that moves `supplier_products.reserved`/`stock`, via single conditional UPDATEs (no double-promising, no negatives). Available-to-promise = `stock - reserved`, which `stock_status` is derived from
+- `app/Services/TimelineService.php` - Calendar project monitoring (`GET /api/projects/{project}/timeline`, `role:homeowner,contractor`; the owner or an assigned contractor only — workers are excluded even when on the project). The AI plan's per-phase `durationWeeks` is laid out back-to-back across `started_at` + `timeline_months` and stored as `project_phases.planned_start/planned_end` (phases with no duration — older plans, hand-added — are split by `weight_pct`; projects from before the feature are scheduled lazily on first view). Tasks aren't stored with dates: each phase's checklist is spread evenly across its window in id order, and a task is "due" on its planned end. Actual progress is replayed from `project_phase_tasks.completed_at` (set on check-off, cleared on un-check), compared with planned progress to give `ahead` / `on_track` / `slightly_behind` (−5 to −15 pts) / `significantly_behind` (< −15)
 - `app/Console/Commands/MakeSuperAdmin.php` - `php artisan make:superadmin` — the only way to create/promote a superadmin; `admin`/`superadmin` are deliberately excluded from public self-registration (`User::SELF_REGISTERABLE_ROLES`)
 - `app/Http/Middleware/EnsureUserHasRole.php` - reusable `role:admin,superadmin`-style route middleware, aliased as `role` in `bootstrap/app.php`
 - `config/services.php` - `services.groq.key` / `services.groq.model`, read from `.env` (`GROQ_API_KEY`, `GROQ_MODEL`)
@@ -68,6 +69,26 @@ Groq (via a forced tool call, so the response is always valid JSON matching
 `resources/js/lib/ai/types.ts`'s `ConstructionPlan` shape) and returns it directly.
 Requires `GROQ_API_KEY` in `.env`. This endpoint requires an authenticated request
 (Sanctum bearer token) and is rate-limited per user.
+
+Groq's free tier caps an org at **8000 tokens/minute**, and each request reserves its prompt +
+`max_completion_tokens` against that up front, so `ConstructionPlanService` keeps requests small and
+survives the limit instead of surfacing it: it sends only the last 12 messages (the current plan
+travels separately), sizes `max_completion_tokens` to what fits under `GROQ_TPM_LIMIT` (default 8000 —
+raise it after upgrading), uses `GROQ_REASONING_EFFORT` (default `low`, gpt-oss models only; reasoning
+tokens count too), and on a 429 sleeps out Groq's `Retry-After` (≤ 45s, once) before retrying — it's
+rejected before streaming starts, so the homeowner just sees "thinking". Only if that fails does it
+tell them how long to wait; raw Groq messages are never passed through. Keep the system prompt lean:
+every token added to it is one less for the reply.
+
+## New projects
+
+"New Project" in the mobile app calls `POST /api/projects/draft`, which adds an empty
+`status = 'not_started'` placeholder to the homeowner's projects straight away (and returns the
+existing one if they already have one — never more than one blank). The AI chat is keyed to that
+project's id; approving the plan calls `POST /api/projects/{id}/plan`, which fills the placeholder in
+and flips it to `active` (a non-placeholder gets a 422). Placeholders are excluded from every
+`status = 'active'` listing (browse/apply, stats), can't have a team invited, and have no schedule;
+`POST /api/projects` still creates an already-active project for chats with no placeholder.
 
 ## Auth & roles
 

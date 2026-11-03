@@ -7,9 +7,17 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['project_id', 'name', 'sort_order', 'weight_pct', 'progress_pct'])]
+#[Fillable(['project_id', 'name', 'sort_order', 'weight_pct', 'progress_pct', 'duration_weeks', 'planned_start', 'planned_end'])]
 class ProjectPhase extends Model
 {
+    protected function casts(): array
+    {
+        return [
+            'planned_start' => 'date',
+            'planned_end' => 'date',
+        ];
+    }
+
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);

@@ -25,6 +25,8 @@ class StoreProjectRequest extends FormRequest
             'phases' => ['required', 'array', 'min:1'],
             'phases.*.name' => ['required', 'string', 'max:255'],
             'phases.*.percentComplete' => ['required', 'numeric', 'min:0', 'max:100'],
+            // The AI's estimated working duration — optional so plans saved before the calendar existed still work.
+            'phases.*.durationWeeks' => ['nullable', 'integer', 'min:1', 'max:520'],
             'phases.*.tasks' => ['nullable', 'array'],
             'phases.*.tasks.*' => ['string', 'max:255'],
             // Optional — saved so the assigned contractor can import it into a material request.

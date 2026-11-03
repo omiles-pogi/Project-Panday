@@ -24,6 +24,7 @@ export default function HomeownerLayout() {
         <Drawer.Screen name="labor-estimator" />
         <Drawer.Screen name="expenses" />
         <Drawer.Screen name="approvals" />
+        <Drawer.Screen name="calendar" />
         <Drawer.Screen name="ai-design" />
       </Drawer>
     </PlanProvider>

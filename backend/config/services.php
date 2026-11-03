@@ -43,6 +43,12 @@ return [
     'groq' => [
         'key' => env('GROQ_API_KEY'),
         'model' => env('GROQ_MODEL', 'openai/gpt-oss-120b'),
+        // gpt-oss models "think" before answering and those tokens count against the rate limit;
+        // low is plenty for structured estimation. Ignored for models that don't support it.
+        'reasoning_effort' => env('GROQ_REASONING_EFFORT', 'low'),
+        // The account's tokens-per-minute cap (Groq free tier: 8000). Every request reserves its
+        // prompt + max reply size against this, so reply size is shrunk to fit. Raise it after upgrading.
+        'tpm_limit' => (int) env('GROQ_TPM_LIMIT', 8000),
     ],
 
 ];

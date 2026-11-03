@@ -11,44 +11,117 @@ use App\Models\ProjectWorkerRequest;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class ProjectService
 {
-    public function __construct(private readonly NotificationService $notifications) {}
+    public const DRAFT_TITLE = 'New Project';
+
+    public function __construct(
+        private readonly NotificationService $notifications,
+        private readonly TimelineService $timeline,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $plan  A validated construction plan payload (see StoreProjectRequest).
      */
     public function createFromPlan(User $user, array $plan): Project
     {
-        $project = $user->projects()->create([
+        $project = $user->projects()->create($this->planAttributes($plan) + [
+            'status' => 'active',
+            'started_at' => Carbon::today(),
+        ]);
+
+        return $this->addPlanPhases($project, $plan);
+    }
+
+    /**
+     * Tapping "New Project" adds an empty placeholder to the homeowner's projects right away — "not
+     * started yet" — so the AI chat for it has a project of its own to belong to instead of floating
+     * as an unsaved draft next to their real ones. It becomes a real project once its plan is
+     * approved (see activateFromPlan()). Only one placeholder exists at a time: asking again resumes
+     * the one they already have rather than piling up blanks.
+     */
+    public function startDraft(User $user): Project
+    {
+        return $user->projects()->where('status', 'not_started')->latest('id')->first()
+            ?? $user->projects()->create([
+                'title' => self::DRAFT_TITLE,
+                'status' => 'not_started',
+                'budget' => 0,
+                'total_estimate' => 0,
+                'timeline_months' => 0,
+                'started_at' => Carbon::today(),
+            ]);
+    }
+
+    /**
+     * Approving a plan for a "not started yet" placeholder: fills it in and starts it, instead of
+     * creating a second project next to it.
+     *
+     * @param  array<string, mixed>  $plan  A validated construction plan payload (see StoreProjectRequest).
+     */
+    public function activateFromPlan(Project $project, User $actingUser, array $plan): Project
+    {
+        $this->authorizeOwner($project, $actingUser);
+
+        if ($project->status !== 'not_started') {
+            throw ValidationException::withMessages(['project_id' => 'This project has already been started.']);
+        }
+
+        return DB::transaction(function () use ($project, $plan) {
+            $project->update($this->planAttributes($plan) + [
+                'status' => 'active',
+                'started_at' => Carbon::today(),
+            ]);
+
+            return $this->addPlanPhases($project, $plan);
+        });
+    }
+
+    /**
+     * @param  array<string, mixed>  $plan
+     * @return array<string, mixed>
+     */
+    private function planAttributes(array $plan): array
+    {
+        return [
             'title' => $plan['projectTitle'],
             'location' => $plan['location'] ?? null,
-            'status' => 'active',
             'budget' => (int) round($plan['budget']),
             'total_estimate' => (int) round($plan['totalEstimate']),
             'timeline_months' => (int) $plan['timelineMonths'],
             'ai_materials' => $this->normalizeAiMaterials($plan['materials'] ?? []),
-            'started_at' => Carbon::today(),
-        ]);
+        ];
+    }
 
+    /**
+     * @param  array<string, mixed>  $plan
+     */
+    private function addPlanPhases(Project $project, array $plan): Project
+    {
         foreach ($plan['phases'] as $index => $phase) {
             $projectPhase = $project->phases()->create([
                 'name' => $phase['name'],
                 'sort_order' => $index,
                 'weight_pct' => (int) round($phase['percentComplete']),
                 'progress_pct' => 0,
+                'duration_weeks' => isset($phase['durationWeeks']) ? (int) $phase['durationWeeks'] : null,
             ]);
 
             foreach ($phase['tasks'] ?? [] as $description) {
                 $projectPhase->tasks()->create([
                     'description' => $description,
                     'is_done' => false,
-                    'added_by' => $user->id,
+                    'added_by' => $project->user_id,
                 ]);
             }
         }
+
+        // Lay the proposed phases out on the calendar right away, so the schedule is fixed from the
+        // day the plan is approved rather than drifting with whenever someone first opens it.
+        $this->timeline->schedule($project);
 
         return $project->load('phases.tasks');
     }
@@ -87,6 +160,7 @@ class ProjectService
     public function assignWorker(Project $project, User $actingUser, User $worker): array
     {
         $this->authorizeTeamManager($project, $actingUser);
+        $this->requireStarted($project);
 
         if ($worker->role !== 'worker') {
             throw ValidationException::withMessages(['worker_id' => 'Only skilled worker accounts can be assigned.']);
@@ -261,6 +335,7 @@ class ProjectService
     public function assignContractor(Project $project, User $actingUser, User $contractor): array
     {
         $this->authorizeOwner($project, $actingUser);
+        $this->requireStarted($project);
 
         if ($contractor->role !== 'contractor') {
             throw ValidationException::withMessages(['contractor_id' => 'Only contractor accounts can be assigned.']);
@@ -489,6 +564,14 @@ class ProjectService
         }
     }
 
+    /** A placeholder has no plan, phases or schedule yet — there's nothing for a team to work on. */
+    private function requireStarted(Project $project): void
+    {
+        if ($project->status === 'not_started') {
+            throw ValidationException::withMessages(['project_id' => 'Finish planning this project with PandAi before building a team.']);
+        }
+    }
+
     private function authorizeTeamManager(Project $project, User $actingUser): void
     {
         if (! $project->canManageTeam($actingUser)) {
@@ -516,7 +599,12 @@ class ProjectService
         $phase = $task->phase;
         $this->authorizeChecklistManager($phase, $actingUser);
 
-        $task->update(['is_done' => $isDone]);
+        // Keep the original completion time when a task is re-saved as done, so "completed on" is
+        // when it was first finished — the calendar replays actual progress from these timestamps.
+        $task->update([
+            'is_done' => $isDone,
+            'completed_at' => $isDone ? ($task->completed_at ?? now()) : null,
+        ]);
         $phase->recomputeProgress();
 
         // One log row per checklist change, carrying the project's overall % immediately after
@@ -586,7 +674,7 @@ class ProjectService
         // recently started one (and silently ignores an id that isn't theirs, same as "none").
         $project = $projectId
             ? $query->whereKey($projectId)->first()
-            : $query->latest('started_at')->first();
+            : $query->latest('started_at')->latest('id')->first();
 
         return [
             'project' => $project ? $this->present($project) : null,
@@ -606,6 +694,7 @@ class ProjectService
     {
         return $user->projects()
             ->latest('started_at')
+            ->latest('id')
             ->get()
             ->map(fn (Project $project) => [
                 'id' => $project->id,

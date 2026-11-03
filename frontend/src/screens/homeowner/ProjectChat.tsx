@@ -15,7 +15,8 @@ import type { ConstructionPlan } from "@/types/plan";
 import { budgetCategoryMeta } from "@/utils/budgetCategories";
 import { peso } from "@/utils/currency";
 import { compareBudget } from "@/utils/budget";
-import { createProject } from "@/services/api/projects";
+import { garageLabel } from "@/utils/garage";
+import { createProject, startProjectFromPlan } from "@/services/api/projects";
 import Mascot from "@/components/Mascot";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { useKeyboardState, useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
@@ -113,7 +114,7 @@ function PlanCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: ()
       color: "#f59e0b",
     },
     { icon: "layers-outline", title: "Key Materials", value: `${plan.materials.length} material types`, detail: `Est. ${peso(materialsTotal)} total`, color: "#10b981" },
-    { icon: "home-outline", title: "Design", value: plan.designStyle, detail: `${plan.bedrooms}BR / ${plan.bathrooms}BA · ${plan.areaSqm} sqm`, color: "#8b5cf6" },
+    { icon: "home-outline", title: "Design", value: plan.designStyle, detail: [`${plan.bedrooms}BR / ${plan.bathrooms}BA`, garageLabel(plan.garageCars), `${plan.areaSqm} sqm`].filter(Boolean).join(" · "), color: "#8b5cf6" },
     { icon: "git-branch-outline", title: "Phases", value: `${plan.phases.length} phases`, detail: phasesDetail, color: "#06b6d4" },
   ];
   const disapprovedItems = items.filter((i) => disapproved[i.title]);
@@ -581,6 +582,10 @@ export default function ProjectChat() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMessages(reconstructMessages(plan, planMessages, approvalStage));
     setStage(approvalStage ?? (plan ? "plan" : "idle"));
+    // This screen stays mounted across projects, so whatever was half-typed or being edited for the
+    // previous one must not follow the user into the next.
+    setInput("");
+    setEditorTab(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, activeProjectKey]);
 
@@ -652,11 +657,16 @@ export default function ProjectChat() {
     const label = NEXT_LABEL[stage as ResolvedStage];
 
     if (next === "summary") {
-      createProject(plan)
-        .then((created) => linkToProject(created.id))
-        .catch((err) => {
-          console.warn("Failed to save project to dashboard:", err);
-        });
+      // A chat that belongs to a project already (the "not started yet" one New Project created)
+      // fills that project in; only a chat with no project yet creates a new one.
+      const placeholderId = /^\d+$/.test(activeProjectKey) ? Number(activeProjectKey) : null;
+      const saved =
+        placeholderId !== null
+          ? startProjectFromPlan(placeholderId, plan)
+          : createProject(plan).then((created) => linkToProject(created.id));
+      saved.catch((err) => {
+        console.warn("Failed to save project to dashboard:", err);
+      });
     }
 
     setMessages((p) => [...p, { id: nextId(), role: "user", text: label }]);
