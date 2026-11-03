@@ -26,12 +26,13 @@ interface Draft {
   floors: string;
   bedrooms: string;
   bathrooms: string;
+  garageCars: string;
   designStyle: string;
   budget: string;
   timelineMonths: string;
   exteriorConcept: string;
   interiorConcept: string;
-  phases: { name: string; share: string; tasks: string }[];
+  phases: { name: string; share: string; weeks: string; tasks: string }[];
   breakdown: { category: string; amount: string }[];
   materials: { material: string; category: string; qty: string; unit: string; unitPrice: string }[];
 }
@@ -50,12 +51,18 @@ function toDraft(plan: ConstructionPlan): Draft {
     floors: str(plan.floors),
     bedrooms: str(plan.bedrooms),
     bathrooms: str(plan.bathrooms),
+    garageCars: str(plan.garageCars ?? 0),
     designStyle: plan.designStyle,
     budget: plan.budget > 0 ? str(plan.budget) : "",
     timelineMonths: str(plan.timelineMonths),
     exteriorConcept: plan.exteriorConcept,
     interiorConcept: plan.interiorConcept,
-    phases: plan.phases.map((p) => ({ name: p.name, share: str(p.percentComplete), tasks: p.tasks.join("\n") })),
+    phases: plan.phases.map((p) => ({
+      name: p.name,
+      share: str(p.percentComplete),
+      weeks: p.durationWeeks ? str(p.durationWeeks) : "",
+      tasks: p.tasks.join("\n"),
+    })),
     breakdown: plan.budgetBreakdown.map((b) => ({ category: b.category, amount: str(b.amount) })),
     materials: plan.materials.map((m) => ({
       material: m.material,
@@ -89,6 +96,7 @@ function toPlan(d: Draft, base: ConstructionPlan): ConstructionPlan {
     floors: Math.round(num(d.floors)),
     bedrooms: Math.max(0, Math.round(num(d.bedrooms))),
     bathrooms: Math.max(0, Math.round(num(d.bathrooms))),
+    garageCars: Math.min(10, Math.max(0, Math.round(num(d.garageCars)))),
     designStyle: d.designStyle.trim(),
     budget: Math.max(0, Math.round(num(d.budget))),
     timelineMonths: Math.round(num(d.timelineMonths)),
@@ -97,6 +105,8 @@ function toPlan(d: Draft, base: ConstructionPlan): ConstructionPlan {
     phases: d.phases.map((p) => ({
       name: p.name.trim(),
       percentComplete: Math.min(100, Math.max(0, num(p.share))),
+      // Blank = no estimate; the backend then schedules this phase by its share instead.
+      durationWeeks: Math.round(num(p.weeks)) >= 1 ? Math.round(num(p.weeks)) : undefined,
       tasks: p.tasks
         .split("\n")
         .map((t) => t.trim())
@@ -192,6 +202,12 @@ export default function PlanEditorSheet({
               <Field label="Bathrooms" keyboardType="number-pad" value={draft.bathrooms} onChangeText={(v) => set("bathrooms", v)} />
             </View>
           </View>
+          <Field
+            label="Garage (cars it fits, 0 = none)"
+            keyboardType="number-pad"
+            value={draft.garageCars}
+            onChangeText={(v) => set("garageCars", v)}
+          />
           <Field label="Design style" value={draft.designStyle} onChangeText={(v) => set("designStyle", v)} />
           <View className="flex-row gap-3">
             <View className="flex-1">
@@ -220,12 +236,23 @@ export default function PlanEditorSheet({
                 <View className="flex-1">
                   <Field label={`Phase ${i + 1}`} value={p.name} onChangeText={(v) => patchAt("phases", i, { name: v })} />
                 </View>
-                <View style={{ width: 84 }}>
-                  <Field label="Share %" keyboardType="numeric" value={p.share} onChangeText={(v) => patchAt("phases", i, { share: v })} />
-                </View>
                 <Pressable onPress={() => removeAt("phases", i)} hitSlop={8} className="pb-3" accessibilityLabel="Remove phase">
                   <Ionicons name="trash-outline" size={20} color="#ef4444" />
                 </Pressable>
+              </View>
+              <View className="flex-row gap-3">
+                <View className="flex-1">
+                  <Field label="Share %" keyboardType="numeric" value={p.share} onChangeText={(v) => patchAt("phases", i, { share: v })} />
+                </View>
+                <View className="flex-1">
+                  <Field
+                    label="Duration (weeks)"
+                    keyboardType="number-pad"
+                    value={p.weeks}
+                    onChangeText={(v) => patchAt("phases", i, { weeks: v })}
+                    placeholder="Auto"
+                  />
+                </View>
               </View>
               <Field
                 label="Tasks (one per line)"
@@ -239,7 +266,7 @@ export default function PlanEditorSheet({
             variant="tint"
             color="#f59e0b"
             label="+ Add phase"
-            onPress={() => setDraft((d) => ({ ...d, phases: [...d.phases, { name: "", share: "", tasks: "" }] }))}
+            onPress={() => setDraft((d) => ({ ...d, phases: [...d.phases, { name: "", share: "", weeks: "", tasks: "" }] }))}
           />
         </>
       )}

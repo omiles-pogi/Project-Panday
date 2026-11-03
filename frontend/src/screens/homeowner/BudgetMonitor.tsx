@@ -24,7 +24,8 @@ export default function BudgetMonitor() {
       fetchDashboard()
         .then((dashboard) => {
           if (cancelled) return;
-          setProject(dashboard.project);
+          // A "not started yet" project has no budget or estimate to monitor.
+          setProject(dashboard.project?.status === "not_started" ? null : dashboard.project);
           // Keeps the AI planner's per-project conversation in sync, so the category breakdown
           // below (sourced from that conversation, not the backend record) matches whichever
           // project this screen is actually showing.

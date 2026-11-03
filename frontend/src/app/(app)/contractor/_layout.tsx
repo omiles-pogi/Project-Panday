@@ -5,6 +5,7 @@ const NAV_ITEMS: DrawerNavItem[] = [
   { href: "/contractor", label: "Dashboard", icon: "home-outline" },
   { href: "/contractor/available", label: "Browse Projects", icon: "list-outline" },
   { href: "/contractor/projects", label: "My Projects", icon: "business-outline" },
+  { href: "/contractor/calendar", label: "Project Calendar", icon: "calendar-number-outline" },
   { href: "/contractor/material-requests", label: "Material Requests", icon: "clipboard-outline" },
   { href: "/contractor/messages", label: "Messages", icon: "chatbubbles-outline", chatBadge: true },
   { href: "/contractor/materials", label: "Supplier Materials", icon: "storefront-outline" },
@@ -22,6 +23,7 @@ export default function ContractorLayout() {
       role="contractor"
       items={NAV_ITEMS}
       pages={[
+        { name: "calendar", title: "Project Calendar" },
         { name: "profile", title: "Profile" },
         { name: "capacity-monitor", title: "Capacity Monitor" },
         { name: "equipment-schedule", title: "Equipment Schedule" },

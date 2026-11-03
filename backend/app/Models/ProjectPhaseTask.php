@@ -6,13 +6,14 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['project_phase_id', 'description', 'is_done', 'added_by'])]
+#[Fillable(['project_phase_id', 'description', 'is_done', 'completed_at', 'added_by'])]
 class ProjectPhaseTask extends Model
 {
     protected function casts(): array
     {
         return [
             'is_done' => 'boolean',
+            'completed_at' => 'datetime',
         ];
     }
 

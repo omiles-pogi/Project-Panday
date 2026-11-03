@@ -32,12 +32,14 @@ export default function ProgressMonitor() {
       fetchDashboard()
         .then((dashboard) => {
           if (cancelled) return undefined;
-          setProject(dashboard.project);
-          if (!dashboard.project) {
+          // A "not started yet" project has no plan, phases or progress to track.
+          const started = dashboard.project?.status === "not_started" ? null : dashboard.project;
+          setProject(started);
+          if (!started) {
             setLog([]);
             return undefined;
           }
-          return fetchProjectActivityLog(dashboard.project.id).then((days) => {
+          return fetchProjectActivityLog(started.id).then((days) => {
             if (!cancelled) setLog(days);
           });
         })

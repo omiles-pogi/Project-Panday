@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { isChatReply, isClarificationNeeded, type ConstructionPlan } from "@/types/plan";
 import { generateConstructionPlan, type ChatHistoryMessage } from "@/services/ai/client";
+import { garageLabel } from "@/utils/garage";
 
 export type SendResult =
   | { type: "plan"; plan: ConstructionPlan }
@@ -50,6 +51,11 @@ interface PlanContextValue {
    * own conversation independently, so this never mixes one project's chat into another's. Pass
    * null for "no project selected" (the draft slot). */
   selectProject: (projectId: number | null) => void;
+  /** Opens a brand-new project's chat completely blank — the plan, messages, approval step,
+   * clarification count, pending error and last AI reply are all wiped, even if a stale saved
+   * conversation exists under that project's id. Use it for a project that was just created;
+   * use selectProject to go back to one that already has a conversation. */
+  startFresh: (projectId: number) => void;
   /** Call once a draft plan is actually saved as a real project (see ProjectChat's advance()),
    * so its conversation moves from the temporary draft slot to that project's own slot instead of
    * staying lumped in with whatever the next new draft turns out to be. */
@@ -73,8 +79,10 @@ const EMPTY_CONVERSATION: Conversation = { plan: null, messages: [], approvalSta
 function summarizePlan(plan: ConstructionPlan): string {
   const location = plan.location ? ` in ${plan.location}` : "";
   const phaseNames = plan.phases.map((p) => p.name).join(", ");
+  const garage = garageLabel(plan.garageCars);
   return (
     `Plan: ${plan.projectTitle}${location} — ${plan.floors} floor(s), ${plan.bedrooms}BR/${plan.bathrooms}BA, ` +
+    (garage ? `${garage.toLowerCase()}, ` : "") +
     `${plan.areaSqm} sqm, ${plan.designStyle} style. ` +
     // Labeled explicitly so the AI never confuses the homeowner's budget with its own estimate.
     `Homeowner's budget: ${plan.budget > 0 ? `₱${plan.budget.toLocaleString()}` : "not stated yet"}; ` +
@@ -203,9 +211,25 @@ export function PlanProvider({ children }: { children: ReactNode }) {
       const key = projectId != null ? String(projectId) : DRAFT_KEY;
       if (key === activeProjectKey) return;
       applyConversation(conversationsRef.current[key] ?? EMPTY_CONVERSATION);
+      // The pending error / last AI reply belong to the conversation being left, not this one.
+      setError(null);
+      setLastAssistantMessage(null);
       setActiveProjectKey(key);
     },
     [activeProjectKey, applyConversation]
+  );
+
+  const startFresh = useCallback(
+    (projectId: number) => {
+      const key = String(projectId);
+      conversationsRef.current[key] = EMPTY_CONVERSATION;
+      persist();
+      setError(null);
+      setLastAssistantMessage(null);
+      applyConversation(EMPTY_CONVERSATION);
+      setActiveProjectKey(key);
+    },
+    [applyConversation, persist]
   );
 
   const linkToProject = useCallback(
@@ -245,6 +269,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
         updatePlan,
         reset,
         selectProject,
+        startFresh,
         linkToProject,
       }}
     >

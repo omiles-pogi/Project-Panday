@@ -11,7 +11,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable(['user_id', 'title', 'location', 'status', 'budget', 'total_estimate', 'timeline_months', 'started_at', 'ai_materials'])]
 class Project extends Model
 {
-    public const STATUSES = ['active', 'completed'];
+    /** not_started: an empty placeholder awaiting its AI plan's approval. */
+    public const STATUSES = ['not_started', 'active', 'completed'];
 
     protected function casts(): array
     {
@@ -71,6 +72,13 @@ class Project extends Model
     public function hasAssignedWorker(User $user): bool
     {
         return $this->workers->contains('id', $user->id);
+    }
+
+    /** The calendar/timeline is for the homeowner and the contractors running the project — not workers. */
+    public function canViewTimeline(User $user): bool
+    {
+        return ($user->role === 'homeowner' && $this->isOwnedBy($user))
+            || ($user->role === 'contractor' && $this->hasAssignedContractor($user));
     }
 
     /** Owner, assigned contractors, and assigned workers can all view a project. */

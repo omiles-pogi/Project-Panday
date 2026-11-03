@@ -1,6 +1,8 @@
 export interface PlanPhase {
   name: string;
   percentComplete: number;
+  /** AI-estimated calendar weeks for this phase; phases run in order. Absent on plans saved before the calendar existed. */
+  durationWeeks?: number;
   tasks: string[];
 }
 
@@ -44,6 +46,8 @@ export interface ConstructionPlan {
   floors: number;
   bedrooms: number;
   bathrooms: number;
+  /** Cars the garage fits; 0 = no garage. Absent on plans saved before garages were planned. */
+  garageCars?: number;
   designStyle: string;
   budget: number;
   timelineMonths: number;

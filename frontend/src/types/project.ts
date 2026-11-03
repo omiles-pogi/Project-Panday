@@ -28,7 +28,7 @@ export interface DashboardProject {
   id: number;
   title: string;
   location: string | null;
-  status: "active" | "completed";
+  status: "not_started" | "active" | "completed";
   budget: number;
   totalEstimate: number;
   timelineMonths: number;
@@ -57,7 +57,7 @@ export interface MyProject extends DashboardProject {
 export interface ProjectSummary {
   id: number;
   title: string;
-  status: "active" | "completed";
+  status: "not_started" | "active" | "completed";
   startedAt: string;
   overallProgressPct: number;
 }
