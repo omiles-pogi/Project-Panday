@@ -703,9 +703,30 @@ class ProjectService
 
     private function authorizeChecklistManager(ProjectPhase $phase, User $actingUser): void
     {
-        $project = $phase->project;
+        $this->assertCanManageChecklist($phase->project, $actingUser);
+    }
+
+    /**
+     * Only a contractor assigned to the project can change its checklist, and only while it's
+     * ongoing: once it's been submitted as finished the checklist is locked until the homeowner
+     * responds, and a completed project's checklist stays as it was.
+     *
+     * @throws ValidationException
+     */
+    public function assertCanManageChecklist(Project $project, User $actingUser): void
+    {
         if (! $project->isManageableBy($actingUser)) {
             throw ValidationException::withMessages(['phase_id' => 'You are not assigned as a contractor on this project.']);
+        }
+
+        if ($project->status === Project::PENDING_CONFIRMATION) {
+            throw ValidationException::withMessages(['phase_id' => 'This project was submitted as finished, so its checklist is locked until the homeowner confirms it or asks for corrections.']);
+        }
+
+        if ($project->status !== 'active') {
+            throw ValidationException::withMessages(['phase_id' => $project->status === 'completed'
+                ? 'This project is completed, so its checklist can no longer be changed.'
+                : 'This project is not ongoing, so its checklist cannot be changed.']);
         }
     }
 
@@ -730,6 +751,12 @@ class ProjectService
             return array_merge($presented, [
                 'ownerName' => $project->user->name,
                 'canManageChecklist' => $project->isManageableBy($user),
+                // Ongoing is the only time the checklist can change; after the contractor submits the
+                // project, and once it's completed, it's read-only for everyone.
+                'checklistLocked' => $project->status !== 'active',
+                // The "Mark Project as Finished" button: an assigned contractor, an ongoing project and
+                // every task checked (the server re-checks all of this when it's actually pressed).
+                'canSubmitCompletion' => $project->isManageableBy($user) && $project->status === 'active' && $project->checklistIsComplete(),
                 // The viewer's own pay on this project, so their screen doesn't have to dig it out of the team list.
                 'myWage' => $mine['wage'] ?? null,
             ]);
@@ -752,7 +779,8 @@ class ProjectService
         return [
             'project' => $project ? $this->present($project, $user) : null,
             'stats' => [
-                'active' => $user->projects()->where('status', 'active')->count(),
+                // A project waiting for the homeowner's confirmation is still ongoing, not yet completed.
+                'active' => $user->projects()->whereIn('status', ['active', Project::PENDING_CONFIRMATION])->count(),
                 'completed' => $user->projects()->where('status', 'completed')->count(),
             ],
         ];
@@ -885,6 +913,12 @@ class ProjectService
             'timelineMonths' => $project->timeline_months,
             'startedAt' => $project->started_at->toDateString(),
             'overallProgressPct' => $project->overallProgressPct(),
+            // Completed tasks over all tasks — what finishing the project is judged on.
+            'checklist' => $project->checklistSummary(),
+            // Who submitted the project as finished and when, the homeowner's confirmation, and any corrections asked for.
+            'completion' => $project->completionSummary(),
+            // The homeowner's two buttons: shown while the contractor's submission is waiting for them.
+            'canConfirmCompletion' => $viewer !== null && $project->isOwnedBy($viewer) && $project->status === Project::PENDING_CONFIRMATION,
             'phases' => $project->phases->map(fn (ProjectPhase $phase) => [
                 'id' => $phase->id,
                 'name' => $phase->name,

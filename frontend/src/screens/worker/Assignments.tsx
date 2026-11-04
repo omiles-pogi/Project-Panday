@@ -6,6 +6,7 @@ import { Badge, Card, PageHeader, Screen } from "@/components/ui";
 import MessageButton from "@/components/MessageButton";
 import { fetchMyProjects } from "@/services/api/projects";
 import type { MyProject } from "@/types/project";
+import { projectStatusMeta } from "@/utils/projectStatus";
 import { wageLine } from "@/utils/wage";
 import { useFocusedResource } from "@/hooks/useFocusedResource";
 
@@ -18,7 +19,7 @@ function ProjectCard({ project, initiallyExpanded }: { project: MyProject; initi
         <View className="flex-row items-start justify-between mb-2">
           <View className="flex-1 pr-3" style={{ gap: 4 }}>
             <Text className="font-bold text-sm text-foreground">{project.title}</Text>
-            <Badge label={project.status === "completed" ? "Completed" : "Active"} color={project.status === "completed" ? "#10b981" : "#f59e0b"} />
+            <Badge label={projectStatusMeta(project.status).label} color={projectStatusMeta(project.status).color} />
             <Text className="text-xs text-muted-foreground">
               Homeowner: {project.ownerName}
               {project.location ? ` · ${project.location}` : ""}

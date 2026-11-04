@@ -9,11 +9,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['user_id', 'title', 'location', 'status', 'budget', 'total_estimate', 'timeline_months', 'started_at', 'ai_materials', 'approved_plan', 'materials_reviewed_at', 'materials_reviewed_by', 'auto_approve_materials'])]
+#[Fillable(['user_id', 'title', 'location', 'status', 'budget', 'total_estimate', 'timeline_months', 'started_at', 'ai_materials', 'approved_plan', 'materials_reviewed_at', 'materials_reviewed_by', 'auto_approve_materials', 'finished_at', 'finished_by', 'completion_confirmed_at', 'corrections_requested_at', 'corrections_note'])]
 class Project extends Model
 {
+    /** active is "Ongoing"; pending_confirmation is a project the contractor has submitted as finished. */
+    public const PENDING_CONFIRMATION = 'pending_confirmation';
+
     /** not_started: an empty placeholder awaiting its AI plan's approval. */
-    public const STATUSES = ['not_started', 'active', 'completed'];
+    public const STATUSES = ['not_started', 'active', self::PENDING_CONFIRMATION, 'completed'];
 
     protected function casts(): array
     {
@@ -23,6 +26,55 @@ class Project extends Model
             'approved_plan' => 'array',
             'materials_reviewed_at' => 'datetime',
             'auto_approve_materials' => 'boolean',
+            'finished_at' => 'datetime',
+            'completion_confirmed_at' => 'datetime',
+            'corrections_requested_at' => 'datetime',
+        ];
+    }
+
+    /** The contractor who submitted the project as finished. */
+    public function finishedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'finished_by');
+    }
+
+    /**
+     * How much of the checklist is done — completed tasks over all tasks, across every phase.
+     * Nothing to do counts as 0%, never 100%, so an empty checklist can't be "finished".
+     *
+     * @return array{totalTasks: int, doneTasks: int, pct: int}
+     */
+    public function checklistSummary(): array
+    {
+        $this->loadMissing('phases.tasks');
+        $tasks = $this->phases->flatMap(fn (ProjectPhase $phase) => $phase->tasks);
+        $total = $tasks->count();
+        $done = $tasks->where('is_done', true)->count();
+
+        return ['totalTasks' => $total, 'doneTasks' => $done, 'pct' => $total > 0 ? (int) round($done / $total * 100) : 0];
+    }
+
+    /** Whether every task is checked off, and there is at least one. */
+    public function checklistIsComplete(): bool
+    {
+        $summary = $this->checklistSummary();
+
+        return $summary['totalTasks'] > 0 && $summary['doneTasks'] === $summary['totalTasks'];
+    }
+
+    /**
+     * The finish-and-confirm trail, for the screens.
+     *
+     * @return array<string, mixed>
+     */
+    public function completionSummary(): array
+    {
+        return [
+            'submittedAt' => $this->finished_at?->toIso8601String(),
+            'submittedBy' => $this->finishedBy?->name,
+            'confirmedAt' => $this->completion_confirmed_at?->toIso8601String(),
+            'correctionsRequestedAt' => $this->corrections_requested_at?->toIso8601String(),
+            'correctionsNote' => $this->corrections_note,
         ];
     }
 

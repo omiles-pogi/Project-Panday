@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\MaterialCatalogController;
 use App\Http\Controllers\Api\MaterialPlanController;
 use App\Http\Controllers\Api\MaterialRequestController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\ProjectCompletionController;
 use App\Http\Controllers\Api\ProjectController;
 use App\Http\Controllers\Api\ProjectPhaseTaskController;
 use App\Http\Controllers\Api\ProjectRatingController;
@@ -77,6 +78,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
     Route::patch('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
+    Route::delete('/notifications', [NotificationController::class, 'clearAll']);
     Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy']);
 
     Route::put('/worker-profile', [WorkerController::class, 'updateProfile'])->middleware('role:worker');
@@ -91,6 +93,20 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/homeowner-profile', [HomeownerProfileController::class, 'show'])->middleware('role:homeowner');
     Route::put('/homeowner-profile', [HomeownerProfileController::class, 'update'])->middleware('role:homeowner');
+
+    // Finishing a project: the assigned contractor checks off the checklist (a whole phase at a time, or task by
+    // task) and submits the project as finished;
+    // the homeowner then confirms completion or asks for corrections. Ownership and status are re-checked
+    // in ProjectCompletionService, so these role gates are only the first line.
+    Route::middleware('role:contractor')->group(function () {
+        Route::post('/projects/{project}/phases/{phase}/checklist/check-all', [ProjectCompletionController::class, 'checkAll']);
+        Route::post('/projects/{project}/phases/{phase}/checklist/uncheck-all', [ProjectCompletionController::class, 'uncheckAll']);
+        Route::post('/projects/{project}/completion/submit', [ProjectCompletionController::class, 'submit']);
+    });
+    Route::middleware('role:homeowner')->group(function () {
+        Route::post('/projects/{project}/completion/confirm', [ProjectCompletionController::class, 'confirm']);
+        Route::post('/projects/{project}/completion/request-corrections', [ProjectCompletionController::class, 'requestCorrections']);
+    });
 
     // Supplier bidding: the homeowner (or their contractor) asks for quotes and awards one; suppliers bid.
     Route::middleware('role:homeowner,contractor')->group(function () {

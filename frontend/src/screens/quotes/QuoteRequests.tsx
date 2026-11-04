@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Button, Card, ChipPicker, Field, PageHeader, Screen, SubmitButton } from "@/components/ui";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import Sheet from "@/components/Sheet";
 import {
   awardQuote,
@@ -188,6 +189,7 @@ function BidRow({ request, bid, busy, onAward }: { request: QuoteRequest; bid: Q
 function RequestCard({ request, onChanged }: { request: QuoteRequest; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { ask, dialog } = useConfirmDialog();
   const meta = QUOTE_STATUS[request.status];
 
   const run = async (action: () => Promise<unknown>) => {
@@ -205,20 +207,27 @@ function RequestCard({ request, onChanged }: { request: QuoteRequest; onChanged:
   };
 
   const award = (bid: QuoteBid) =>
-    Alert.alert(
-      "Award this quote?",
-      `${bid.supplierName ?? "This supplier"} for ${peso(bid.total)}. The other suppliers will be told they weren't selected.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Award", onPress: () => void run(() => awardQuote(request.id, bid.id)) },
-      ]
-    );
+    ask({
+      title: "Award this quote?",
+      detail: `${bid.supplierName ?? "This supplier"} · ${peso(bid.total)}`,
+      message: "The other suppliers who bid will be told they weren't selected.",
+      confirmLabel: "Award",
+      icon: "trophy-outline",
+      mood: "happy",
+      onConfirm: () => void run(() => awardQuote(request.id, bid.id)),
+    });
 
   const cancel = () =>
-    Alert.alert("Cancel this request?", "Suppliers who already bid will be told it was cancelled.", [
-      { text: "Keep it", style: "cancel" },
-      { text: "Cancel request", style: "destructive", onPress: () => void run(() => cancelQuoteRequest(request.id)) },
-    ]);
+    ask({
+      title: "Cancel this request?",
+      detail: request.title,
+      message: "Suppliers who already bid will be told it was cancelled.",
+      confirmLabel: "Cancel request",
+      cancelLabel: "Keep it",
+      mood: "sad",
+      tone: "danger",
+      onConfirm: () => void run(() => cancelQuoteRequest(request.id)),
+    });
 
   return (
     <Card gap={10}>
@@ -253,6 +262,8 @@ function RequestCard({ request, onChanged }: { request: QuoteRequest; onChanged:
 
       {error ? <Text className="text-xs text-danger">{error}</Text> : null}
       {request.status === "open" ? <Button label="Cancel request" variant="tint" color="#ef4444" onPress={cancel} /> : null}
+
+      {dialog}
     </Card>
   );
 }

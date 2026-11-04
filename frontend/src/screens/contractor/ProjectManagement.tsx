@@ -3,10 +3,22 @@ import { Text, View, Pressable, ActivityIndicator } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { CountUp } from "@/components/charts";
-import { Badge, Card, Field, PageHeader, Screen } from "@/components/ui";
+import { Badge, Button, Card, Field, PageHeader, ProgressBar, Screen } from "@/components/ui";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import MessageButton from "@/components/MessageButton";
+import ProjectStatusBanner from "@/components/ProjectStatusBanner";
 import TeamActivity from "@/components/TeamActivity";
-import { addPhaseTask, deletePhaseTask, fetchMyProjects, setTeamWage, togglePhaseTask } from "@/services/api/projects";
+import {
+  addPhaseTask,
+  checkAllTasks,
+  deletePhaseTask,
+  fetchMyProjects,
+  setTeamWage,
+  submitProjectCompletion,
+  togglePhaseTask,
+  uncheckAllTasks,
+} from "@/services/api/projects";
+import { projectStatusMeta } from "@/utils/projectStatus";
 import { createMaterialRequest } from "@/services/api/materialRequests";
 import WageSheet from "@/components/WageSheet";
 import type { MyProject, Wage, WageInput } from "@/types/project";
@@ -26,7 +38,55 @@ function PhaseChecklist({
   const [newTask, setNewTask] = useState("");
   const [adding, setAdding] = useState(false);
   const [busyTaskId, setBusyTaskId] = useState<number | null>(null);
+  const [bulk, setBulk] = useState<"check" | "uncheck" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Only the project's contractor can edit, and only while it's ongoing — once submitted as finished,
+  // or completed, the checklist is read-only (the server enforces this too).
+  const editable = project.canManageChecklist && !project.checklistLocked;
+  const doneCount = phase.tasks.filter((task) => task.isDone).length;
+  const busy = busyTaskId !== null || adding || bulk !== null;
+
+  // Check All / Uncheck All for this phase only, each behind a confirmation. Saved to the server, so it
+  // stays after a refresh.
+  const runBulk = async (kind: "check" | "uncheck") => {
+    if (busy) return;
+    setBulk(kind);
+    setError(null);
+    try {
+      await (kind === "check" ? checkAllTasks(project.id, phase.id) : uncheckAllTasks(project.id, phase.id));
+      await onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update this phase. Please try again.");
+    } finally {
+      setBulk(null);
+    }
+  };
+
+  const { ask, dialog } = useConfirmDialog();
+  const taskCount = `${phase.tasks.length} ${phase.tasks.length === 1 ? "task" : "tasks"}`;
+
+  const confirmCheckAll = () =>
+    ask({
+      title: "Check all tasks?",
+      detail: `${phase.name} · ${taskCount}`,
+      message: "This marks every task in this phase as completed. While the project is ongoing you can uncheck them again.",
+      confirmLabel: "Check All",
+      icon: "checkmark-done-outline",
+      mood: "happy",
+      onConfirm: () => void runBulk("check"),
+    });
+
+  const confirmUncheckAll = () =>
+    ask({
+      title: "Uncheck all tasks?",
+      detail: `${phase.name} · ${doneCount} done`,
+      message: "This marks every task in this phase as not completed, and the phase's progress goes back to 0%.",
+      confirmLabel: "Uncheck All",
+      icon: "refresh-outline",
+      mood: "thinking",
+      tone: "danger",
+      onConfirm: () => void runBulk("uncheck"),
+    });
 
   const addTask = async () => {
     const description = newTask.trim();
@@ -45,7 +105,7 @@ function PhaseChecklist({
   };
 
   const toggleTask = async (taskId: number, isDone: boolean) => {
-    if (busyTaskId !== null || adding) return;
+    if (busy) return;
     setBusyTaskId(taskId);
     setError(null);
     try {
@@ -81,15 +141,30 @@ function PhaseChecklist({
         </Text>
       </View>
 
+      {editable && phase.tasks.length > 0 && (
+        <View className="flex-row flex-wrap gap-2">
+          <View style={{ flexGrow: 1, flexBasis: "40%" }}>
+            <Button
+              label={bulk === "check" ? "Checking…" : "Check All"}
+              disabled={doneCount === phase.tasks.length || busy}
+              onPress={confirmCheckAll}
+            />
+          </View>
+          <View style={{ flexGrow: 1, flexBasis: "40%" }}>
+            <Button label={bulk === "uncheck" ? "Unchecking…" : "Uncheck All"} variant="muted" disabled={doneCount === 0 || busy} onPress={confirmUncheckAll} />
+          </View>
+        </View>
+      )}
+
       {error && <Text className="text-xs text-danger">{error}</Text>}
       {phase.tasks.map((task) => (
         <Pressable
           key={task.id}
-          onPress={() => (project.canManageChecklist ? toggleTask(task.id, !task.isDone) : undefined)}
+          onPress={() => (editable ? toggleTask(task.id, !task.isDone) : undefined)}
           className="flex-row items-center gap-2"
           accessibilityRole="checkbox"
-          accessibilityState={{ checked: task.isDone, disabled: !project.canManageChecklist || busyTaskId !== null || adding }}
-          disabled={!project.canManageChecklist || busyTaskId !== null || adding}
+          accessibilityState={{ checked: task.isDone, disabled: !editable || busy }}
+          disabled={!editable || busy}
         >
           <Ionicons
             name={task.isDone ? "checkbox" : "square-outline"}
@@ -102,8 +177,8 @@ function PhaseChecklist({
           >
             {task.description}
           </Text>
-          {project.canManageChecklist && (
-            <Pressable onPress={(event) => { event.stopPropagation(); void removeTask(task.id); }} disabled={busyTaskId !== null || adding} accessibilityLabel={`Delete ${task.description}`} hitSlop={8}>
+          {editable && (
+            <Pressable onPress={(event) => { event.stopPropagation(); void removeTask(task.id); }} disabled={busy} accessibilityLabel={`Delete ${task.description}`} hitSlop={8}>
               <Ionicons name="close" size={14} color="#6b7280" />
             </Pressable>
           )}
@@ -112,7 +187,7 @@ function PhaseChecklist({
 
       {phase.tasks.length === 0 && <Text className="text-xs text-muted-foreground">No checklist items yet.</Text>}
 
-      {project.canManageChecklist && (
+      {editable && (
         <View className="flex-row gap-2 mt-1">
           <View className="flex-1">
             <Field
@@ -134,6 +209,8 @@ function PhaseChecklist({
           </Pressable>
         </View>
       )}
+
+      {dialog}
     </View>
   );
 }
@@ -185,13 +262,46 @@ function ProjectCard({
     onChanged();
   };
 
+  // Marking the whole project as finished, behind a confirmation.
+  const [busyAction, setBusyAction] = useState<"finish" | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const checklist = project.checklist ?? { totalTasks: 0, doneTasks: 0, pct: 0 };
+  const editable = project.canManageChecklist && !project.checklistLocked;
+
+  const runAction = async (kind: "finish", action: () => Promise<unknown>) => {
+    if (busyAction) return;
+    setBusyAction(kind);
+    setActionError(null);
+    try {
+      await action();
+      await onChanged();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "That didn't go through. Please try again.");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const { ask, dialog } = useConfirmDialog();
+
+  const confirmFinish = () =>
+    ask({
+      title: "Mark Project as Finished",
+      detail: project.title,
+      message: "Are you sure you want to mark this project as finished? Please confirm that all construction tasks have been completed.",
+      confirmLabel: "Yes, mark as finished",
+      icon: "flag-outline",
+      mood: "happy",
+      onConfirm: () => void runAction("finish", () => submitProjectCompletion(project.id)),
+    });
+
   return (
     <Card>
       <Pressable onPress={() => setExpanded((e) => !e)}>
         <View className="flex-row items-start justify-between mb-2">
           <View className="flex-1 pr-3" style={{ gap: 4 }}>
             <Text className="font-bold text-sm text-foreground">{project.title}</Text>
-            <Badge label={project.status === "completed" ? "Completed" : "Active"} color={project.status === "completed" ? "#10b981" : "#f59e0b"} />
+            <Badge label={projectStatusMeta(project.status).label} color={projectStatusMeta(project.status).color} />
             <Text className="text-xs text-muted-foreground">
               Homeowner: {project.ownerName}
               {project.location ? ` · ${project.location}` : ""}
@@ -219,6 +329,10 @@ function ProjectCard({
           <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={14} color="#f59e0b" />
         </View>
       </Pressable>
+
+      <View className="mt-2">
+        <ProjectStatusBanner project={project} />
+      </View>
 
       <View className="mt-2 flex-row flex-wrap gap-2">
         <MessageButton projectId={project.id} chatPath={(id) => `/contractor/chat/${id}`} label="Message Homeowner" />
@@ -291,11 +405,48 @@ function ProjectCard({
               <TeamActivity projectId={project.id} />
             </View>
           )}
+
+          {/* Checklist progress across every phase. Check All / Uncheck All live on each phase below. */}
+          <View className="px-3 py-3 rounded-xl bg-muted" style={{ gap: 8 }}>
+            <View className="flex-row items-center justify-between">
+              <Text className="text-xs font-bold text-foreground">Project progress</Text>
+              <Text className="text-xs font-bold" style={{ color: checklist.pct === 100 ? "#10b981" : "#f59e0b" }}>
+                {checklist.pct}%
+              </Text>
+            </View>
+            <ProgressBar pct={checklist.pct} color={checklist.pct === 100 ? "#10b981" : "#f59e0b"} height={10} />
+            <Text className="text-xs text-muted-foreground">
+              {checklist.doneTasks} of {checklist.totalTasks} {checklist.totalTasks === 1 ? "task" : "tasks"} completed
+            </Text>
+          </View>
+
+          {actionError ? <Text className="text-xs text-danger">{actionError}</Text> : null}
+
           {project.phases.map((phase) => (
             <PhaseChecklist key={phase.id} project={project} phase={phase} onChanged={onChanged} />
           ))}
+
+          {/* Only possible once everything is checked — and never automatic: the contractor decides. */}
+          {editable && (
+            <View style={{ gap: 6 }}>
+              <Button
+                label={busyAction === "finish" ? "Submitting…" : "Mark Project as Finished"}
+                disabled={!project.canSubmitCompletion || busyAction !== null}
+                onPress={confirmFinish}
+              />
+              {!project.canSubmitCompletion && (
+                <Text className="text-xs text-muted-foreground">
+                  {checklist.totalTasks === 0
+                    ? "Add checklist tasks to be able to finish this project."
+                    : "Complete every checklist task to enable this button."}
+                </Text>
+              )}
+            </View>
+          )}
         </View>
       )}
+
+      {dialog}
     </Card>
   );
 }

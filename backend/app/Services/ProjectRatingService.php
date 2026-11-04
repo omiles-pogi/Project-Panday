@@ -122,7 +122,8 @@ class ProjectRatingService
 
     private function isComplete(Project $project): bool
     {
-        return $project->phases->isNotEmpty() && $project->overallProgressPct() >= 100;
+        // A project the homeowner has confirmed as completed is complete, whatever its weighted progress reads.
+        return $project->status === 'completed' || ($project->phases->isNotEmpty() && $project->overallProgressPct() >= 100);
     }
 
     private function authorizeOwner(Project $project, User $actingUser): void

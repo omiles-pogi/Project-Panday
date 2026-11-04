@@ -3,6 +3,7 @@ import { Text, View, Pressable, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import Sheet from "@/components/Sheet";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useTheme } from "@/context/ThemeContext";
 import { useNotifications } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
@@ -47,6 +48,9 @@ export const ICON: Record<NotificationType, IconName> = {
   supplier_order_received_by_contractor: "checkmark-done-outline",
   rating_received: "star-outline",
   schedule_delay: "warning-outline",
+  project_completion_submitted: "flag-outline",
+  project_completion_confirmed: "checkmark-done-circle-outline",
+  project_corrections_requested: "construct-outline",
   quote_request_received: "pricetags-outline",
   quote_bid_received: "pricetag-outline",
   quote_bid_awarded: "trophy-outline",
@@ -64,13 +68,82 @@ const CONTRACTOR_TYPES: NotificationType[] = [
   "contractor_application_decision",
 ];
 
+/** A small tinted pill for the actions above the list. */
+function ToolbarButton({
+  label,
+  icon,
+  color,
+  onPress,
+  disabled,
+  busy,
+}: {
+  label: string;
+  icon: IconName;
+  color: string;
+  onPress: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled || busy}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      className="flex-row items-center justify-center rounded-full"
+      style={{ gap: 6, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: `${color}1a`, opacity: disabled ? 0.45 : 1 }}
+    >
+      {busy ? <ActivityIndicator size="small" color={color} /> : <Ionicons name={icon} size={14} color={color} />}
+      <Text className="text-xs font-semibold" style={{ color }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 export default function NotificationsPanel({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { chrome } = useTheme();
   const { user } = useAuth();
-  const { notifications, loading, markRead, markAllRead, remove, respond } = useNotifications();
+  const { notifications, unreadCount, loading, markRead, markAllRead, remove, clearAll, respond } = useNotifications();
   const [respondingId, setRespondingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [clearing, setClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { ask, dialog } = useConfirmDialog();
+
+  // Invites and applications still waiting for an answer aren't cleared — they're the only place to answer them.
+  const waitingForAnswer = notifications.filter(
+    (n) => ACTIONABLE.includes(n.type) && !!n.data.requestId && (!n.data.requestStatus || n.data.requestStatus === "pending")
+  ).length;
+
+  const confirmClearAll = () =>
+    ask({
+      title: "Clear all notifications?",
+      detail: `${notifications.length} ${notifications.length === 1 ? "notification" : "notifications"}`,
+      message:
+        waitingForAnswer > 0
+          ? `This removes your notifications for good. ${waitingForAnswer === 1 ? "The invite or application" : `The ${waitingForAnswer} invites and applications`} you haven't answered yet will stay so you can respond.`
+          : "This removes all of your notifications for good.",
+      confirmLabel: "Clear all",
+      icon: "trash-outline",
+      mood: "thinking",
+      tone: "danger",
+      onConfirm: () => void handleClearAll(),
+    });
+
+  const handleClearAll = async () => {
+    if (clearing) return;
+    setClearing(true);
+    setError(null);
+    try {
+      await clearAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to clear notifications. Please try again.");
+    } finally {
+      setClearing(false);
+    }
+  };
 
   const goToRelated = (n: AppNotification) => {
     if (!n.isRead) markRead(n.id).catch(() => undefined);
@@ -118,9 +191,19 @@ export default function NotificationsPanel({ visible, onClose }: { visible: bool
       {error && <Text className="text-xs text-danger">{error}</Text>}
 
       {notifications.length > 0 && (
-        <Pressable onPress={() => markAllRead().catch(() => undefined)} className="self-end">
-          <Text className="text-xs font-semibold text-primary">Mark all read</Text>
-        </Pressable>
+        <View className="flex-row flex-wrap items-center justify-between" style={{ gap: 10 }}>
+          <Text className="text-xs font-medium text-muted-foreground">{unreadCount > 0 ? `${unreadCount} unread` : "All read"}</Text>
+          <View className="flex-row" style={{ gap: 8 }}>
+            <ToolbarButton
+              label="Mark all read"
+              icon="checkmark-done-outline"
+              color="#f59e0b"
+              disabled={unreadCount === 0}
+              onPress={() => markAllRead().catch(() => undefined)}
+            />
+            <ToolbarButton label="Clear all" icon="trash-outline" color="#ef4444" busy={clearing} onPress={confirmClearAll} />
+          </View>
+        </View>
       )}
 
       {loading && notifications.length === 0 ? (
@@ -203,6 +286,8 @@ export default function NotificationsPanel({ visible, onClose }: { visible: bool
           );
         })}
       </View>
+
+      {dialog}
     </Sheet>
   );
 }

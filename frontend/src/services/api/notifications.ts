@@ -20,6 +20,11 @@ export async function markAllNotificationsRead(): Promise<void> {
   await apiFetch("/api/notifications/read-all", { method: "POST" });
 }
 
+/** Deletes the whole feed — except invites and applications still waiting for the user's answer. */
+export async function clearAllNotifications(): Promise<{ cleared: number; kept: number }> {
+  return (await apiFetch("/api/notifications", { method: "DELETE" })) as { cleared: number; kept: number };
+}
+
 export async function deleteNotification(id: number): Promise<void> {
   await apiFetch(`/api/notifications/${id}`, { method: "DELETE" });
 }

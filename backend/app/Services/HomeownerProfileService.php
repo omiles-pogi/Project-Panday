@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Project;
 use App\Models\User;
 
 class HomeownerProfileService
@@ -43,7 +44,8 @@ class HomeownerProfileService
             'projects' => [
                 'total' => (int) $byStatus->sum(),
                 'notStarted' => (int) ($byStatus['not_started'] ?? 0),
-                'active' => (int) ($byStatus['active'] ?? 0),
+                // Still ongoing while it waits for the homeowner's confirmation.
+                'active' => (int) (($byStatus['active'] ?? 0) + ($byStatus[Project::PENDING_CONFIRMATION] ?? 0)),
                 'completed' => (int) ($byStatus['completed'] ?? 0),
             ],
         ];

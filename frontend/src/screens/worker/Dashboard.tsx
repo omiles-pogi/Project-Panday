@@ -5,6 +5,7 @@ import { Card, PageHeader, Screen, StatGrid, StatTile } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { fetchMyProjects } from "@/services/api/projects";
 import { useFocusedResource } from "@/hooks/useFocusedResource";
+import { isOngoing } from "@/utils/projectStatus";
 import AttendanceSection from "@/screens/worker/AttendanceSection";
 import DailyLogSection from "@/screens/worker/DailyLogSection";
 import EarningsSection from "@/screens/worker/EarningsSection";
@@ -30,7 +31,7 @@ export default function Dashboard() {
     );
   }
 
-  const active = projects?.filter((p) => p.status === "active") ?? [];
+  const active = projects?.filter((p) => isOngoing(p.status)) ?? [];
 
   return (
     <Screen>
@@ -46,7 +47,7 @@ export default function Dashboard() {
           icon="briefcase-outline"
           onPress={() => router.push("/worker/assignments" as never)}
         />
-        <StatTile label="Completed" value={(projects?.length ?? 0) - active.length} color="#10b981" icon="checkmark-circle-outline" />
+        <StatTile label="Completed" value={projects?.filter((p) => p.status === "completed").length ?? 0} color="#10b981" icon="checkmark-circle-outline" />
       </StatGrid>
 
       <View className="flex-row flex-wrap gap-2">
