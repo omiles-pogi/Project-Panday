@@ -60,7 +60,7 @@ class AdminService
             ])->values(),
             'projects' => [
                 'total' => $projects->count(),
-                'active' => $projects->where('status', 'active')->count(),
+                'active' => $projects->whereIn('status', ['active', Project::PENDING_CONFIRMATION])->count(),
                 'completed' => $projects->where('status', 'completed')->count(),
                 'avg_progress' => $projects->isEmpty()
                     ? 0

@@ -235,17 +235,24 @@ export function Button({
   onPress,
   variant = "primary",
   color,
+  disabled,
 }: {
   label: string;
   onPress?: () => void;
   variant?: "primary" | "muted" | "tint";
   color?: string;
+  /** Greyed out and not pressable — for an action that isn't available yet. */
+  disabled?: boolean;
 }) {
   const { chrome } = useTheme();
   const bg = variant === "primary" ? "#f59e0b" : variant === "tint" ? `${color}20` : chrome.muted;
   const fg = variant === "primary" ? "#0f1117" : variant === "tint" ? color : chrome.mutedForeground;
   return (
-    <PressScale onPress={onPress} className="px-4 py-2.5 rounded-xl items-center" style={{ backgroundColor: bg }}>
+    <PressScale
+      onPress={disabled ? undefined : onPress}
+      className="px-4 py-2.5 rounded-xl items-center"
+      style={{ backgroundColor: bg, opacity: disabled ? 0.45 : 1 }}
+    >
       <Text className="text-xs font-semibold" style={{ color: fg }}>
         {label}
       </Text>

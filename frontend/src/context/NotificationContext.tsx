@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { router } from "expo-router";
 import {
+  clearAllNotifications,
   deleteNotification,
   fetchNotifications,
   fetchUnreadNotificationCount,
@@ -34,6 +35,8 @@ interface NotificationContextValue {
   markRead: (id: number) => Promise<void>;
   markAllRead: () => Promise<void>;
   remove: (id: number) => Promise<void>;
+  /** Clears the whole feed. Invites and applications still waiting for an answer are kept, so the list is re-read afterwards. */
+  clearAll: () => Promise<void>;
   /** Accepts/declines an invite or approves/rejects an application, then refreshes the feed —
    * a new notification for the other party doesn't change anything for the actor's own list, but
    * this keeps everything consistent regardless. `kind` picks which request table this id
@@ -139,6 +142,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     [notifications]
   );
 
+  const clearAll = useCallback(async () => {
+    await clearAllNotifications();
+    // Some may have been kept (unanswered requests), so show what the server actually has left.
+    const [list, count] = await Promise.all([fetchNotifications(), fetchUnreadNotificationCount()]);
+    list.forEach((n) => seenIds.current.add(n.id));
+    setNotifications(list);
+    setUnreadCount(count);
+    setPopup(null);
+  }, []);
+
   const respond = useCallback(
     async (requestId: number, accept: boolean, kind: "worker" | "contractor") => {
       if (kind === "worker") {
@@ -153,7 +166,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   return (
     <NotificationContext.Provider
-      value={{ notifications, unreadCount, loading, popup, dismissPopup, refresh, markRead, markAllRead, remove, respond }}
+      value={{ notifications, unreadCount, loading, popup, dismissPopup, refresh, markRead, markAllRead, remove, clearAll, respond }}
     >
       {children}
     </NotificationContext.Provider>

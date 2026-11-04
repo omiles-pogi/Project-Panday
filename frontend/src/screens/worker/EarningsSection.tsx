@@ -4,6 +4,7 @@ import { fetchEarnings, type ProjectEarnings } from "@/services/api/workerActivi
 import { useFocusedResource } from "@/hooks/useFocusedResource";
 import { hoursLabel } from "@/utils/clock";
 import { peso } from "@/utils/currency";
+import { projectStatusMeta } from "@/utils/projectStatus";
 import { wageLine } from "@/utils/wage";
 
 function ProjectRow({ item }: { item: ProjectEarnings }) {
@@ -13,7 +14,7 @@ function ProjectRow({ item }: { item: ProjectEarnings }) {
     <View className="p-3.5 rounded-2xl bg-muted" style={{ gap: 4 }}>
       <View className="flex-row items-start justify-between">
         <Text className="flex-1 pr-3 text-sm font-medium text-foreground">{item.projectTitle}</Text>
-        <Badge label={item.status === "completed" ? "Completed" : "Active"} color={item.status === "completed" ? "#10b981" : "#f59e0b"} />
+        <Badge label={projectStatusMeta(item.status).label} color={projectStatusMeta(item.status).color} />
       </View>
       <Text className="text-xs text-muted-foreground">{wageLine(item.wage)}</Text>
       <Text className="text-xs text-muted-foreground">

@@ -8,6 +8,7 @@ import { useFocusedResource } from "@/hooks/useFocusedResource";
 import { useTheme } from "@/context/ThemeContext";
 import ProjectCalendar from "@/screens/timeline/ProjectCalendar";
 import { peso } from "@/utils/currency";
+import { formatDateTime, isOngoing, projectStatusMeta } from "@/utils/projectStatus";
 
 const QUICK_ACTIONS = [
   { label: "Browse", icon: "list-outline", href: "/contractor/available" },
@@ -31,7 +32,8 @@ export default function Dashboard() {
     );
   }
 
-  const active = projects?.filter((p) => p.status === "active") ?? [];
+  // Ongoing includes a project submitted as finished that's waiting for the homeowner to confirm.
+  const active = projects?.filter((p) => isOngoing(p.status)) ?? [];
   const completed = projects?.filter((p) => p.status === "completed") ?? [];
   // Whichever project they picked for the calendar, else their first active one.
   const calendarProject = active.find((p) => p.id === calendarProjectId) ?? active[0] ?? null;
@@ -106,10 +108,40 @@ export default function Dashboard() {
               <View className="h-2 rounded-full overflow-hidden bg-muted">
                 <View className="h-full rounded-full bg-primary" style={{ width: `${p.overallProgressPct}%` }} />
               </View>
+              {p.status === "pending_confirmation" ? (
+                <View className="mt-3">
+                  <Badge label={projectStatusMeta(p.status).label} color={projectStatusMeta(p.status).color} />
+                </View>
+              ) : null}
             </Card>
           </Pressable>
         ))}
       </View>
+
+      {completed.length > 0 && (
+        <View style={{ gap: 12 }}>
+          <Text className="font-bold text-sm text-foreground">Completed Projects</Text>
+          {completed.map((p) => (
+            <Pressable key={p.id} onPress={() => router.push(`/contractor/projects?projectId=${p.id}` as never)}>
+              <Card>
+                <View className="flex-row items-start justify-between">
+                  <View className="flex-1 pr-3" style={{ gap: 2 }}>
+                    <Text className="font-bold text-sm text-foreground">{p.title}</Text>
+                    <Text className="text-xs text-muted-foreground">
+                      {p.ownerName}
+                      {p.location ? ` · ${p.location}` : ""}
+                    </Text>
+                    {p.completion?.confirmedAt ? (
+                      <Text className="text-xs text-muted-foreground">Confirmed {formatDateTime(p.completion.confirmedAt)}</Text>
+                    ) : null}
+                  </View>
+                  <Badge label={projectStatusMeta(p.status).label} color={projectStatusMeta(p.status).color} />
+                </View>
+              </Card>
+            </Pressable>
+          ))}
+        </View>
+      )}
 
       {calendarProject && (
         <View style={{ gap: 12 }}>

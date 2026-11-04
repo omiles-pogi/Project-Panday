@@ -75,8 +75,9 @@ Every screen runs on the real backend — there is no sample-data screen left in
   Budget Monitor (with the team on site, and the plan and budget as a PDF), Find Your Team, Material
   Approvals, Supplier Catalog, Supplier Quotes (ask suppliers to bid, compare, award), Messages, and a
   private Profile (location, contact number, project counts).
-- **Contractor** — browse and apply to projects, My Projects (checklist, and the team's attendance and daily
-  logs), a dashboard with each project's calendar, Material Requests (draft → homeowner approval → supplier
+- **Contractor** — browse and apply to projects, My Projects (the checklist, with Check All / Uncheck All on each phase and
+  "Mark Project as Finished" at the bottom, which sends it to the homeowner to confirm or send back; plus the team's
+  attendance and daily logs), a dashboard with each project's calendar, Material Requests (draft → homeowner approval → supplier
   orders, exportable as a PDF), Supplier Materials, Supplier Quotes, Messages, Profile.
 - **Worker** — a dashboard that holds Attendance (check in / out), the Daily Work Log and Earnings (days worked ×
   day rate) next to the assignments, plus browse and apply to projects, skills profile, Messages.

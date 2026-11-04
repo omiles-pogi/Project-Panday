@@ -41,6 +41,12 @@ class NotificationController extends Controller
         return response()->json(null, 204);
     }
 
+    /** "Clear all": deletes the whole feed, keeping only requests still waiting for the user's answer. */
+    public function clearAll(Request $request): JsonResponse
+    {
+        return response()->json($this->notifications->clearAll($request->user()));
+    }
+
     public function destroy(Request $request, AppNotification $notification): JsonResponse
     {
         try {

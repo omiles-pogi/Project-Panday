@@ -6,12 +6,13 @@ import { ProgressBar } from "@/components/ui";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { addProjectBudget, createDraftProject, deleteProject, fetchDashboard, fetchMyHomeownerProjects, setTeamWage } from "@/services/api/projects";
-import type { DashboardData, ProjectSummary, Wage, WageInput } from "@/types/project";
+import type { DashboardData, ProjectStatus, ProjectSummary, Wage, WageInput } from "@/types/project";
 import { peso } from "@/utils/currency";
 import { compareBudget, formatBudget } from "@/utils/budget";
 import { usePlan } from "@/context/PlanContext";
 import Mascot from "@/components/Mascot";
 import MessageButton from "@/components/MessageButton";
+import ProjectCompletionCard from "@/components/ProjectCompletionCard";
 import ProjectRatingPrompt from "@/components/ProjectRatingPrompt";
 import ProjectCalendar from "@/screens/timeline/ProjectCalendar";
 import WageSheet from "@/components/WageSheet";
@@ -25,8 +26,11 @@ const QUICK_ACTIONS = [
   { label: "Approvals", icon: "checkmark-circle-outline", href: "/homeowner/approvals" },
 ] as const;
 
-function progressLabel(pct: number): { label: string; color: string } {
-  if (pct >= 100) return { label: "COMPLETED", color: "#10b981" };
+/** The hero card's tag. "Completed" is now something the homeowner confirms, not just a progress reading. */
+function projectLabel(status: ProjectStatus, pct: number): { label: string; color: string } {
+  if (status === "completed") return { label: "COMPLETED", color: "#10b981" };
+  if (status === "pending_confirmation") return { label: "PENDING CONFIRMATION", color: "#8b5cf6" };
+  if (pct >= 100) return { label: "ALL TASKS DONE", color: "#10b981" };
   if (pct > 0) return { label: "IN PROGRESS", color: "#f59e0b" };
   return { label: "JUST STARTED", color: "#9ca3af" };
 }
@@ -406,7 +410,13 @@ export default function Dashboard() {
                   numberOfLines={1}
                 >
                   {p.title}
-                  {p.status === "not_started" ? " · Not started" : ""}
+                  {p.status === "not_started"
+                    ? " · Not started"
+                    : p.status === "pending_confirmation"
+                      ? " · To confirm"
+                      : p.status === "completed"
+                        ? " · Completed"
+                        : ""}
                 </Text>
               </Pressable>
               <Pressable
@@ -510,7 +520,7 @@ export default function Dashboard() {
   }
 
   const pct = project.overallProgressPct;
-  const status = progressLabel(pct);
+  const status = projectLabel(project.status, pct);
   const cmp = compareBudget(project.budget, project.totalEstimate);
 
   const budgetPills = [
@@ -596,8 +606,15 @@ export default function Dashboard() {
         </View>
       </View>
 
+      {/* The contractor's finished-project submission waiting for the homeowner, or how it ended */}
+      <ProjectCompletionCard
+        key={`project-completion-${project.id}`}
+        project={project}
+        onChanged={async () => setData(await fetchDashboard(project.id))}
+      />
+
       {/* At 100%, invites the homeowner to rate the contractor and workers who built it */}
-      <ProjectRatingPrompt key={`project-rating-${project.id}`} projectId={project.id} progressPct={pct} />
+      <ProjectRatingPrompt key={`project-rating-${project.id}`} projectId={project.id} progressPct={project.status === "completed" ? 100 : pct} />
 
       {/* Quick actions */}
       <View className="flex-row flex-wrap gap-2">

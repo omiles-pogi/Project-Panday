@@ -472,7 +472,7 @@ function ProjectProgressList({ onError }: { onError: (e: unknown) => void }) {
                 color: p.status === "completed" ? "#10b981" : "#f59e0b",
               }}
             >
-              {p.status}
+              {p.status.replace(/_/g, " ")}
             </span>
           </div>
           <div className="flex items-center gap-3">

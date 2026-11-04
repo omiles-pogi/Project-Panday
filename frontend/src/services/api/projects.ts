@@ -3,6 +3,7 @@ import type { ConstructionPlan } from "@/types/plan";
 import type {
   ActivityLogDay,
   AvailableProject,
+  CompletionState,
   DashboardData,
   DashboardProject,
   HiringWageData,
@@ -143,6 +144,33 @@ export async function togglePhaseTask(
     method: "PATCH",
     body: JSON.stringify({ is_done: isDone }),
   });
+}
+
+/** Marks every task in one phase (Site Preparation, Foundation…) as done. Contractors on the project only, while it's ongoing. */
+export async function checkAllTasks(projectId: number, phaseId: number): Promise<CompletionState> {
+  return (await apiFetch(`/api/projects/${projectId}/phases/${phaseId}/checklist/check-all`, { method: "POST" })) as CompletionState;
+}
+
+export async function uncheckAllTasks(projectId: number, phaseId: number): Promise<CompletionState> {
+  return (await apiFetch(`/api/projects/${projectId}/phases/${phaseId}/checklist/uncheck-all`, { method: "POST" })) as CompletionState;
+}
+
+/** The contractor marks the project as finished: it goes to the homeowner for confirmation. */
+export async function submitProjectCompletion(projectId: number): Promise<CompletionState> {
+  return (await apiFetch(`/api/projects/${projectId}/completion/submit`, { method: "POST" })) as CompletionState;
+}
+
+/** The homeowner confirms the work is done, which makes the project Completed. */
+export async function confirmProjectCompletion(projectId: number): Promise<CompletionState> {
+  return (await apiFetch(`/api/projects/${projectId}/completion/confirm`, { method: "POST" })) as CompletionState;
+}
+
+/** The homeowner sends the project back to Ongoing, saying what needs fixing. */
+export async function requestProjectCorrections(projectId: number, note: string): Promise<CompletionState> {
+  return (await apiFetch(`/api/projects/${projectId}/completion/request-corrections`, {
+    method: "POST",
+    body: JSON.stringify({ note }),
+  })) as CompletionState;
 }
 
 export async function deletePhaseTask(projectId: number, phaseId: number, taskId: number): Promise<void> {

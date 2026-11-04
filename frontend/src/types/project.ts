@@ -76,11 +76,47 @@ export interface DashboardProjectContractor {
   wage?: Wage | null;
 }
 
+/**
+ * active is "Ongoing". Finishing is a handshake: the contractor submits the project
+ * (pending_confirmation), then the homeowner confirms it (completed) or asks for corrections (active again).
+ */
+export type ProjectStatus = "not_started" | "active" | "pending_confirmation" | "completed";
+
+/** Completed tasks over all tasks, across every phase; 0% when there are no tasks. */
+export interface ChecklistSummary {
+  totalTasks: number;
+  doneTasks: number;
+  pct: number;
+}
+
+/** The finish-and-confirm trail: when and by whom it was submitted, the homeowner's answer, any corrections asked for. */
+export interface CompletionTrail {
+  submittedAt: string | null;
+  submittedBy: string | null;
+  confirmedAt: string | null;
+  correctionsRequestedAt: string | null;
+  correctionsNote: string | null;
+}
+
+/** What the server answers after check-all / uncheck-all / submit / confirm / request-corrections. */
+export interface CompletionState {
+  id: number;
+  status: ProjectStatus;
+  overallProgressPct: number;
+  checklist: ChecklistSummary;
+  completion: CompletionTrail;
+}
+
 export interface DashboardProject {
   id: number;
   title: string;
   location: string | null;
-  status: "not_started" | "active" | "completed";
+  status: ProjectStatus;
+  /** Absent only on the bare record returned when a project is first created. */
+  checklist?: ChecklistSummary;
+  completion?: CompletionTrail;
+  /** The homeowner's "Confirm Project Completion" / "Request Corrections" buttons are on offer. */
+  canConfirmCompletion?: boolean;
   budget: number;
   totalEstimate: number;
   timelineMonths: number;
@@ -112,6 +148,10 @@ export interface DashboardData {
 export interface MyProject extends DashboardProject {
   ownerName: string;
   canManageChecklist: boolean;
+  /** Read-only: the project was submitted as finished, or is completed. */
+  checklistLocked: boolean;
+  /** "Mark Project as Finished" is available: ongoing, and every task checked. */
+  canSubmitCompletion: boolean;
   /** The viewer's own pay on this project. */
   myWage?: Wage | null;
 }
@@ -119,7 +159,7 @@ export interface MyProject extends DashboardProject {
 export interface ProjectSummary {
   id: number;
   title: string;
-  status: "not_started" | "active" | "completed";
+  status: ProjectStatus;
   startedAt: string;
   overallProgressPct: number;
 }

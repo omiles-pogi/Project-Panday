@@ -80,6 +80,49 @@ class NotificationService
         $notification->delete();
     }
 
+    /**
+     * Clears the user's whole notification feed — not just the page the app shows — except invites and
+     * applications still waiting for their answer: that notification is where they accept or decline,
+     * so wiping it would strand the request.
+     *
+     * @return array{cleared: int, kept: int}
+     */
+    public function clearAll(User $user): array
+    {
+        $kept = $this->unansweredRequestNotificationIds($user);
+
+        $cleared = AppNotification::where('user_id', $user->id)
+            ->when($kept !== [], fn ($query) => $query->whereNotIn('id', $kept))
+            ->delete();
+
+        return ['cleared' => $cleared, 'kept' => count($kept)];
+    }
+
+    /**
+     * @return array<int, int> ids of the user's invite/application notifications whose request is still pending
+     */
+    private function unansweredRequestNotificationIds(User $user): array
+    {
+        $ids = [];
+
+        foreach (self::ACTIONABLE_REQUEST_MODEL as $type => $modelClass) {
+            $notifications = AppNotification::where('user_id', $user->id)->where('type', $type)->get(['id', 'data']);
+            $requestIds = $notifications->map(fn (AppNotification $n) => $n->data['requestId'] ?? null)->filter()->unique()->all();
+            if ($requestIds === []) {
+                continue;
+            }
+
+            $pending = $modelClass::whereIn('id', $requestIds)->where('status', 'pending')->pluck('id')->map(fn ($id) => (int) $id)->all();
+            foreach ($notifications as $notification) {
+                if (in_array((int) ($notification->data['requestId'] ?? 0), $pending, true)) {
+                    $ids[] = $notification->id;
+                }
+            }
+        }
+
+        return $ids;
+    }
+
     private function authorize(AppNotification $notification, User $actingUser): void
     {
         if ($notification->user_id !== $actingUser->id) {
