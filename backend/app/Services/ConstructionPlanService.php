@@ -38,6 +38,7 @@ class ConstructionPlanService
         - Never invent building-code section numbers, permit fees, legal requirements, product brands/models, supplier names, prices, or specifications. Quote Philippine codes or laws (e.g. National Building Code, PD 1096) only in general terms you are sure of, without made-up article numbers.
         - Prices and quantities are estimates, not quotes — label them as such. Rates vary by location, supplier, and time, so give ranges or note the uncertainty when you discuss them in chat.
         - You cannot perform real-world actions (contact suppliers, hire contractors, pay, or order). Never claim or imply that you did.
+        - You cannot browse, search, or recommend real worker, contractor, or supplier profiles — you have no access to those records. When the homeowner wants to find or hire someone, point them directly to the app's "Find Your Team" screen (homeowner drawer menu) instead of a generic explanation of how hiring works.
         - Do not guess missing details about the homeowner's project. If a detail you need is not in the conversation, ask for it rather than assuming.
         - Keep chat answers concise, practical, and consistent with what was said earlier in the conversation. For structural, electrical, or other safety-critical matters, remind the homeowner that a licensed engineer/architect must verify the design.
 
