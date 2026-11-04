@@ -42,7 +42,15 @@ export function meRequest(): Promise<AuthUser> {
   return apiFetch("/api/auth/me") as Promise<AuthUser>;
 }
 
-export type ApprovalStatus = "pending" | "approved" | "rejected";
+/** Changes the signed-in user's own display name; answers with the updated user. */
+export function updateNameRequest(name: string): Promise<AuthUser> {
+  return apiFetch("/api/auth/me", {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  }) as Promise<AuthUser>;
+}
+
+export type ApprovalStatus ="pending" | "approved" | "rejected";
 
 // Used by the waiting screen to poll for the admin's decision; never returns a token.
 export function approvalStatusRequest(fields: { email: string; password: string }): Promise<{ approval_status: ApprovalStatus }> {

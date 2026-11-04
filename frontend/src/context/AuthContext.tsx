@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { tokenStorage } from "@/utils/tokenStorage";
-import { loginRequest, logoutRequest, meRequest, registerRequest } from "@/services/api/auth";
+import { loginRequest, logoutRequest, meRequest, registerRequest, updateNameRequest } from "@/services/api/auth";
 import { ApiError, setAuthToken } from "@/services/api/client";
+import { disablePush } from "@/services/push";
 import type { AuthUser, Role } from "@/types/auth";
 
 const TOKEN_KEY = "buildai_auth_token";
@@ -40,6 +41,8 @@ interface AuthContextValue {
     license_number?: string;
   }) => Promise<void>;
   logout: () => Promise<void>;
+  /** Changes the signed-in user's name on the server and everywhere the app shows it. */
+  updateName: (name: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -138,6 +141,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
+    // Before the request below revokes the auth token this call needs.
+    await disablePush();
     try {
       await logoutRequest();
     } catch {
@@ -149,8 +154,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus("guest");
   }, []);
 
+  const updateName = useCallback(async (name: string) => {
+    const updated = await updateNameRequest(name);
+    setUser((current) => (current ? { ...current, name: updated.name } : current));
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ status, user, error, pending, clearPending, prefillEmail, login, register, logout }}>
+    <AuthContext.Provider value={{ status, user, error, pending, clearPending, prefillEmail, login, register, logout, updateName }}>
       {children}
     </AuthContext.Provider>
   );

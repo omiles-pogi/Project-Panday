@@ -10,6 +10,7 @@ const NAV_ITEMS: DrawerNavItem[] = [
   { href: "/homeowner/approvals", label: "Material Approvals", icon: "clipboard-outline" },
   { href: "/homeowner/messages", label: "Messages", icon: "chatbubbles-outline", chatBadge: true },
   { href: "/homeowner/supplier-catalog", label: "Supplier Catalog", icon: "storefront-outline" },
+  { href: "/homeowner/quotes", label: "Supplier Quotes", icon: "pricetags-outline" },
   { href: "/homeowner/profile", label: "Profile", icon: "person-outline" },
 ];
 

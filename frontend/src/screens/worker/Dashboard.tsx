@@ -5,6 +5,9 @@ import { Card, PageHeader, Screen, StatGrid, StatTile } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { fetchMyProjects } from "@/services/api/projects";
 import { useFocusedResource } from "@/hooks/useFocusedResource";
+import AttendanceSection from "@/screens/worker/AttendanceSection";
+import DailyLogSection from "@/screens/worker/DailyLogSection";
+import EarningsSection from "@/screens/worker/EarningsSection";
 
 const QUICK_ACTIONS = [
   { label: "Assignments", icon: "briefcase-outline", href: "/worker/assignments" },
@@ -60,6 +63,8 @@ export default function Dashboard() {
         ))}
       </View>
 
+      <AttendanceSection />
+
       <Card
         title="Active Assignments"
         right={
@@ -97,6 +102,10 @@ export default function Dashboard() {
           ))}
         </View>
       </Card>
+
+      <DailyLogSection />
+
+      <EarningsSection />
     </Screen>
   );
 }

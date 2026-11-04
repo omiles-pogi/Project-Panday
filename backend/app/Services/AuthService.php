@@ -24,6 +24,14 @@ class AuthService
         ]);
     }
 
+    /** Changes the name the user goes by; every screen reads it live from the user, so it shows everywhere at once. */
+    public function updateName(User $user, string $name): User
+    {
+        $user->update(['name' => $name]);
+
+        return $user;
+    }
+
     public function attempt(string $email, string $password): ?User
     {
         $user = User::where('email', $email)->first();

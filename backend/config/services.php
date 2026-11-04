@@ -51,4 +51,11 @@ return [
         'tpm_limit' => (int) env('GROQ_TPM_LIMIT', 8000),
     ],
 
+    // Push notifications to phones with the app closed, through Expo's push service. The access
+    // token is optional — only needed if "enhanced security" is switched on for the Expo project.
+    'expo_push' => [
+        'url' => env('EXPO_PUSH_URL', 'https://exp.host/--/api/v2/push/send'),
+        'access_token' => env('EXPO_ACCESS_TOKEN'),
+    ],
+
 ];

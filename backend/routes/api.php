@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\ConstructionPlanController;
 use App\Http\Controllers\Api\ContractorController;
 use App\Http\Controllers\Api\ContractorRequestController;
 use App\Http\Controllers\Api\ConversationController;
+use App\Http\Controllers\Api\DeviceTokenController;
 use App\Http\Controllers\Api\HiringWageController;
 use App\Http\Controllers\Api\HomeownerProfileController;
 use App\Http\Controllers\Api\MaterialCatalogController;
@@ -16,9 +17,11 @@ use App\Http\Controllers\Api\ProjectController;
 use App\Http\Controllers\Api\ProjectPhaseTaskController;
 use App\Http\Controllers\Api\ProjectRatingController;
 use App\Http\Controllers\Api\ProjectTimelineController;
+use App\Http\Controllers\Api\QuoteController;
 use App\Http\Controllers\Api\SupplierOrderController;
 use App\Http\Controllers\Api\SupplierProductController;
 use App\Http\Controllers\Api\SupplierProfileController;
+use App\Http\Controllers\Api\WorkerActivityController;
 use App\Http\Controllers\Api\WorkerController;
 use App\Http\Controllers\Api\WorkerRequestController;
 use Illuminate\Support\Facades\Route;
@@ -30,6 +33,7 @@ Route::post('/auth/approval-status', [AuthController::class, 'approvalStatus'])-
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
+    Route::patch('/auth/me', [AuthController::class, 'updateMe']);
     Route::post('/ai/plan', [ConstructionPlanController::class, 'store'])->middleware('throttle:20,1');
     Route::get('/ai/supplier-options', [ConstructionPlanController::class, 'supplierOptions'])->middleware('role:homeowner');
     Route::post('/projects', [ProjectController::class, 'store']);
@@ -66,6 +70,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/projects/{project}/phases/{phase}/tasks/{task}', [ProjectPhaseTaskController::class, 'update']);
     Route::delete('/projects/{project}/phases/{phase}/tasks/{task}', [ProjectPhaseTaskController::class, 'destroy']);
 
+    // The phone's push token, registered after sign-in and removed on sign-out.
+    Route::post('/device-tokens', [DeviceTokenController::class, 'store']);
+    Route::delete('/device-tokens', [DeviceTokenController::class, 'destroy']);
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
     Route::patch('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
@@ -84,6 +91,30 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/homeowner-profile', [HomeownerProfileController::class, 'show'])->middleware('role:homeowner');
     Route::put('/homeowner-profile', [HomeownerProfileController::class, 'update'])->middleware('role:homeowner');
+
+    // Supplier bidding: the homeowner (or their contractor) asks for quotes and awards one; suppliers bid.
+    Route::middleware('role:homeowner,contractor')->group(function () {
+        Route::get('/quote-requests', [QuoteController::class, 'index']);
+        Route::post('/projects/{project}/quote-requests', [QuoteController::class, 'store']);
+        Route::post('/quote-requests/{quoteRequest}/award', [QuoteController::class, 'award']);
+        Route::post('/quote-requests/{quoteRequest}/cancel', [QuoteController::class, 'cancel']);
+    });
+    Route::middleware('role:supplier')->group(function () {
+        Route::get('/supplier/quote-requests', [QuoteController::class, 'supplierIndex']);
+        Route::put('/quote-requests/{quoteRequest}/bid', [QuoteController::class, 'bid']);
+        Route::delete('/quote-requests/{quoteRequest}/bid', [QuoteController::class, 'withdraw']);
+    });
+
+    // A worker's day on site — attendance, the daily log and earnings — and the team's view of it.
+    Route::middleware('role:worker')->group(function () {
+        Route::get('/worker/attendance', [WorkerActivityController::class, 'attendance']);
+        Route::post('/projects/{project}/attendance/check-in', [WorkerActivityController::class, 'checkIn']);
+        Route::post('/projects/{project}/attendance/check-out', [WorkerActivityController::class, 'checkOut']);
+        Route::get('/worker/work-logs', [WorkerActivityController::class, 'workLogs']);
+        Route::put('/projects/{project}/work-log', [WorkerActivityController::class, 'saveWorkLog']);
+        Route::get('/worker/earnings', [WorkerActivityController::class, 'earnings']);
+    });
+    Route::get('/projects/{project}/team-activity', [WorkerActivityController::class, 'team'])->middleware('role:homeowner,contractor');
 
     Route::get('/supplier-profile', [SupplierProfileController::class, 'show'])->middleware('role:supplier');
     Route::put('/supplier-profile', [SupplierProfileController::class, 'update'])->middleware('role:supplier');

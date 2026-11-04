@@ -113,10 +113,6 @@ class TimelineService
         $phaseItems = $phases->map(fn (ProjectPhase $phase) => $this->presentPhase($phase, $today));
         $tasks = $phases->flatMap(fn (ProjectPhase $phase) => $this->presentTasks($phase, $today))->values();
 
-        $planned = $this->plannedPct($phases, $today);
-        $actual = $project->overallProgressPct();
-        $variance = $actual - $planned;
-
         return [
             'projectId' => $project->id,
             'title' => $project->title,
@@ -124,20 +120,57 @@ class TimelineService
             'endDate' => $projectEnd->toDateString(),
             'timelineMonths' => $project->timeline_months,
             'today' => $today->toDateString(),
-            'overall' => [
-                'plannedPct' => $planned,
-                'actualPct' => $actual,
-                'variancePct' => $variance,
-                'status' => $this->scheduleStatus($actual, $variance, $today, $projectStart),
-                'daysRemaining' => (int) $today->diffInDays($projectEnd),
-                'tasks' => [
-                    'total' => $tasks->count(),
-                    'done' => $tasks->where('isDone', true)->count(),
-                    'overdue' => $tasks->where('status', 'overdue')->count(),
-                ],
-            ],
+            'overall' => $this->presentOverall($project, $phases, $tasks, $projectStart, $projectEnd, $today),
             'phases' => $phaseItems->values(),
             'months' => $this->months($phases, $tasks, $projectStart, $projectEnd, $today),
+        ];
+    }
+
+    /**
+     * Just the headline figures (planned vs actual, status, overdue tasks) with no viewer attached,
+     * for the delay alerts, which run from the scheduler as well as from a request.
+     *
+     * @return array<string, mixed>
+     */
+    public function overallFor(Project $project): array
+    {
+        $project->load('phases.tasks');
+        $this->ensureSchedule($project);
+
+        $today = Carbon::today();
+        $phases = $project->phases->values();
+
+        if ($phases->isEmpty()) {
+            return $this->emptyTimeline($project, $today)['overall'];
+        }
+
+        $tasks = $phases->flatMap(fn (ProjectPhase $phase) => $this->presentTasks($phase, $today))->values();
+
+        return $this->presentOverall($project, $phases, $tasks, $phases->first()->planned_start->copy(), $phases->last()->planned_end->copy(), $today);
+    }
+
+    /**
+     * @param  Collection<int, ProjectPhase>  $phases
+     * @param  Collection<int, array<string, mixed>>  $tasks
+     * @return array<string, mixed>
+     */
+    private function presentOverall(Project $project, Collection $phases, Collection $tasks, Carbon $projectStart, Carbon $projectEnd, Carbon $today): array
+    {
+        $planned = $this->plannedPct($phases, $today);
+        $actual = $project->overallProgressPct();
+        $variance = $actual - $planned;
+
+        return [
+            'plannedPct' => $planned,
+            'actualPct' => $actual,
+            'variancePct' => $variance,
+            'status' => $this->scheduleStatus($actual, $variance, $today, $projectStart),
+            'daysRemaining' => (int) $today->diffInDays($projectEnd),
+            'tasks' => [
+                'total' => $tasks->count(),
+                'done' => $tasks->where('isDone', true)->count(),
+                'overdue' => $tasks->where('status', 'overdue')->count(),
+            ],
         ];
     }
 

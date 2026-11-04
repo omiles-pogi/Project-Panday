@@ -5,6 +5,14 @@ import HomeownerDrawerContent from "@/components/HomeownerDrawerContent";
 
 export default function HomeownerLayout() {
   const { chrome } = useTheme();
+  // Pages the drawer opens with a header of their own (the tabs and older pages draw theirs).
+  const withHeader = (title: string) => ({
+    headerShown: true,
+    title,
+    headerStyle: { backgroundColor: chrome.card },
+    headerTintColor: chrome.foreground,
+    headerLeft: () => <DrawerToggleButton tintColor={chrome.mutedForeground} />,
+  });
   return (
     <PlanProvider>
       <Drawer
@@ -19,16 +27,8 @@ export default function HomeownerLayout() {
         <Drawer.Screen name="supplier-catalog" />
         <Drawer.Screen name="messages" />
         <Drawer.Screen name="approvals" />
-        <Drawer.Screen
-          name="profile"
-          options={{
-            headerShown: true,
-            title: "Profile",
-            headerStyle: { backgroundColor: chrome.card },
-            headerTintColor: chrome.foreground,
-            headerLeft: () => <DrawerToggleButton tintColor={chrome.mutedForeground} />,
-          }}
-        />
+        <Drawer.Screen name="quotes" options={withHeader("Supplier Quotes")} />
+        <Drawer.Screen name="profile" options={withHeader("Profile")} />
       </Drawer>
     </PlanProvider>
   );

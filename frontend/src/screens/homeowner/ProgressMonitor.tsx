@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Card, PageHeader, ProgressBar, Screen, StatGrid, StatTile } from "@/components/ui";
 import { ProgressRing } from "@/components/charts";
+import TeamActivity from "@/components/TeamActivity";
 import { fetchDashboard, fetchProjectActivityLog } from "@/services/api/projects";
 import type { ActivityLogDay, DashboardProject } from "@/types/project";
 import { usePlan } from "@/context/PlanContext";
@@ -132,6 +133,10 @@ export default function ProgressMonitor() {
             </View>
           ))}
         </View>
+      </Card>
+
+      <Card title="Team on Site">
+        <TeamActivity projectId={project.id} />
       </Card>
 
       <View>

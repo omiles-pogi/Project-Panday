@@ -53,7 +53,8 @@ class ConstructionPlanService
           * "totalEstimate" is an independent scope-based estimate, including site, MEP and fees. Never scale or fit it to the homeowner's budget. Label it as an estimate, including when it is over budget.
         - When you talk about money in a plain chat reply, always say clearly which number is "your budget" and which is "my estimate".
         - Only set "location" to a specific city/region if the conversation explicitly names one. Never invent or guess a location — leave it as an empty string otherwise.
-        - GARAGE — garageCars is the homeowner's stated car capacity; no parking means 0. When positive, include garage area (about 18 sqm/car), slab, walls/roof, driveway and door in areaSqm, budget, materials and phase tasks. For unrelated repairs/renovations use 0. Never add an unrequested garage.
+        - AREA — areaSqm is the floor area exactly as the homeowner stated it (190 sqm → 190). Never add a garage, porch, driveway or any other extra to it, and never round, "adjust" or recompute it; change it only when they give a new figure.
+        - GARAGE — garageCars is the homeowner's stated car capacity; no parking means 0. When positive, include garage area (about 18 sqm/car), slab, walls/roof, driveway and door in the budget, materials and phase tasks — but not in areaSqm. For unrelated repairs/renovations use 0. Never add an unrequested garage.
         - Keep other lists concise: 5-8 phases, 8-14 materials.
         - For each phase, include a tasks checklist of 3-6 short, concrete, checkable work items specific to that phase (e.g. for a "Foundation" phase: "Site clearing", "Land filling", "Excavation", "Rebar installation", "Concrete pouring"). These become a to-do checklist the contractor checks off as work is completed.
         - Order phases and tasks chronologically: site preparation, foundation, structure, roofing, MEP, finishing. durationWeeks is whole calendar weeks, not effort; durations must total about timelineMonths × 4.3 weeks.
@@ -626,7 +627,7 @@ class ConstructionPlanService
                         'floors' => ['type' => 'integer'],
                         'bedrooms' => ['type' => 'integer'],
                         'bathrooms' => ['type' => 'integer'],
-                        'garageCars' => ['type' => 'integer', 'description' => 'Number of cars the garage fits; 0 if the house has no garage. When above 0 the garage is included in areaSqm, the budget, materials, and phases/tasks.'],
+                        'garageCars' => ['type' => 'integer', 'description' => 'Number of cars the garage fits; 0 if the house has no garage. When above 0 the garage is included in the budget, materials, and phases/tasks, but never added to areaSqm.'],
                         'designStyle' => ['type' => 'string'],
                         'budget' => ['type' => 'number', 'description' => "The homeowner's OWN stated budget in PHP, exactly as they said it (\"2.5M\" = 2500000). 0 if they never stated one. Never your estimate."],
                         'timelineMonths' => ['type' => 'integer'],

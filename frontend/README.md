@@ -72,13 +72,24 @@ Every screen runs on the real backend — there is no sample-data screen left in
 - **Homeowner** — AI planner chat (`ProjectChat` → `PlanContext` → `/api/ai/plan`) that builds a
   timeline, budget and materials, with a supplier picker per category; project dashboard with "not
   started yet" projects and the project calendar (AI-proposed schedule vs actual progress); Progress,
-  Budget Monitor, Find Your Team, Material Approvals, Supplier Catalog, Messages, and a private Profile
-  (location, contact number, project counts).
-- **Contractor** — browse and apply to projects, My Projects (checklist), a dashboard with each
-  project's calendar, Material Requests (draft → homeowner approval → supplier orders), Supplier Materials, Messages, Profile.
-- **Worker** — dashboard, assignments, browse and apply to projects, skills profile, Messages.
-- **Supplier** — dashboard, inventory (listings and stock), material orders (confirm / decline / deliver), and a
-  shop Profile (location, contact number, about — shown to buyers on the catalog).
+  Budget Monitor (with the team on site, and the plan and budget as a PDF), Find Your Team, Material
+  Approvals, Supplier Catalog, Supplier Quotes (ask suppliers to bid, compare, award), Messages, and a
+  private Profile (location, contact number, project counts).
+- **Contractor** — browse and apply to projects, My Projects (checklist, and the team's attendance and daily
+  logs), a dashboard with each project's calendar, Material Requests (draft → homeowner approval → supplier
+  orders, exportable as a PDF), Supplier Materials, Supplier Quotes, Messages, Profile.
+- **Worker** — a dashboard that holds Attendance (check in / out), the Daily Work Log and Earnings (days worked ×
+  day rate) next to the assignments, plus browse and apply to projects, skills profile, Messages.
+- **Supplier** — dashboard, inventory (listings and stock), material orders (confirm / decline / deliver), Bid
+  Requests (price a homeowner's or contractor's material list), and a shop Profile (location, contact number,
+  about — shown to buyers on the catalog).
+
+**PDF export** is built on the phone (`src/utils/pdf.ts`, `expo-print` + `expo-sharing`) and works in Expo Go.
+
+**Push notifications** (`src/services/push.ts`) reach the phone with the app closed, on top of the in-app bell and
+pop-up. They need a real build (the Android APK, or a development build) with an Expo project behind it: run
+`npx eas-cli init` so `app.json` gets `extra.eas.projectId`, and give EAS your Firebase (FCM) credentials for
+Android. **Expo Go can't receive them** — there the code does nothing, and the in-app notifications are unaffected.
 
 `src/data/` only holds display constants now (inventory types and colours, the PandAi tour text).
 
@@ -88,6 +99,11 @@ Every screen runs on the real backend — there is no sample-data screen left in
   uses Tailwind v4. NativeWind 4.x's underlying engine (`react-native-css-interop`)
   only supports Tailwind v3 — this is unrelated to NativeWind's own major version
   number. Don't "fix" this by upgrading to v4; it'll break the Metro build.
+- **`index.js` is the app's entry** (`package.json` `main`), and all it does besides loading
+  `expo-router/entry` is hide one warning, "ImageBackground is deprecated". That comes from
+  `react-native-css-interop` (NativeWind), which reads `ImageBackground` on startup although no screen
+  uses it. It fires before any screen renders, so it can't be silenced from a layout file. Drop `index.js`
+  and point `main` back at `expo-router/entry` once NativeWind stops touching `ImageBackground`.
 - Some installs here needed `--legacy-peer-deps` because `expo`'s optional web support
   wants `react-dom`, which isn't otherwise pulled in for a mobile-only app. `react-dom`
   is pinned as a plain dependency (matching `react`'s version) specifically to keep
