@@ -38,6 +38,10 @@ export interface MaterialRequestItem {
   confirmedSubtotal: number | null;
   status: MaterialItemStatus;
   source: "manual" | "ai";
+  /** The AI's own estimate and what the contractor's reviewed plan allows — null for an item not in the plan. */
+  aiQuantity: number | null;
+  planQuantity: number | null;
+  wastePct: number;
   orderId: number | null;
   /** Already with a live supplier order — the contractor can't change it. */
   locked: boolean;
@@ -81,6 +85,13 @@ export interface MaterialRequest {
   contractor: { id: number; name: string };
   homeowner: { id: number; name: string };
   notes: string | null;
+  /** The phase these materials are for, and the date they should be ordered by. */
+  phase: { id: number; name: string } | null;
+  neededBy: string | null;
+  /** Approved by the app because it stayed inside the homeowner's plan. */
+  autoApproved: boolean;
+  /** Why the homeowner is being asked — only what fell outside their plan; empty means nothing unusual. */
+  approvalFlags: string[];
   decisionReason: string | null;
   estimatedTotal: number;
   confirmedTotal: number;
@@ -90,6 +101,14 @@ export interface MaterialRequest {
   updatedAt: string;
   canEdit: boolean;
   canDecide: boolean;
+  /** What approving this would add to the project estimate and take off the budget left over; null if it adds nothing. */
+  estimateImpact: {
+    amount: number;
+    estimateBefore: number;
+    estimateAfter: number;
+    leftOverBefore: number | null;
+    leftOverAfter: number | null;
+  } | null;
   items: MaterialRequestItem[];
   orders: MaterialRequestOrder[];
   history: MaterialRequestHistoryEntry[];
@@ -107,9 +126,13 @@ export interface MaterialItemInput {
 }
 
 export interface AiMaterialSuggestion {
+  index: number;
   material: string;
   category: string | null;
+  /** What to order: the contractor's reviewed quantity once they've reviewed the plan, else the AI's. */
   quantity: number;
+  aiQuantity: number;
+  phase: string;
   unit: string;
   estimatedUnitPrice: number;
   match: {
@@ -157,4 +180,68 @@ export interface SupplierOrder {
     insufficientStock: boolean;
     status: MaterialItemStatus;
   }[];
+}
+
+/** One material line of the plan, as the phase plan shows it. */
+export interface MaterialPlanLine {
+  index: number;
+  material: string;
+  unit: string;
+  phase: string;
+  /** What the AI estimated, what the contractor said they need, and what is planned (their need + waste). */
+  aiQuantity: number;
+  contractorQuantity: number;
+  wastePct: number;
+  quantity: number;
+  reviewed: boolean;
+  unitPrice: number;
+  lineTotal: number;
+  aiLineTotal: number;
+  match: AiMaterialSuggestion["match"];
+}
+
+export interface MaterialPlanPhase {
+  phaseId: number;
+  name: string;
+  startDate: string;
+  /** The date to order by, so the materials arrive before the phase starts. */
+  neededBy: string;
+  /** Negative once that date has passed. */
+  daysUntilNeeded: number;
+  progressPct: number;
+  lineCount: number;
+  estimatedTotal: number;
+  lines: MaterialPlanLine[];
+  requests: { id: number; status: MaterialRequestStatus; autoApproved: boolean; estimatedTotal: number }[];
+}
+
+export interface MaterialCategoryBudget {
+  category: string;
+  budget: number;
+  committed: number;
+  remaining: number;
+}
+
+/** A project's materials by phase — see MaterialPlanService on the backend. */
+export interface MaterialPlan {
+  projectId: number;
+  title: string;
+  hasPlan: boolean;
+  reviewed: boolean;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  autoApprove: boolean;
+  aiTotal: number;
+  plannedTotal: number;
+  variancePct: number;
+  phases: MaterialPlanPhase[];
+  unscheduled: { lineCount: number; estimatedTotal: number; lines: MaterialPlanLine[] } | null;
+  categoryBudgets: MaterialCategoryBudget[];
+}
+
+/** One line of the contractor's review: what they actually need, plus a waste allowance. */
+export interface MaterialReviewLine {
+  index: number;
+  quantity: number;
+  waste_pct: number;
 }

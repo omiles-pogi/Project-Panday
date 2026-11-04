@@ -9,6 +9,7 @@ use App\Http\Requests\UpdateWorkerProfileRequest;
 use App\Models\User;
 use App\Services\WorkerService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
 class WorkerController extends Controller
@@ -26,19 +27,20 @@ class WorkerController extends Controller
     {
         $results = $this->workers->search(
             $request->validated('trade'),
-            $request->validated('skills') ?? []
+            $request->validated('skills') ?? [],
+            $request->user()
         );
 
         return response()->json($results);
     }
 
-    public function show(User $worker): JsonResponse
+    public function show(Request $request, User $worker): JsonResponse
     {
         if ($worker->role !== 'worker') {
             return response()->json(['error' => 'Not a worker account.'], 404);
         }
 
-        return response()->json($this->workers->profile($worker));
+        return response()->json($this->workers->profile($worker, $request->user()));
     }
 
     public function rate(RateWorkerRequest $request, User $worker): JsonResponse

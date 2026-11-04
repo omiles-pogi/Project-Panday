@@ -10,7 +10,7 @@ project. It talks to the same Laravel backend over HTTP.
 src/
   app/          Expo Router routes (file-based) — thin, mostly re-export a screen
   screens/      Actual screen implementations
-  components/   Shared UI building blocks (BriefPrompt, ComingSoon, drawer content, ...)
+  components/   Shared UI building blocks (BriefPrompt, SupplierPicker, drawer content, ...)
   context/      AuthContext, PlanContext — app-wide state
   services/     API calls: services/api (auth/client), services/ai (plan generation)
   types/        Shared TS types (types/auth.ts, types/plan.ts)
@@ -45,7 +45,11 @@ a phone has its own network namespace. Start Laravel bound to all interfaces:
 php artisan serve --host=0.0.0.0 --port=8000
 ```
 
-Then set `frontend/.env`'s `EXPO_PUBLIC_API_BASE_URL` to your machine's **LAN IP**
+**In development you don't need to chase your IP:** the app takes the PC's address from the Expo
+dev server it loaded from and talks to the API on port 8000 of that same machine (see
+`resolveBaseUrl` in `src/services/api/client.ts`), so a router handing the PC a new IP no longer
+breaks it. `EXPO_PUBLIC_API_BASE_URL` is then only the fallback — for standalone builds and tunnel
+mode, where that address isn't available. If you want to set it anyway, use your machine's **LAN IP**
 (`ipconfig` on Windows), e.g. `http://192.168.1.23:8000`. Restart `expo start` after
 changing `.env` (Expo only reads it at boot).
 
@@ -61,19 +65,20 @@ Run migrations (Sanctum tables + the `role` column) and make sure
 php artisan migrate
 ```
 
-## What's built vs. stubbed
+## What each role can do
 
-Only the **homeowner** role is fully wired up: real registration/login (Sanctum
-token auth), the bottom-tab + drawer navigation shell, and the AI planner flow end to
-end (`ProjectChat` → `PlanContext` → `/api/ai/plan`, plus `BudgetGenerator` and
-`MaterialEstimator` reading the same generated plan). The **contractor** and **worker**
-roles have full tab-based UIs ported from the web app (`src/screens/contractor`,
-`src/screens/worker`) running on static sample data in `src/data/` — there is no
-contractor/worker backend API yet. Supplier lands on a placeholder screen after login
-(with a working sign-out), and several homeowner
-screens (Progress Monitor, Budget Monitor, Labor/Equipment Estimator, AI Design,
-Approvals, Contractor Marketplace, Expenses) show a "hasn't been ported yet" stub —
-see the project's port plan for the full checklist of what's left.
+Every screen runs on the real backend — there is no sample-data screen left in the app.
+
+- **Homeowner** — AI planner chat (`ProjectChat` → `PlanContext` → `/api/ai/plan`) that builds a
+  timeline, budget and materials, with a supplier picker per category; project dashboard with "not
+  started yet" projects and the project calendar (AI-proposed schedule vs actual progress); Progress,
+  Budget Monitor, Material Estimator, Find Your Team, Material Approvals, Supplier Catalog, Messages.
+- **Contractor** — browse and apply to projects, My Projects (checklist), a dashboard with each
+  project's calendar, Material Requests (draft → homeowner approval → supplier orders), Supplier Materials, Messages, Profile.
+- **Worker** — dashboard, assignments, browse and apply to projects, skills profile, Messages.
+- **Supplier** — dashboard, inventory (listings and stock), material orders (confirm / decline / deliver).
+
+`src/data/` only holds display constants now (inventory types and colours, the PandAi tour text).
 
 ## Known, intentional oddities
 

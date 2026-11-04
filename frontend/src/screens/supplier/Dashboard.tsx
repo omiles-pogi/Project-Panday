@@ -1,7 +1,7 @@
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { Badge, Button, Card, InfoBox, MONO, PageHeader, Screen, StatGrid, StatTile } from "@/components/ui";
+import { Badge, Button, Card, MONO, PageHeader, Screen, StatGrid, StatTile } from "@/components/ui";
 import StockBadge from "@/components/StockBadge";
 import { useAuth } from "@/context/AuthContext";
 import { useSupplier } from "@/context/SupplierContext";
@@ -11,16 +11,14 @@ import InventoryStats from "./InventoryStats";
 
 const QUICK_ACTIONS = [
   { label: "Inventory", icon: "layers-outline", href: "/supplier/pricing" },
-  { label: "Bids", icon: "pricetag-outline", href: "/supplier/bids" },
   { label: "Orders", icon: "cube-outline", href: "/supplier/orders" },
   { label: "More", icon: "ellipsis-horizontal", href: "/supplier/more" },
 ] as const;
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const { bids, orders, products, productsLoading, productsError } = useSupplier();
+  const { orders, products, productsLoading, productsError } = useSupplier();
 
-  const activeBids = bids.filter((b) => b.status === "open" || b.status === "submitted").length;
   const goToOrders = () => router.push("/supplier/orders" as never);
   const pendingRequests = orders.filter((o) => o.status === "supplier_review").length;
   const acceptedRequests = orders.filter((o) =>
@@ -28,7 +26,6 @@ export default function Dashboard() {
   ).length;
   const completedRequests = orders.filter((o) => o.status === "delivered" || o.status === "received").length;
 
-  const openBids = bids.filter((b) => b.status === "open").slice(0, 3);
   // Out-of-stock items first — they're the ones that need the supplier's attention.
   const inventoryPreview = [...products]
     .sort((a, b) => (a.stockStatus === b.stockStatus ? 0 : a.stockStatus === "out_of_stock" ? -1 : 1))
@@ -99,49 +96,7 @@ export default function Dashboard() {
         <StatTile label="Pending Requests" value={pendingRequests} color="#f59e0b" icon="mail-unread-outline" onPress={goToOrders} />
         <StatTile label="Accepted Requests" value={acceptedRequests} color="#3b82f6" icon="cube-outline" onPress={goToOrders} />
         <StatTile label="Completed Requests" value={completedRequests} color="#10b981" icon="checkmark-circle-outline" onPress={goToOrders} />
-        <StatTile label="Active Bids" value={activeBids} color="#8b5cf6" icon="pricetag-outline" />
       </StatGrid>
-
-      <Card
-        title="New Bid Requests"
-        gap={10}
-        right={
-          <Pressable onPress={() => router.push("/supplier/bids" as never)}>
-            <Text className="text-xs font-semibold text-primary">See all</Text>
-          </Pressable>
-        }
-      >
-        {openBids.length === 0 ? (
-          <Text className="text-xs text-muted-foreground">No open requests right now.</Text>
-        ) : (
-          openBids.map((b) => (
-            <View key={b.id} className="p-3 rounded-xl bg-muted">
-              <View className="flex-row justify-between gap-3">
-                <View className="flex-1">
-                  <Text className="text-sm font-semibold text-foreground">{b.project}</Text>
-                  <Text className="text-xs mt-0.5 text-secondary-foreground">
-                    {b.material} · {b.qty.toLocaleString()} {b.unit}
-                  </Text>
-                </View>
-                <View className="items-end">
-                  <Text className="text-sm font-bold text-primary" style={{ fontFamily: MONO }}>
-                    {peso(b.budget)}
-                  </Text>
-                  <Text className="text-xs text-muted-foreground">Due {b.deadline}</Text>
-                </View>
-              </View>
-              <View className="mt-3 flex-row">
-                <Button label="Submit Bid" variant="tint" color="#f59e0b" onPress={() => router.push("/supplier/bids" as never)} />
-              </View>
-            </View>
-          ))
-        )}
-      </Card>
-
-      <InfoBox color="#3b82f6" title="AI Insight">
-        3 new residential projects in Metro Manila were approved and need cement, steel and aggregate. Keep your prices
-        competitive to win more bids.
-      </InfoBox>
     </Screen>
   );
 }

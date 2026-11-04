@@ -8,6 +8,7 @@ use App\Models\Project;
 use App\Models\SupplierOrder;
 use App\Models\SupplierProduct;
 use App\Models\User;
+use App\Support\PlanMaterials;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -26,7 +27,8 @@ use Illuminate\Validation\ValidationException;
 class MaterialRequestService
 {
     private const PRESENT_WITH = [
-        'project:id,title,location,user_id',
+        'project:id,title,location,user_id,budget,total_estimate,timeline_months,approved_plan,ai_materials,auto_approve_materials',
+        'phase:id,name',
         'contractor:id,name',
         'homeowner:id,name',
         'items.product',
@@ -36,7 +38,11 @@ class MaterialRequestService
         'statusLogs.changedBy:id,name,role',
     ];
 
-    public function __construct(private readonly MaterialWorkflow $workflow) {}
+    public function __construct(
+        private readonly MaterialWorkflow $workflow,
+        private readonly MaterialApprovalPolicy $policy,
+        private readonly EstimateAdjustmentService $estimates,
+    ) {}
 
     /** @return Collection<int, array<string, mixed>> */
     public function listFor(User $user): Collection
@@ -105,7 +111,10 @@ class MaterialRequestService
             $kept = [];
 
             foreach ($data['items'] as $row) {
+                // Each line is stamped with the plan quantity it is allowed, worked out here from the
+                // project's own plan — never taken from the client, or the approval rule could be talked around.
                 $attributes = $this->itemAttributes($row);
+                $attributes += $this->planBaseline($request->project, $attributes);
                 $id = $row['id'] ?? null;
 
                 if ($id !== null) {
@@ -167,12 +176,39 @@ class MaterialRequestService
             $this->recalculateTotal($request);
             $request->submitted_at = now();
             $request->decision_reason = null;
+            $request->auto_approved = false;
             $this->workflow->setRequestStatus($request, MaterialRequest::PENDING, $contractor);
         });
 
-        $request->load('project');
+        // Approval by exception: a request that stays within what the homeowner already approved goes
+        // straight through; otherwise the reasons it needs them are kept for the homeowner to read.
+        $request->unsetRelation('items')->load('project', 'items.product');
+        $verdict = $this->policy->evaluate($request);
+        $request->forceFill(['approval_flags' => $verdict['flags'] ?: null])->save();
+
+        if ($verdict['auto']) {
+            return $this->autoApprove($request, $contractor);
+        }
+
         $this->workflow->notify($request->homeowner, 'material_request_submitted', 'Material request needs approval',
-            "{$contractor->name} submitted a material request for {$request->project->title} (est. ₱".number_format($request->estimated_total).').', $request);
+            "{$contractor->name} submitted a material request for {$request->project->title} (est. ₱".number_format($request->estimated_total).').'
+            .($verdict['flags'] ? ' '.$verdict['flags'][0] : ''), $request);
+
+        return $this->present($request->fresh()->load(self::PRESENT_WITH), $contractor);
+    }
+
+    /** Approves a request the homeowner's own plan already covers, and tells everyone what happened. */
+    private function autoApprove(MaterialRequest $request, User $contractor): array
+    {
+        $orders = $this->performApproval($request, null, 'Auto-approved: within the plan budget, quantities and chosen suppliers.');
+        $request->forceFill(['auto_approved' => true])->save();
+
+        $request->load('project');
+        $this->workflow->notify($request->homeowner, 'material_request_auto_approved', 'Material request auto-approved',
+            "A request for {$request->project->title} (est. ₱".number_format($request->estimated_total).') was approved automatically — it is within your plan budget and uses your chosen suppliers.', $request);
+        $this->workflow->notify($request->contractor, 'material_request_approved', 'Material request approved',
+            "Your material request for {$request->project->title} was approved automatically — it is within the homeowner's plan. It has been sent to the supplier(s).", $request);
+        $this->notifySuppliersOfNewOrders($orders, $request);
 
         return $this->present($request->fresh()->load(self::PRESENT_WITH), $contractor);
     }
@@ -182,7 +218,26 @@ class MaterialRequestService
     {
         $this->assertHomeownerDecides($request, $homeowner);
 
-        $orders = DB::transaction(function () use ($request, $homeowner) {
+        $orders = $this->performApproval($request, $homeowner, null);
+
+        $request->load('project', 'contractor');
+        $this->workflow->notify($request->contractor, 'material_request_approved', 'Material request approved',
+            "{$homeowner->name} approved your material request for {$request->project->title}. It has been sent to the supplier(s).", $request);
+        $this->notifySuppliersOfNewOrders($orders, $request);
+
+        return $this->present($request->fresh()->load(self::PRESENT_WITH), $homeowner);
+    }
+
+    /**
+     * Marks the request approved and routes each supplier's items to a new order. Shared by the
+     * homeowner's own approval and the automatic one, which passes no approver (the history shows
+     * "system" and the reason).
+     *
+     * @return Collection<int, SupplierOrder>
+     */
+    private function performApproval(MaterialRequest $request, ?User $by, ?string $reason): Collection
+    {
+        return DB::transaction(function () use ($request, $by, $reason) {
             $request->load('items.order');
             $routable = $request->items->filter(fn (MaterialRequestItem $i) => $i->isEditable());
             if ($routable->contains(fn (MaterialRequestItem $i) => ! $i->supplier_id)) {
@@ -191,7 +246,7 @@ class MaterialRequestService
 
             $request->approved_at = now();
             $request->decision_reason = null;
-            $this->workflow->setRequestStatus($request, MaterialRequest::APPROVED, $homeowner);
+            $this->workflow->setRequestStatus($request, MaterialRequest::APPROVED, $by, $reason);
 
             $orders = collect();
             foreach ($routable->groupBy('supplier_id') as $supplierId => $items) {
@@ -205,23 +260,40 @@ class MaterialRequestService
                     'status' => MaterialRequestItem::PENDING,
                     'confirmed_unit_price' => null,
                 ]);
-                $this->workflow->log($request, $order, $homeowner, null, SupplierOrder::SUPPLIER_REVIEW, null);
+                $this->workflow->log($request, $order, $by, null, SupplierOrder::SUPPLIER_REVIEW, null);
                 $orders->push($order);
             }
 
             return $orders;
         });
+    }
 
-        $request->load('project', 'contractor');
-        $this->workflow->notify($request->contractor, 'material_request_approved', 'Material request approved',
-            "{$homeowner->name} approved your material request for {$request->project->title}. It has been sent to the supplier(s).", $request);
+    /** @param  Collection<int, SupplierOrder>  $orders */
+    private function notifySuppliersOfNewOrders(Collection $orders, MaterialRequest $request): void
+    {
         foreach ($orders as $order) {
             $order->load('supplier');
             $this->workflow->notify($order->supplier, 'supplier_order_received', 'New material order',
                 "A contractor's approved request for {$request->project->title} needs your availability check.", $request, ['supplierOrderId' => $order->id]);
         }
+    }
 
-        return $this->present($request->fresh()->load(self::PRESENT_WITH), $homeowner);
+    /**
+     * The plan line a requested item belongs to, as the quantities it is judged against: what the AI
+     * estimated and what the reviewed plan allows. Null for an item that isn't in the plan.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @return array{ai_quantity: ?int, plan_quantity: ?int, waste_pct: int}
+     */
+    private function planBaseline(Project $project, array $attributes): array
+    {
+        $line = PlanMaterials::match($project, $attributes['supplier_product_id'] ?? null, (string) $attributes['material_name']);
+
+        return [
+            'ai_quantity' => $line['aiQuantity'] ?? null,
+            'plan_quantity' => $line['plannedQuantity'] ?? null,
+            'waste_pct' => $line['wastePct'] ?? 0,
+        ];
     }
 
     /** @return array<string, mixed> */
@@ -376,19 +448,30 @@ class MaterialRequestService
             throw ValidationException::withMessages(['project_id' => 'You are not part of this project.']);
         }
 
-        $listings = SupplierProduct::query()->listed()->with('supplier:id,name,business_name')->orderBy('price')->get()
-            ->groupBy(fn (SupplierProduct $p) => $this->normalize($p->name));
+        $all = SupplierProduct::query()->listed()->with('supplier:id,name,business_name')->orderBy('price')->get();
+        $listings = $all->groupBy(fn (SupplierProduct $p) => $this->normalize($p->name));
+        $byId = $all->keyBy('id');
 
-        return collect($project->ai_materials ?? [])->map(function (array $m) use ($listings) {
-            $candidates = $listings->get($this->normalize($m['material'] ?? '')) ?? collect();
-            $match = $candidates->first(fn (SupplierProduct $p) => $p->available_quantity > 0) ?? $candidates->first();
+        return PlanMaterials::lines($project)->map(function (array $line) use ($listings, $byId) {
+            // The listing the homeowner's plan was priced from (their chosen supplier) wins while it's
+            // still on sale; otherwise fall back to the cheapest same-named listing.
+            $chosen = $byId->get($line['supplierProductId']);
+            $candidates = $listings->get($this->normalize($line['material'])) ?? collect();
+            $match = $chosen ?? $candidates->first(fn (SupplierProduct $p) => $p->available_quantity > 0) ?? $candidates->first();
 
             return [
-                'material' => $m['material'] ?? '',
-                'category' => $m['category'] ?? null,
-                'quantity' => max(1, (int) ceil((float) ($m['qty'] ?? 1))),
-                'unit' => $m['unit'] ?? 'piece',
-                'estimatedUnitPrice' => (int) round((float) ($m['unitPrice'] ?? 0)),
+                'index' => $line['index'],
+                'material' => $line['material'],
+                'category' => $line['category'],
+                // What to order: the quantity the contractor's review settled on, else the AI's own.
+                'quantity' => $line['plannedQuantity'],
+                'aiQuantity' => $line['aiQuantity'],
+                'contractorQuantity' => $line['contractorQuantity'],
+                'wastePct' => $line['wastePct'],
+                'reviewed' => $line['reviewed'],
+                'phase' => $line['phase'],
+                'unit' => $line['unit'],
+                'estimatedUnitPrice' => $line['estimatedUnitPrice'],
                 'match' => $match ? $this->presentListing($match) : null,
             ];
         })->values();
@@ -508,6 +591,32 @@ class MaterialRequestService
         }
     }
 
+    /**
+     * "Approving this adds ₱X: your estimate goes from A to B and what's left of your budget from C to D."
+     * Null when it adds nothing — everything in it is inside the plan.
+     *
+     * @return array{amount: int, estimateBefore: int, estimateAfter: int, leftOverBefore: ?int, leftOverAfter: ?int}|null
+     */
+    private function estimateImpact(MaterialRequest $r): ?array
+    {
+        $amount = $this->estimates->impactOfRequest($r);
+        if ($amount <= 0) {
+            return null;
+        }
+
+        $before = $this->estimates->forProject($r->project)['adjustedEstimate'];
+        $budget = (int) $r->project->budget;
+
+        return [
+            'amount' => $amount,
+            'estimateBefore' => $before,
+            'estimateAfter' => $before + $amount,
+            // No stated budget means no "left over" to speak of.
+            'leftOverBefore' => $budget > 0 ? $budget - $before : null,
+            'leftOverAfter' => $budget > 0 ? $budget - $before - $amount : null,
+        ];
+    }
+
     /** @return array<string, mixed> */
     private function presentListing(SupplierProduct $p): array
     {
@@ -543,6 +652,10 @@ class MaterialRequestService
                 'confirmedSubtotal' => $i->confirmed_unit_price !== null ? $i->quantity * $i->confirmed_unit_price : null,
                 'status' => $i->status,
                 'source' => $i->source,
+                // The AI's own estimate, and what the reviewed plan allows — so "AI said 54, asking 70" shows.
+                'aiQuantity' => $i->ai_quantity,
+                'planQuantity' => $i->plan_quantity,
+                'wastePct' => $i->waste_pct,
                 'orderId' => $i->supplier_order_id,
                 'locked' => ! $i->isEditable(),
                 'availableQuantity' => $available,
@@ -582,6 +695,11 @@ class MaterialRequestService
             'contractor' => ['id' => $r->contractor->id, 'name' => $r->contractor->name],
             'homeowner' => ['id' => $r->homeowner->id, 'name' => $r->homeowner->name],
             'notes' => $r->notes,
+            'phase' => $r->phase ? ['id' => $r->phase->id, 'name' => $r->phase->name] : null,
+            'neededBy' => $r->needed_by?->toDateString(),
+            'autoApproved' => $r->auto_approved,
+            // Why the homeowner is being asked: only what fell outside their plan. Empty = nothing unusual.
+            'approvalFlags' => $r->approval_flags ?? [],
             'decisionReason' => $r->decision_reason,
             'estimatedTotal' => $r->estimated_total,
             'confirmedTotal' => $confirmed->sum(fn (MaterialRequestItem $i) => $i->quantity * $i->confirmed_unit_price),
@@ -591,6 +709,8 @@ class MaterialRequestService
             'updatedAt' => $r->updated_at->toIso8601String(),
             'canEdit' => $viewer->id === $r->contractor_id && $r->isEditable(),
             'canDecide' => $viewer->id === $r->homeowner_id && $r->status === MaterialRequest::PENDING,
+            // What approving this adds to the project estimate (and takes off what's left of the budget).
+            'estimateImpact' => $viewer->id === $r->homeowner_id && $r->status === MaterialRequest::PENDING ? $this->estimateImpact($r) : null,
             'items' => $items,
             'orders' => $orders,
             'history' => $r->statusLogs->map(fn ($log) => [

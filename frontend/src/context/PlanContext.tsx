@@ -1,8 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { isChatReply, isClarificationNeeded, type ConstructionPlan } from "@/types/plan";
+import { isChatReply, isClarificationNeeded, type ConstructionPlan, type SupplierSelections } from "@/types/plan";
 import { generateConstructionPlan, type ChatHistoryMessage } from "@/services/ai/client";
 import { garageLabel } from "@/utils/garage";
+import { useAuth } from "@/context/AuthContext";
 
 export type SendResult =
   | { type: "plan"; plan: ConstructionPlan }
@@ -34,12 +35,18 @@ interface PlanContextValue {
    * conversation into their own local state (ProjectChat) should treat a change here as a signal
    * to resync, the same way they treat `ready` flipping true. */
   activeProjectKey: string;
+  restoredVersion: number;
   /**
    * Sends one message in the ongoing conversation. The AI decides whether to chat, ask a
    * clarifying question, or submit/update the plan. onChunk fires live with each piece of text as
    * a chat reply streams in (never fires for a plan/clarification — see services/ai/client.ts).
    */
-  send: (text: string, onChunk?: (partial: string) => void) => Promise<SendResult>;
+  send: (
+    text: string,
+    onChunk?: (partial: string) => void,
+    /** The supplier choices to plan with this turn; defaults to whatever the current plan already has. */
+    options?: { supplierSelections?: SupplierSelections }
+  ) => Promise<SendResult>;
   /** Replaces the current plan with the homeowner's own hand-edited version. The total estimate is
    * recomputed from the budget breakdown (same rule the backend applies to AI plans), and the
    * edited plan is what the AI sees on its next turn. */
@@ -50,7 +57,7 @@ interface PlanContextValue {
   /** Switches the active conversation to the given project's own — each project remembers its
    * own conversation independently, so this never mixes one project's chat into another's. Pass
    * null for "no project selected" (the draft slot). */
-  selectProject: (projectId: number | null) => void;
+  selectProject: (projectId: number | null, savedPlan?: Partial<ConstructionPlan> | null) => void;
   /** Opens a brand-new project's chat completely blank — the plan, messages, approval step,
    * clarification count, pending error and last AI reply are all wiped, even if a stale saved
    * conversation exists under that project's id. Use it for a project that was just created;
@@ -76,6 +83,15 @@ interface Conversation {
 
 const EMPTY_CONVERSATION: Conversation = { plan: null, messages: [], approvalStage: null, clarificationRounds: 0 };
 
+function isCompletePlan(value: Partial<ConstructionPlan> | null | undefined): value is ConstructionPlan {
+  return !!value && typeof value.projectTitle === "string" && typeof value.areaSqm === "number" &&
+    typeof value.floors === "number" && typeof value.bedrooms === "number" && typeof value.bathrooms === "number" &&
+    typeof value.designStyle === "string" && typeof value.budget === "number" && typeof value.totalEstimate === "number" &&
+    typeof value.timelineMonths === "number" && typeof value.location === "string" &&
+    typeof value.exteriorConcept === "string" && typeof value.interiorConcept === "string" &&
+    Array.isArray(value.phases) && Array.isArray(value.materials) && Array.isArray(value.budgetBreakdown);
+}
+
 function summarizePlan(plan: ConstructionPlan): string {
   const location = plan.location ? ` in ${plan.location}` : "";
   const phaseNames = plan.phases.map((p) => p.name).join(", ");
@@ -91,6 +107,9 @@ function summarizePlan(plan: ConstructionPlan): string {
 }
 
 export function PlanProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  // Conversations belong to an account as well as a project. Never load another account's draft.
+  const storageKey = `${STORAGE_KEY}:${user?.id ?? "guest"}`;
   const [plan, setPlan] = useState<ConstructionPlan | null>(null);
   const [messages, setMessages] = useState<ChatHistoryMessage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -99,6 +118,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
   const [clarificationRounds, setClarificationRounds] = useState(0);
   const [approvalStage, setApprovalStage] = useState<ApprovalStage | null>(null);
   const [activeProjectKey, setActiveProjectKey] = useState<string>(DRAFT_KEY);
+  const [restoredVersion, setRestoredVersion] = useState(0);
   // False until the load below finishes — guards the persist effect from firing with the empty
   // initial state first (which would overwrite the saved conversations with nothing), and lets
   // consumers like ProjectChat know when it's safe to build their own view of the conversation.
@@ -108,25 +128,27 @@ export function PlanProvider({ children }: { children: ReactNode }) {
   // state since nothing needs to re-render off the whole map, only off the active slot's own
   // fields above and off which key is active.
   const conversationsRef = useRef<Record<string, Conversation>>({});
+  const activeKeyRef = useRef(DRAFT_KEY);
+  const conversationEpoch = useRef(0);
 
   const persist = useCallback(() => {
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(conversationsRef.current)).catch(() => undefined);
-  }, []);
+    AsyncStorage.setItem(storageKey, JSON.stringify(conversationsRef.current)).catch(() => undefined);
+  }, [storageKey]);
 
   // Loads every project's saved conversation — this is what makes each one survive an app
   // restart or a Metro/JS reload, not just navigating away from the AI Plan screen and back
   // (which PlanProvider staying mounted already handles on its own).
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY)
+    AsyncStorage.getItem(storageKey)
       .then((raw) => {
         if (raw) {
           try {
-            conversationsRef.current = JSON.parse(raw);
+            conversationsRef.current = { ...JSON.parse(raw), ...conversationsRef.current };
           } catch {
             conversationsRef.current = {};
           }
         }
-        const active = conversationsRef.current[DRAFT_KEY] ?? EMPTY_CONVERSATION;
+        const active = conversationsRef.current[activeKeyRef.current] ?? EMPTY_CONVERSATION;
         setPlan(active.plan);
         setMessages(active.messages);
         setApprovalStage(active.approvalStage);
@@ -134,7 +156,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => undefined)
       .finally(() => setReady(true));
-  }, []);
+  }, [storageKey]);
 
   // Keeps the active slot in the map (and on disk) up to date with whatever's currently showing.
   useEffect(() => {
@@ -144,7 +166,11 @@ export function PlanProvider({ children }: { children: ReactNode }) {
   }, [ready, activeProjectKey, plan, messages, approvalStage, clarificationRounds, persist]);
 
   const send = useCallback(
-    async (text: string, onChunk?: (partial: string) => void): Promise<SendResult> => {
+    async (
+      text: string,
+      onChunk?: (partial: string) => void,
+      options?: { supplierSelections?: SupplierSelections }
+    ): Promise<SendResult> => {
       const trimmed = text.trim();
       if (!trimmed) {
         throw new Error("Message is empty.");
@@ -153,12 +179,18 @@ export function PlanProvider({ children }: { children: ReactNode }) {
       setError(null);
       const userMessage: ChatHistoryMessage = { role: "user", content: trimmed };
       const historyForRequest = [...messages, userMessage];
+      const requestEpoch = conversationEpoch.current;
 
       try {
-        // Safety valve: after a couple of clarification rounds, force a plan on this turn so the
-        // conversation can't loop forever asking questions.
-        const forcePlan = clarificationRounds >= 2;
-        const result = await generateConstructionPlan(historyForRequest, forcePlan, onChunk, plan);
+        const result = await generateConstructionPlan(
+          historyForRequest,
+          false,
+          (chunk) => { if (requestEpoch === conversationEpoch.current) onChunk?.(chunk); },
+          plan,
+          options?.supplierSelections,
+          /^\d+$/.test(activeProjectKey) ? Number(activeProjectKey) : null
+        );
+        if (requestEpoch !== conversationEpoch.current) throw new Error("The selected project changed. Send your message again in its project chat.");
 
         if (isChatReply(result)) {
           const assistantMessage: ChatHistoryMessage = { role: "assistant", content: result.message };
@@ -185,13 +217,13 @@ export function PlanProvider({ children }: { children: ReactNode }) {
         return { type: "plan", plan: result };
       } catch (err) {
         const message = err instanceof Error ? err.message : "Something went wrong.";
-        setError(message);
+        if (requestEpoch === conversationEpoch.current) setError(message);
         throw err;
       } finally {
-        setLoading(false);
+        if (requestEpoch === conversationEpoch.current) setLoading(false);
       }
     },
-    [messages, clarificationRounds, plan]
+    [messages, plan, activeProjectKey]
   );
 
   const updatePlan = useCallback((next: ConstructionPlan) => {
@@ -200,6 +232,8 @@ export function PlanProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const applyConversation = useCallback((conversation: Conversation) => {
+    conversationEpoch.current += 1;
+    setLoading(false);
     setPlan(conversation.plan);
     setMessages(conversation.messages);
     setApprovalStage(conversation.approvalStage);
@@ -207,10 +241,23 @@ export function PlanProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const selectProject = useCallback(
-    (projectId: number | null) => {
+    (projectId: number | null, savedPlan?: Partial<ConstructionPlan> | null) => {
       const key = projectId != null ? String(projectId) : DRAFT_KEY;
-      if (key === activeProjectKey) return;
-      applyConversation(conversationsRef.current[key] ?? EMPTY_CONVERSATION);
+      let conversation = conversationsRef.current[key] ?? EMPTY_CONVERSATION;
+      const restore = !conversation.plan && isCompletePlan(savedPlan);
+      if (restore) {
+        conversation = {
+          ...conversation,
+          plan: savedPlan,
+          approvalStage: "summary",
+          messages: [...conversation.messages, { role: "assistant", content: "Your approved plan was loaded from the saved project." }],
+        };
+        conversationsRef.current[key] = conversation;
+        setRestoredVersion((version) => version + 1);
+      }
+      if (key === activeProjectKey && !restore) return;
+      activeKeyRef.current = key;
+      applyConversation(conversation);
       // The pending error / last AI reply belong to the conversation being left, not this one.
       setError(null);
       setLastAssistantMessage(null);
@@ -222,6 +269,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
   const startFresh = useCallback(
     (projectId: number) => {
       const key = String(projectId);
+      activeKeyRef.current = key;
       conversationsRef.current[key] = EMPTY_CONVERSATION;
       persist();
       setError(null);
@@ -236,6 +284,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
     (projectId: number) => {
       const newKey = String(projectId);
       if (newKey === activeProjectKey) return;
+      activeKeyRef.current = newKey;
       conversationsRef.current[newKey] = conversationsRef.current[activeProjectKey] ?? EMPTY_CONVERSATION;
       delete conversationsRef.current[activeProjectKey];
       persist();
@@ -245,6 +294,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
   );
 
   const reset = useCallback(() => {
+    activeKeyRef.current = DRAFT_KEY;
     conversationsRef.current[DRAFT_KEY] = EMPTY_CONVERSATION;
     persist();
     setError(null);
@@ -265,6 +315,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
         setApprovalStage,
         ready,
         activeProjectKey,
+        restoredVersion,
         send,
         updatePlan,
         reset,

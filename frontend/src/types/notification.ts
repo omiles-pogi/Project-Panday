@@ -1,5 +1,8 @@
 export type NotificationType =
   | "new_message"
+  | "wage_set"
+  | "materials_reviewed"
+  | "material_request_auto_approved"
   | "worker_invite"
   | "worker_invite_response"
   | "worker_application"

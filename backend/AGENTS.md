@@ -80,6 +80,90 @@ rejected before streaming starts, so the homeowner just sees "thinking". Only if
 tell them how long to wait; raw Groq messages are never passed through. Keep the system prompt lean:
 every token added to it is one less for the reply.
 
+### Supplier-sourced pricing
+
+The homeowner picks one supplier for each of `SupplierProduct::PLAN_CATEGORIES` — Construction
+Materials, Electrical and Plumbing, Finishing Works (each covers fixed listing categories; together they
+cover every `SupplierProduct::CATEGORIES` entry). `GET /api/ai/supplier-options` (`role:homeowner`) feeds
+the picker; the choice travels as `supplier_selections` on `POST /api/ai/plan` and is echoed back on the
+plan as `supplierSelections`. `SupplierProductService::pricingContextForPrompt($selections)` gives the AI
+the *real* in-stock listings (id | name | unit | price) from approved suppliers — only the chosen
+supplier's for a chosen category, else the cheapest per item with who sells it. The AI marks each material
+with the listing id it used (`supplierProductId`, 0 = estimate), but the server never trusts that:
+`ConstructionPlanService::applySupplierData` re-checks every id against the database (exists, active,
+approved supplier, and the chosen supplier for its category) and overwrites the line's name, unit and
+price from the listing, dropping the link otherwise. The link is saved in `projects.ai_materials`, so the
+contractor's material request (`MaterialRequestService::aiSuggestions`) starts from the chosen listing.
+
+## Material planning
+
+Materials are planned **by phase** and approved **by exception**. The AI plan gives each material the
+`phase` it is first needed in (`ConstructionPlanService::normalizeMaterialPhases` holds it to a real phase
+name, else `''`), stored in `projects.ai_materials`. `GET /api/projects/{id}/material-plan`
+(`MaterialPlanService`) groups those lines per phase with a `neededBy` date = the phase's calendar start
+minus `MATERIAL_LEAD_DAYS` (7), plus the budget room per category. `PUT .../material-plan/review`: the
+contractor checks the AI's quantities **once** (quantity they need + 0–50% waste, stored as
+`reviewedQty`/`contractorQty`/`wastePct` on the lines, `materials_reviewed_at/by` on the project) and the
+homeowner is notified; `POST .../material-plan/phases/{phase}/request` then drafts that phase's request from
+the reviewed plan (refused until reviewed; asking again resumes the draft). Items remember `ai_quantity` (the
+AI's figure) and `plan_quantity` (what the reviewed plan allows), always worked out server-side by
+`PlanMaterials::match` — never from the client.
+
+`MaterialApprovalPolicy` decides, on submit, whether a request approves itself: every item is in the plan, the
+totals per plan material (this request + earlier approved ones) stay within `plan_quantity`, each category
+stays within the approved plan's `budgetBreakdown` (counting what earlier requests already committed), items
+come from the supplier the homeowner chose for that category, and stock covers them. If so it is approved with
+no approver (history shows the system and why; `auto_approved`) and everyone is notified; otherwise the plain
+reasons are saved in `approval_flags` and shown to the homeowner as the only things to decide. Never applies
+when the plan has no budget to check, or when the homeowner switches it off
+(`PATCH /api/projects/{id}/material-settings`, `projects.auto_approve_materials`, default on). The AI prompt
+has almost no token headroom (`PlannerAppDataTest` guards it), so keep additions there tiny.
+
+## Team wages
+
+What a worker or contractor is paid lives on their link to the project (`project_workers` /
+`project_contractors`: `wage_amount`, `wage_unit` `per_day`|`fixed`, `wage_days`), not their profile — the
+same person can be paid differently per job. `App\Support\Wage` does the math (day rate × days, or the
+fixed fee). `PATCH /api/projects/{project}/workers/{worker}/wage` and `.../contractors/{contractor}/wage`
+(null amount clears it): the homeowner sets anyone's; a contractor on the project sets their *workers'*
+only, never a contractor's (including their own). `ProjectService::visibleWage` decides who sees what —
+the homeowner sees every wage and `teamWageTotal`, a contractor sees the workers' and their own fee (not
+another contractor's), a worker sees only their own (`myWage` on `/api/my-projects`). A contractor who
+applied with a `quote_amount` starts at that as a fixed fee once approved. Setting a wage notifies the
+member (`wage_set`).
+
+**Automatic wages** (`WageService`, flagged `wage_auto`): nobody has to type wages in. When a worker or
+contractor joins a project they get one — a worker's is their own minimum daily wage (else
+`WAGE_DEFAULT_DAILY_RATE`, ₱850) × the project's working days (`timeline_months` × `WAGE_WORKING_DAYS_PER_MONTH`,
+26); a contractor's is their quote if they applied with one, else the approved plan's "Contractor and Project
+Management Fee" line, else `WAGE_CONTRACTOR_FEE_PCT` (10%) of the estimate, split between the project's
+contractors. Joining fills only the newcomer. Automatic wages stay current — a worker changing their minimum
+re-works theirs, a new contractor re-splits the fee — but setting a wage by hand clears `wage_auto`, after which
+the app never touches it, and a wage someone cleared on purpose is not brought back. `php artisan wages:fill
+[--project=ID]` backfills everyone already on a project (safe to repeat); see `config/wages.php`.
+
+A worker can also state the lowest day rate they'll take (`worker_profiles.min_daily_wage`, set through
+`PUT /api/worker-profile`, optional — omitting it leaves it alone, null clears it). It's returned as
+`minDailyWage` in the team search, a worker's profile and a project's worker list, but only to homeowners and
+contractors (`WorkerService::canSeeMinWage`) and the worker themself — other workers never see it. It is a guide,
+not a rule: the wage sheet shows it and warns below it, but doesn't block a lower wage.
+
+## Estimate adjustments
+
+`projects.total_estimate` is the AI's estimate **at the start** and is never rewritten. When the work outgrows
+the plan, `EstimateAdjustmentService::forProject` works out what to add on top, and `ProjectService::present`
+returns `totalEstimate` = plan + additions (the plan's own figure stays in `planEstimate`, the breakdown in
+`estimateAdjustment`) — so AI Estimate goes up and Left Over (budget − estimate) goes down on their own. Only
+commitments **beyond the plan** count: items on approved/completed requests that have a live supplier order and
+are not in the plan's material list, or exceed that material's planned quantity (the excess at the confirmed
+price, else the estimated one); and team wages (agreed + automatic) above the plan's "Labor Costs" line, or a
+contractor's above "Contractor and Project Management Fee". Hiring or ordering *within* the plan changes
+nothing, a plan with no material list or no such budget line is skipped rather than guessed at, and price
+differences on in-plan materials aren't counted. Pending requests are only a heads-up (`pendingMaterialsTotal`);
+they join on approval and drop out if cancelled. Only the **homeowner** gets the adjusted figures —
+contractors and workers see `planEstimate` as `totalEstimate` and a null `estimateAdjustment`. A pending request
+carries `estimateImpact` (what approving would do to the estimate and left over) for the homeowner's decision.
+
 ## New projects
 
 "New Project" in the mobile app calls `POST /api/projects/draft`, which adds an empty

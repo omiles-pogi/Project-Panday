@@ -6,6 +6,7 @@ import { Badge, Card, PageHeader, Screen } from "@/components/ui";
 import MessageButton from "@/components/MessageButton";
 import { fetchMyProjects } from "@/services/api/projects";
 import type { MyProject } from "@/types/project";
+import { wageLine } from "@/utils/wage";
 
 function ProjectCard({ project, initiallyExpanded }: { project: MyProject; initiallyExpanded?: boolean }) {
   const [expanded, setExpanded] = useState(!!initiallyExpanded);
@@ -28,6 +29,15 @@ function ProjectCard({ project, initiallyExpanded }: { project: MyProject; initi
             </Text>
             <Text className="text-xs text-muted-foreground">Progress</Text>
           </View>
+        </View>
+        <View className="flex-row items-center justify-between px-3 py-2 mb-2 rounded-xl bg-muted">
+          <View className="flex-row items-center gap-1.5">
+            <Ionicons name="cash-outline" size={14} color="#f59e0b" />
+            <Text className="text-xs font-medium text-foreground">Your wage</Text>
+          </View>
+          <Text className="text-xs font-semibold" style={{ color: project.myWage ? "#10b981" : "#6b7280" }}>
+            {project.myWage ? wageLine(project.myWage) : "Not set yet"}
+          </Text>
         </View>
         <View className="flex-row items-center justify-center gap-1 py-1">
           <Text className="text-xs font-medium text-primary">{expanded ? "Hide phases" : "View phases"}</Text>

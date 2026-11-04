@@ -1,3 +1,50 @@
+import type { ConstructionPlan } from "@/types/plan";
+
+export interface BudgetOrderLine {
+  id: number;
+  orderId: number;
+  material: string;
+  category: string | null;
+  supplierName: string | null;
+  status: string;
+  qty: number;
+  unit: string;
+  unitPrice: number;
+  priceConfirmed: boolean;
+  isCommitment: boolean;
+  total: number;
+}
+
+/** One thing that pushed the estimate above the plan: unplanned materials, or hiring beyond the plan's labor lines. */
+export interface EstimateAddition {
+  kind: "materials" | "workers" | "contractors";
+  label: string;
+  amount: number;
+  /** For materials: each item outside the plan (or above its planned quantity). */
+  lines?: { requestId: number; material: string; quantity: number; unit: string; amount: number; reason: "not in plan" | "above plan" }[];
+  /** For hiring: the team's wages against the plan's own line for them. */
+  wages?: number;
+  budget?: number;
+}
+
+/** How far the work has outgrown the plan — see EstimateAdjustmentService on the backend. */
+export interface ProjectEstimateAdjustment {
+  planEstimate: number;
+  adjustedEstimate: number;
+  additionsTotal: number;
+  additions: EstimateAddition[];
+  /** Cost outside the plan in material requests still waiting for approval — not in the estimate yet. */
+  pendingMaterialsTotal: number;
+}
+
+export interface ProjectBudgetRecords {
+  agreedWageTotal: number;
+  automaticWageTotal: number;
+  confirmedMaterialTotal: number;
+  orderLines: BudgetOrderLine[];
+  paidTotal: number | null;
+}
+
 export interface PhaseTask {
   id: number;
   description: string;
@@ -15,6 +62,10 @@ export interface DashboardProjectWorker {
   id: number;
   name: string;
   trade: string | null;
+  /** What the worker asks per day (₱) — visible to the homeowner and the project's contractors. */
+  minDailyWage?: number | null;
+  /** Only present for people allowed to see it — see ProjectService::visibleWage on the backend. */
+  wage?: Wage | null;
 }
 
 export interface DashboardProjectContractor {
@@ -22,6 +73,7 @@ export interface DashboardProjectContractor {
   name: string;
   specialization: string | null;
   companyName: string | null;
+  wage?: Wage | null;
 }
 
 export interface DashboardProject {
@@ -37,6 +89,14 @@ export interface DashboardProject {
   phases: DashboardPhase[];
   workers: DashboardProjectWorker[];
   contractors: DashboardProjectContractor[];
+  /** What the whole team costs — homeowner only. */
+  teamWageTotal?: number | null;
+  /** The AI's estimate at the start; `totalEstimate` is that plus anything the work has taken on since (homeowner only). */
+  planEstimate?: number;
+  estimateAdjustment?: ProjectEstimateAdjustment | null;
+  /** Approved server snapshot; older projects can have no saved breakdown. Owner only. */
+  approvedPlan?: Partial<ConstructionPlan> | null;
+  budgetRecords?: ProjectBudgetRecords | null;
 }
 
 export interface DashboardStats {
@@ -52,6 +112,8 @@ export interface DashboardData {
 export interface MyProject extends DashboardProject {
   ownerName: string;
   canManageChecklist: boolean;
+  /** The viewer's own pay on this project. */
+  myWage?: Wage | null;
 }
 
 export interface ProjectSummary {
@@ -113,4 +175,34 @@ export interface ProjectRatingStatus {
   canRate: boolean;
   pendingCount: number;
   team: TeamRatingMember[];
+}
+
+/** What a team member is paid on a project: a day rate × days, or a fixed fee. */
+export interface Wage {
+  amount: number;
+  unit: "per_day" | "fixed";
+  days: number | null;
+  total: number;
+  /** Worked out by the app rather than agreed by a person; setting it by hand turns this off. */
+  auto: boolean;
+}
+
+/** What to send to set a wage; `amount: null` clears it. */
+export type WageInput = {
+  amount: number | null;
+  unit: "per_day" | "fixed";
+  days?: number | null;
+  automatic?: false;
+} | { automatic: true };
+
+export interface HiringWage {
+  userId: number;
+  wage: Wage | null;
+  source: "project" | "worker_minimum" | "app_default" | "application_quote" | "project_estimate";
+}
+
+export interface HiringWageData {
+  projectId: number;
+  workers: HiringWage[];
+  contractors: HiringWage[];
 }

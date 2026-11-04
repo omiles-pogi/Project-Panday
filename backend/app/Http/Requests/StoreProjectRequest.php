@@ -22,6 +22,22 @@ class StoreProjectRequest extends FormRequest
             'budget' => ['required', 'numeric', 'min:0'],
             'totalEstimate' => ['required', 'numeric', 'min:0'],
             'timelineMonths' => ['required', 'integer', 'min:0'],
+            // Optional for older clients; preserve the approved scope and breakdown on the server.
+            'areaSqm' => ['sometimes', 'numeric', 'gt:0'],
+            'floors' => ['sometimes', 'integer', 'min:1'],
+            'bedrooms' => ['sometimes', 'integer', 'min:0'],
+            'bathrooms' => ['sometimes', 'integer', 'min:0'],
+            'garageCars' => ['sometimes', 'integer', 'min:0', 'max:10'],
+            // Descriptive text that may legitimately be blank. Laravel turns "" into null before validating,
+            // so without `nullable` an empty design style failed with "must be a string" and the plan wasn't saved.
+            'designStyle' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'exteriorConcept' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'interiorConcept' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'budgetBreakdown' => ['sometimes', 'array', 'max:12'],
+            'budgetBreakdown.*.category' => ['required', 'string', 'max:100', 'distinct'],
+            'budgetBreakdown.*.amount' => ['required', 'numeric', 'min:0'],
+            'supplierSelections' => ['sometimes', 'nullable', 'array'],
+            'supplierSelections.*' => ['nullable', 'integer', 'min:1'],
             'phases' => ['required', 'array', 'min:1'],
             'phases.*.name' => ['required', 'string', 'max:255'],
             'phases.*.percentComplete' => ['required', 'numeric', 'min:0', 'max:100'],
@@ -36,6 +52,11 @@ class StoreProjectRequest extends FormRequest
             'materials.*.qty' => ['required', 'numeric', 'min:0', 'max:100000000'],
             'materials.*.unit' => ['required', 'string', 'max:50'],
             'materials.*.unitPrice' => ['required', 'numeric', 'min:0', 'max:100000000'],
+            // The supplier listing the AI priced this material from (0 / absent = an AI estimate).
+            'materials.*.supplierProductId' => ['nullable', 'integer', 'min:0'],
+            'materials.*.supplierName' => ['nullable', 'string', 'max:255'],
+            // The phase it's first needed in — null/'' for plans made before materials were scheduled by phase.
+            'materials.*.phase' => ['nullable', 'string', 'max:255'],
         ];
     }
 }

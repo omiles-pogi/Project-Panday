@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use App\Support\Wage;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['user_id', 'title', 'location', 'status', 'budget', 'total_estimate', 'timeline_months', 'started_at', 'ai_materials'])]
+#[Fillable(['user_id', 'title', 'location', 'status', 'budget', 'total_estimate', 'timeline_months', 'started_at', 'ai_materials', 'approved_plan', 'materials_reviewed_at', 'materials_reviewed_by', 'auto_approve_materials'])]
 class Project extends Model
 {
     /** not_started: an empty placeholder awaiting its AI plan's approval. */
@@ -19,12 +20,21 @@ class Project extends Model
         return [
             'started_at' => 'date',
             'ai_materials' => 'array',
+            'approved_plan' => 'array',
+            'materials_reviewed_at' => 'datetime',
+            'auto_approve_materials' => 'boolean',
         ];
     }
 
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /** The contractor who reviewed the AI's material quantities, if anyone has. */
+    public function materialsReviewer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'materials_reviewed_by');
     }
 
     public function phases(): HasMany
@@ -35,12 +45,14 @@ class Project extends Model
     public function workers(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'project_workers', 'project_id', 'worker_id')
+            ->withPivot(Wage::PIVOT_COLUMNS)
             ->withTimestamps();
     }
 
     public function contractors(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'project_contractors', 'project_id', 'contractor_id')
+            ->withPivot(Wage::PIVOT_COLUMNS)
             ->withTimestamps();
     }
 

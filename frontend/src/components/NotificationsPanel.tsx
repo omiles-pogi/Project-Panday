@@ -21,6 +21,9 @@ function timeAgo(iso: string): string {
 
 export const ICON: Record<NotificationType, IconName> = {
   new_message: "chatbubble-ellipses-outline",
+  wage_set: "cash-outline",
+  materials_reviewed: "clipboard-outline",
+  material_request_auto_approved: "flash-outline",
   worker_invite: "person-add-outline",
   worker_invite_response: "checkmark-done-outline",
   worker_application: "document-text-outline",

@@ -17,6 +17,13 @@ export interface MaterialLine {
   qty: number;
   unit: string;
   unitPrice: number;
+  /** The real supplier listing this was priced from; 0 / absent = an AI estimate. The backend checks
+   * this against the supplier's actual listing, so a linked price is always one a supplier charges. */
+  supplierProductId?: number;
+  supplierId?: number;
+  supplierName?: string;
+  /** The phase it's first needed in, so materials can be ordered phase by phase. */
+  phase?: string;
 }
 
 export interface ClarificationNeeded {
@@ -57,4 +64,26 @@ export interface ConstructionPlan {
   exteriorConcept: string;
   interiorConcept: string;
   totalEstimate: number;
+  /** Which supplier the homeowner chose for each supplier-sourced category. */
+  supplierSelections?: SupplierSelections;
+}
+
+/** The three plan categories whose materials come from suppliers — the homeowner picks one supplier for each. */
+export const SUPPLIER_CATEGORIES = ["Construction Materials", "Electrical and Plumbing", "Finishing Works"] as const;
+export type SupplierCategory = (typeof SUPPLIER_CATEGORIES)[number];
+
+/** Supplier id chosen per category; null (or missing) = best price from any supplier. */
+export type SupplierSelections = Record<SupplierCategory, number | null>;
+
+/** One supplier that can supply a category, for the picker. */
+export interface SupplierOption {
+  id: number;
+  name: string;
+  itemCount: number;
+  inStockCount: number;
+}
+
+export interface SupplierCategoryOptions {
+  category: SupplierCategory;
+  suppliers: SupplierOption[];
 }

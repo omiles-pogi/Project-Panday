@@ -5,14 +5,17 @@ import { ProgressRing } from "@/components/charts";
 import { ProgressBar } from "@/components/ui";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { createDraftProject, deleteProject, fetchDashboard, fetchMyHomeownerProjects } from "@/services/api/projects";
-import type { DashboardData, ProjectSummary } from "@/types/project";
+import { createDraftProject, deleteProject, fetchDashboard, fetchMyHomeownerProjects, setTeamWage } from "@/services/api/projects";
+import type { DashboardData, ProjectSummary, Wage, WageInput } from "@/types/project";
 import { peso } from "@/utils/currency";
 import { compareBudget, formatBudget } from "@/utils/budget";
 import { usePlan } from "@/context/PlanContext";
 import Mascot from "@/components/Mascot";
 import MessageButton from "@/components/MessageButton";
 import ProjectRatingPrompt from "@/components/ProjectRatingPrompt";
+import ProjectCalendar from "@/screens/timeline/ProjectCalendar";
+import WageSheet from "@/components/WageSheet";
+import { wageLine } from "@/utils/wage";
 
 const QUICK_ACTIONS = [
   { label: "AI Plan", icon: "sparkles-outline", href: "/homeowner/project-chat" },
@@ -163,8 +166,19 @@ function NewProjectFab({ onPress }: { onPress: () => void }) {
   );
 }
 
+/* A small pill on a team row for setting or editing that person's wage. */
+function WageButton({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={6} className="px-2.5 py-1.5 rounded-lg" style={{ backgroundColor: "#f59e0b20" }}>
+      <Text className="text-xs font-semibold" style={{ color: "#f59e0b" }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 export default function Dashboard() {
-  const { selectProject: selectPlanProject, startFresh: startFreshPlan } = usePlan();
+  const { ready: planReady, selectProject: selectPlanProject, startFresh: startFreshPlan } = usePlan();
   const [data, setData] = useState<DashboardData | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
@@ -174,6 +188,8 @@ export default function Dashboard() {
   const [deleteTarget, setDeleteTarget] = useState<ProjectSummary | null>(null);
   const [confirmNewProject, setConfirmNewProject] = useState(false);
   const [creatingProject, setCreatingProject] = useState(false);
+  // The team member whose wage is being set, if any.
+  const [wageTarget, setWageTarget] = useState<{ role: "worker" | "contractor"; id: number; name: string; wage: Wage | null | undefined; minDailyWage?: number | null } | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Mirrors selectedProjectId but readable from inside the focus effect below without making it
@@ -187,6 +203,7 @@ export default function Dashboard() {
 
   useFocusEffect(
     useCallback(() => {
+      if (!planReady) return;
       if (!consumedDeepLink.current && deepLinkProjectId) {
         selectedProjectIdRef.current = Number(deepLinkProjectId);
         consumedDeepLink.current = true;
@@ -202,7 +219,7 @@ export default function Dashboard() {
           const id = dashboard.project?.id ?? null;
           setSelectedProjectId(id);
           selectedProjectIdRef.current = id;
-          selectPlanProject(id);
+          selectPlanProject(id, dashboard.project?.approvedPlan);
         })
         .catch((err) => {
           if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load dashboard.");
@@ -214,7 +231,7 @@ export default function Dashboard() {
         cancelled = true;
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [])
+    }, [planReady])
   );
 
   const switchProject = useCallback((projectId: number) => {
@@ -224,7 +241,10 @@ export default function Dashboard() {
     selectedProjectIdRef.current = projectId;
     selectPlanProject(projectId);
     fetchDashboard(projectId)
-      .then(setData)
+      .then((dashboard) => {
+        setData(dashboard);
+        selectPlanProject(projectId, dashboard.project?.approvedPlan);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load project."))
       .finally(() => setSwitching(false));
   }, [selectedProjectId, selectPlanProject]);
@@ -315,6 +335,14 @@ export default function Dashboard() {
   }
 
   const project = data?.project ?? null;
+
+  // Saves the wage, then re-reads the project so every row and the team total reflect it. Rejects with
+  // the backend's message so the sheet can show it.
+  const saveWage = async (input: WageInput) => {
+    if (!project || !wageTarget) return;
+    await setTeamWage(project.id, wageTarget.role, wageTarget.id, input);
+    setData(await fetchDashboard(project.id));
+  };
 
   // Always shown (even with just one project), styled like browser tabs — compact, with
   // their own close "x" — so there's always an obvious, consistent place to delete from.
@@ -501,9 +529,22 @@ export default function Dashboard() {
               <Text className="font-bold text-sm" style={{ color, fontFamily: "DMMono_500Medium" }}>
                 {value}
               </Text>
+              {/* The estimate went up because the work outgrew the plan — say by how much, so "Left Over" shrinking isn't a mystery. */}
+              {label === "AI Estimate" && !!project.estimateAdjustment?.additionsTotal && (
+                <Text className="text-xs mt-0.5" style={{ color: "#ef4444" }}>
+                  +{peso(project.estimateAdjustment.additionsTotal)} added
+                </Text>
+              )}
             </View>
           ))}
         </View>
+        {!!project.estimateAdjustment?.pendingMaterialsTotal && (
+          <Pressable onPress={() => router.push("/homeowner/approvals" as never)} className="mb-4">
+            <Text className="text-xs" style={{ color: "#f97316" }}>
+              {peso(project.estimateAdjustment.pendingMaterialsTotal)} more in material requests is waiting for your approval →
+            </Text>
+          </Pressable>
+        )}
 
         <View>
           <View className="flex-row justify-between mb-1.5">
@@ -517,7 +558,7 @@ export default function Dashboard() {
       </View>
 
       {/* At 100%, invites the homeowner to rate the contractor and workers who built it */}
-      <ProjectRatingPrompt key={project.id} projectId={project.id} progressPct={pct} />
+      <ProjectRatingPrompt key={`project-rating-${project.id}`} projectId={project.id} progressPct={pct} />
 
       {/* Quick actions */}
       <View className="flex-row flex-wrap gap-2">
@@ -579,14 +620,25 @@ export default function Dashboard() {
         </View>
       </View>
 
+      {/* The AI-proposed schedule vs real progress; the phases card above already lists the phases. */}
+      <ProjectCalendar key={`project-calendar-${project.id}`} projectId={project.id} showPhases={false} />
+
       {/* Project team */}
       <View className="rounded-3xl p-4 bg-card border border-border">
         <View className="flex-row items-center justify-between mb-3">
-          <Text className="font-bold text-sm text-foreground">Project Team</Text>
+          <View>
+            <Text className="font-bold text-sm text-foreground">Project Team</Text>
+            {!!project.teamWageTotal && (
+              <Text className="text-xs mt-0.5 text-muted-foreground">
+                Team wages <Text className="font-semibold" style={{ color: "#f59e0b" }}>{peso(project.teamWageTotal)}</Text>
+              </Text>
+            )}
+          </View>
           <Pressable onPress={() => router.push("/homeowner/marketplace" as never)}>
             <Text className="text-xs font-semibold text-primary">Find Team →</Text>
           </Pressable>
         </View>
+        <Text className="text-xs mb-3 leading-5 text-muted-foreground">Wages are filled in automatically when your team joins. Automatic amounts are estimates; custom amounts are optional.</Text>
         {project.contractors.length === 0 && project.workers.length === 0 ? (
           <Text className="text-xs text-muted-foreground">
             No contractors or workers added yet. Search and add your team from Find Your Team.
@@ -599,7 +651,12 @@ export default function Dashboard() {
                 <View className="flex-1">
                   <Text className="text-xs font-medium text-foreground">{c.companyName || c.name}</Text>
                   <Text className="text-xs text-muted-foreground">{c.specialization || "Contractor"}</Text>
+                  <Text className="text-xs mt-0.5" style={{ color: c.wage ? "#10b981" : "#6b7280" }}>{wageLine(c.wage)}</Text>
                 </View>
+                <WageButton
+                  label={c.wage ? "Wage options" : "Auto wage"}
+                  onPress={() => setWageTarget({ role: "contractor", id: c.id, name: c.companyName || c.name, wage: c.wage })}
+                />
                 <MessageButton
                   compact
                   projectId={project.id}
@@ -615,7 +672,13 @@ export default function Dashboard() {
                 <View className="flex-1">
                   <Text className="text-xs font-medium text-foreground">{w.name}</Text>
                   <Text className="text-xs text-muted-foreground">{w.trade || "Worker"}</Text>
+                  <Text className="text-xs mt-0.5" style={{ color: w.wage ? "#10b981" : "#6b7280" }}>{wageLine(w.wage)}</Text>
+                  {w.minDailyWage != null && <Text className="text-xs text-muted-foreground">Asks from {peso(w.minDailyWage)}/day</Text>}
                 </View>
+                <WageButton
+                  label={w.wage ? "Wage options" : "Auto wage"}
+                  onPress={() => setWageTarget({ role: "worker", id: w.id, name: w.name, wage: w.wage, minDailyWage: w.minDailyWage })}
+                />
                 <MessageButton
                   compact
                   projectId={project.id}
@@ -630,6 +693,16 @@ export default function Dashboard() {
       </View>
       </ScrollView>
       <NewProjectFab onPress={handleNewProject} />
+      {wageTarget && (
+        <WageSheet
+          name={wageTarget.name}
+          current={wageTarget.wage}
+          defaultUnit={wageTarget.role === "contractor" ? "fixed" : "per_day"}
+          minDailyWage={wageTarget.minDailyWage}
+          onClose={() => setWageTarget(null)}
+          onSave={saveWage}
+        />
+      )}
       {deleteModal}
       {newProjectModal}
     </>

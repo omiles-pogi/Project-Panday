@@ -17,7 +17,6 @@ import {
   Text,
   TextInput,
   View,
-  useWindowDimensions,
   type TextInputProps,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -28,13 +27,6 @@ export const MONO = "DMMono_500Medium";
 
 /** Content never stretches past this on tablets/web; it is centered instead. */
 export const MAX_CONTENT_WIDTH = 880;
-
-/** Width-based breakpoints so layouts adapt to phones, tablets, landscape and web. */
-export function useBreakpoint() {
-  const { width } = useWindowDimensions();
-  return { width, isTablet: width >= 700, isWide: width >= 1000 };
-}
-
 
 export { KeyboardView };
 

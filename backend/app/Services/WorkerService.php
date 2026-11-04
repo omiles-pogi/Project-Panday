@@ -11,19 +11,24 @@ use Illuminate\Validation\ValidationException;
 
 class WorkerService
 {
+    public function __construct(private readonly WageService $wages) {}
+
     /**
-     * @param  array{trade: string, years_experience: int, bio: ?string, skills: array<int, string>}  $data
+     * @param  array{trade: string, years_experience: int, bio: ?string, min_daily_wage?: ?int, skills: array<int, string>}  $data
      */
     public function updateProfile(User $worker, array $data): WorkerProfile
     {
-        $profile = $worker->workerProfile()->updateOrCreate(
-            ['user_id' => $worker->id],
-            [
-                'trade' => $data['trade'],
-                'years_experience' => $data['years_experience'],
-                'bio' => $data['bio'] ?? null,
-            ]
-        );
+        $attributes = [
+            'trade' => $data['trade'],
+            'years_experience' => $data['years_experience'],
+            'bio' => $data['bio'] ?? null,
+        ];
+        // A client that doesn't send it (an older app version) must not wipe a rate the worker already set.
+        if (array_key_exists('min_daily_wage', $data)) {
+            $attributes['min_daily_wage'] = $data['min_daily_wage'];
+        }
+
+        $profile = $worker->workerProfile()->updateOrCreate(['user_id' => $worker->id], $attributes);
 
         $skills = collect($data['skills'])
             ->map(fn (string $skill) => trim($skill))
@@ -33,6 +38,11 @@ class WorkerService
 
         $profile->skills()->delete();
         $profile->skills()->createMany($skills->map(fn (string $skill) => ['skill' => $skill])->all());
+
+        // The wages the app worked out from their old minimum follow the new one; ones a person set by hand don't move.
+        if (array_key_exists('min_daily_wage', $data)) {
+            $this->wages->syncForWorker($worker);
+        }
 
         return $profile->load('skills');
     }
@@ -44,7 +54,7 @@ class WorkerService
      * @param  array<int, string>  $skills
      * @return Collection<int, array<string, mixed>>
      */
-    public function search(?string $trade, array $skills): Collection
+    public function search(?string $trade, array $skills, ?User $viewer = null): Collection
     {
         $wantedTrade = $trade ? Str::lower(trim($trade)) : null;
         $wantedSkills = collect($skills)->map(fn (string $s) => Str::lower(trim($s)))->filter()->values();
@@ -55,7 +65,7 @@ class WorkerService
             ->whereHas('workerProfile')
             ->with(['workerProfile.skills', 'ratingsReceived'])
             ->get()
-            ->map(function (User $worker) use ($wantedTrade, $wantedSkills) {
+            ->map(function (User $worker) use ($wantedTrade, $wantedSkills, $viewer) {
                 $profile = $worker->workerProfile;
                 $workerSkills = $profile->skills->map(fn ($s) => Str::lower($s->skill));
 
@@ -89,6 +99,7 @@ class WorkerService
                     'trade' => $profile->trade,
                     'yearsExperience' => $profile->years_experience,
                     'bio' => $profile->bio,
+                    'minDailyWage' => self::canSeeMinWage($viewer, $worker) ? $profile->min_daily_wage : null,
                     'skills' => $profile->skills->pluck('skill')->values(),
                     'averageRating' => $avgRating,
                     'ratingCount' => $ratingCount,
@@ -103,7 +114,7 @@ class WorkerService
     /**
      * @return array<string, mixed>
      */
-    public function profile(User $worker): array
+    public function profile(User $worker, ?User $viewer = null): array
     {
         $worker->loadMissing(['workerProfile.skills', 'ratingsReceived.rater']);
         $profile = $worker->workerProfile;
@@ -115,6 +126,7 @@ class WorkerService
             'trade' => $profile?->trade,
             'yearsExperience' => $profile?->years_experience,
             'bio' => $profile?->bio,
+            'minDailyWage' => self::canSeeMinWage($viewer, $worker) ? $profile?->min_daily_wage : null,
             'skills' => $profile?->skills->pluck('skill')->values() ?? [],
             'averageRating' => $ratingCount ? round($worker->ratingsReceived->avg('score'), 1) : null,
             'ratingCount' => $ratingCount,
@@ -125,6 +137,15 @@ class WorkerService
                 'createdAt' => $r->created_at->toDateString(),
             ]),
         ];
+    }
+
+    /**
+     * A worker's asking rate is for the people who hire: homeowners and contractors see it, and the
+     * worker themself — other workers don't get to compare each other's rates.
+     */
+    public static function canSeeMinWage(?User $viewer, User $worker): bool
+    {
+        return $viewer !== null && ($viewer->id === $worker->id || in_array($viewer->role, ['homeowner', 'contractor'], true));
     }
 
     /**

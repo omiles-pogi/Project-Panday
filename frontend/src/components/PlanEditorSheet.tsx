@@ -32,9 +32,31 @@ interface Draft {
   timelineMonths: string;
   exteriorConcept: string;
   interiorConcept: string;
-  phases: { name: string; share: string; weeks: string; tasks: string }[];
+  /** origName is the phase's name when the editor opened, so a rename can be carried to the materials that name it. */
+  phases: { name: string; share: string; weeks: string; tasks: string; origName?: string }[];
   breakdown: { category: string; amount: string }[];
-  materials: { material: string; category: string; qty: string; unit: string; unitPrice: string }[];
+  materials: {
+    material: string;
+    category: string;
+    qty: string;
+    unit: string;
+    unitPrice: string;
+    /** The phase the material is first needed in — kept as is (and followed through a phase rename). */
+    phase?: string;
+    /** Set while the line is still exactly what the supplier lists; see toPlan(). */
+    link?: SupplierLink;
+  }[];
+}
+
+/** A material's supplier listing, plus the name/unit/price it had — so toPlan() can tell whether the
+ * homeowner has since changed them by hand. */
+interface SupplierLink {
+  supplierProductId: number;
+  supplierId?: number;
+  supplierName?: string;
+  material: string;
+  unit: string;
+  unitPrice: string;
 }
 
 const str = (n: number) => (Number.isFinite(n) ? String(n) : "");
@@ -62,6 +84,7 @@ function toDraft(plan: ConstructionPlan): Draft {
       share: str(p.percentComplete),
       weeks: p.durationWeeks ? str(p.durationWeeks) : "",
       tasks: p.tasks.join("\n"),
+      origName: p.name,
     })),
     breakdown: plan.budgetBreakdown.map((b) => ({ category: b.category, amount: str(b.amount) })),
     materials: plan.materials.map((m) => ({
@@ -70,6 +93,17 @@ function toDraft(plan: ConstructionPlan): Draft {
       qty: str(m.qty),
       unit: m.unit,
       unitPrice: str(m.unitPrice),
+      phase: m.phase,
+      link: m.supplierProductId
+        ? {
+            supplierProductId: m.supplierProductId,
+            supplierId: m.supplierId,
+            supplierName: m.supplierName,
+            material: m.material,
+            unit: m.unit,
+            unitPrice: str(m.unitPrice),
+          }
+        : undefined,
     })),
   };
 }
@@ -87,6 +121,7 @@ function validate(d: Draft): string | null {
 }
 
 function toPlan(d: Draft, base: ConstructionPlan): ConstructionPlan {
+  const renamedPhases = new Map(d.phases.filter((p) => p.origName).map((p) => [p.origName as string, p.name.trim()]));
   const budgetBreakdown = d.breakdown.map((b) => ({ category: b.category, amount: Math.max(0, Math.round(num(b.amount))) }));
   return {
     ...base,
@@ -113,13 +148,25 @@ function toPlan(d: Draft, base: ConstructionPlan): ConstructionPlan {
         .filter(Boolean),
     })),
     budgetBreakdown,
-    materials: d.materials.map((m) => ({
-      material: m.material.trim(),
-      category: m.category.trim() || "Other",
-      qty: num(m.qty),
-      unit: m.unit.trim() || "pcs",
-      unitPrice: Math.max(0, num(m.unitPrice)),
-    })),
+    materials: d.materials.map((m) => {
+      const line = {
+        material: m.material.trim(),
+        category: m.category.trim() || "Other",
+        qty: num(m.qty),
+        unit: m.unit.trim() || "pcs",
+        unitPrice: Math.max(0, num(m.unitPrice)),
+        // A renamed phase must not strand the materials that were scheduled to it.
+        ...(m.phase ? { phase: renamedPhases.get(m.phase) ?? m.phase } : {}),
+      };
+      // Still the supplier's own name, unit and price → keep the link. Changed by hand → it's now the
+      // homeowner's number, so drop the link rather than have the AI overwrite it with the listing's.
+      const l = m.link;
+      const untouched =
+        !!l && line.material === l.material && line.unit === l.unit && str(line.unitPrice) === l.unitPrice;
+      return untouched
+        ? { ...line, supplierProductId: l.supplierProductId, supplierId: l.supplierId, supplierName: l.supplierName }
+        : line;
+    }),
     totalEstimate: budgetBreakdown.reduce((s, b) => s + b.amount, 0),
   };
 }

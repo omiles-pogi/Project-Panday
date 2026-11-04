@@ -2,6 +2,7 @@ export interface WorkerProfile {
   trade: string;
   years_experience: number;
   bio: string | null;
+  min_daily_wage: number | null;
   skills: { skill: string }[];
 }
 
@@ -12,6 +13,8 @@ export interface WorkerSearchResult {
   trade: string;
   yearsExperience: number;
   bio: string | null;
+  /** The lowest day rate (₱) they'll take — shown to homeowners and contractors only. */
+  minDailyWage: number | null;
   skills: string[];
   averageRating: number | null;
   ratingCount: number;
@@ -32,6 +35,7 @@ export interface WorkerPublicProfile {
   trade: string | null;
   yearsExperience: number | null;
   bio: string | null;
+  minDailyWage: number | null;
   skills: string[];
   averageRating: number | null;
   ratingCount: number;

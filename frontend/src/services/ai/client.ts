@@ -1,5 +1,5 @@
-import { apiFetchStream } from "@/services/api/client";
-import type { ConstructionPlan, PlanResult } from "@/types/plan";
+import { apiFetch, apiFetchStream } from "@/services/api/client";
+import type { ConstructionPlan, PlanResult, SupplierCategoryOptions, SupplierSelections } from "@/types/plan";
 
 export interface ChatHistoryMessage {
   role: "user" | "assistant";
@@ -23,14 +23,25 @@ export async function generateConstructionPlan(
   messages: ChatHistoryMessage[],
   forcePlan = false,
   onChunk?: (text: string) => void,
-  currentPlan?: ConstructionPlan | null
+  currentPlan?: ConstructionPlan | null,
+  supplierSelections?: Partial<SupplierSelections> | null,
+  projectId?: number | null
 ): Promise<PlanResult> {
   let result: PlanResult | null = null;
   let streamError: string | null = null;
 
   await apiFetchStream(
     "/api/ai/plan",
-    { method: "POST", body: JSON.stringify({ messages, force_plan: forcePlan, current_plan: currentPlan ?? null }) },
+    {
+      method: "POST",
+      body: JSON.stringify({
+        messages,
+        project_id: projectId ?? null,
+        force_plan: forcePlan,
+        current_plan: currentPlan ?? null,
+        supplier_selections: supplierSelections ?? currentPlan?.supplierSelections ?? null,
+      }),
+    },
     (raw) => {
       const event = raw as StreamEvent;
       if (event.type === "chunk") {
@@ -50,4 +61,11 @@ export async function generateConstructionPlan(
     throw new Error("The AI didn't return a result. Please try again.");
   }
   return result;
+}
+
+/** Who can supply each of the plan's supplier-sourced categories (real, approved suppliers with
+ * active listings) — feeds the homeowner's supplier picker. */
+export async function fetchSupplierOptions(): Promise<SupplierCategoryOptions[]> {
+  const data = await apiFetch("/api/ai/supplier-options");
+  return data as SupplierCategoryOptions[];
 }

@@ -5,12 +5,7 @@ import TourButton from "@/components/TourButton";
 import { useAuth } from "@/context/AuthContext";
 
 const ITEMS = [
-  { href: "/contractor/calendar", label: "Calendar", icon: "calendar-number-outline" },
   { href: "/contractor/profile", label: "Profile", icon: "person-outline" },
-  { href: "/contractor/capacity-monitor", label: "Capacity", icon: "sparkles-outline" },
-  { href: "/contractor/equipment-schedule", label: "Equipment", icon: "calendar-outline" },
-  { href: "/contractor/progress-analysis", label: "Analysis", icon: "trending-up-outline" },
-  { href: "/contractor/weekly-analytics", label: "Weekly", icon: "stats-chart-outline" },
   { href: "/contractor/material-requests", label: "Material Requests", icon: "clipboard-outline" },
   { href: "/contractor/materials", label: "Supplier Materials", icon: "storefront-outline" },
 ] as const;

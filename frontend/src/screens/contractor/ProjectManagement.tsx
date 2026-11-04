@@ -4,10 +4,12 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Card, Field, PageHeader, Screen } from "@/components/ui";
 import MessageButton from "@/components/MessageButton";
-import { addPhaseTask, deletePhaseTask, fetchMyProjects, togglePhaseTask } from "@/services/api/projects";
+import { addPhaseTask, deletePhaseTask, fetchMyProjects, setTeamWage, togglePhaseTask } from "@/services/api/projects";
 import { createMaterialRequest } from "@/services/api/materialRequests";
-import type { MyProject } from "@/types/project";
+import WageSheet from "@/components/WageSheet";
+import type { MyProject, Wage, WageInput } from "@/types/project";
 import { peso } from "@/utils/currency";
+import { wageLine } from "@/utils/wage";
 
 function PhaseChecklist({
   project,
@@ -162,6 +164,14 @@ function ProjectCard({
   initiallyExpanded?: boolean;
 }) {
   const [expanded, setExpanded] = useState(!!initiallyExpanded);
+  // The worker whose wage is being set, if any.
+  const [wageTarget, setWageTarget] = useState<{ id: number; name: string; wage: Wage | null | undefined; minDailyWage?: number | null } | null>(null);
+
+  const saveWage = async (input: WageInput) => {
+    if (!wageTarget) return;
+    await setTeamWage(project.id, "worker", wageTarget.id, input);
+    onChanged();
+  };
 
   return (
     <Card>
@@ -211,6 +221,55 @@ function ProjectCard({
         ))}
         <CreateMaterialRequestButton projectId={project.id} />
       </View>
+
+      {(project.myWage || project.workers.length > 0) && (
+        <View className="mt-3" style={{ gap: 6 }}>
+          <Text className="text-xs font-bold text-foreground">Wages</Text>
+          <Text className="text-xs leading-5 text-muted-foreground">Worker wages are calculated automatically when they join. Custom amounts are optional.</Text>
+          <View className="flex-row items-center justify-between px-3 py-2 rounded-xl bg-muted">
+            <Text className="text-xs font-medium text-foreground">Your fee</Text>
+            <Text className="text-xs font-semibold" style={{ color: project.myWage ? "#10b981" : "#6b7280" }}>
+              {project.myWage ? wageLine(project.myWage) : "Not set — agreed with the homeowner"}
+            </Text>
+          </View>
+          {project.workers.map((worker) => (
+            <View key={worker.id} className="flex-row items-center gap-2 px-3 py-2 rounded-xl bg-muted">
+              <View className="flex-1">
+                <Text className="text-xs font-medium text-foreground">{worker.name}</Text>
+                <Text className="text-xs" style={{ color: worker.wage ? "#10b981" : "#6b7280" }}>
+                  {wageLine(worker.wage)}
+                </Text>
+                {worker.minDailyWage != null && (
+                  <Text className="text-xs text-muted-foreground">Asks from {peso(worker.minDailyWage)}/day</Text>
+                )}
+              </View>
+              {project.canManageChecklist && (
+                <Pressable
+                  onPress={() => setWageTarget({ id: worker.id, name: worker.name, wage: worker.wage, minDailyWage: worker.minDailyWage })}
+                  hitSlop={6}
+                  className="px-2.5 py-1.5 rounded-lg"
+                  style={{ backgroundColor: "#f59e0b20" }}
+                >
+                  <Text className="text-xs font-semibold" style={{ color: "#f59e0b" }}>
+                    {worker.wage ? "Wage options" : "Auto wage"}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          ))}
+        </View>
+      )}
+
+      {wageTarget && (
+        <WageSheet
+          name={wageTarget.name}
+          current={wageTarget.wage}
+          defaultUnit="per_day"
+          minDailyWage={wageTarget.minDailyWage}
+          onClose={() => setWageTarget(null)}
+          onSave={saveWage}
+        />
+      )}
 
       {expanded && (
         <View style={{ gap: 10 }} className="mt-2">

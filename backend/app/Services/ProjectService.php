@@ -9,6 +9,7 @@ use App\Models\ProjectPhase;
 use App\Models\ProjectPhaseTask;
 use App\Models\ProjectWorkerRequest;
 use App\Models\User;
+use App\Support\Wage;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +22,10 @@ class ProjectService
     public function __construct(
         private readonly NotificationService $notifications,
         private readonly TimelineService $timeline,
+        private readonly ProjectBudgetService $budgets,
+        private readonly ConstructionPlanService $plans,
+        private readonly WageService $wages,
+        private readonly EstimateAdjustmentService $estimates,
     ) {}
 
     /**
@@ -86,13 +91,27 @@ class ProjectService
      */
     private function planAttributes(array $plan): array
     {
+        // A client can edit the proposal. Recheck supplier links at approval too, so a forged
+        // supplier name or a now-unavailable listing never becomes a verified saved price.
+        $plan = $this->plans->applySupplierData($plan, $this->plans->normalizeSelections($plan['supplierSelections'] ?? []));
+        $materials = $this->normalizeAiMaterials($plan['materials'] ?? []);
+        $total = ! empty($plan['budgetBreakdown'])
+            ? (int) round(array_sum(array_column($plan['budgetBreakdown'], 'amount')))
+            : (int) round($plan['totalEstimate']);
+
         return [
             'title' => $plan['projectTitle'],
             'location' => $plan['location'] ?? null,
             'budget' => (int) round($plan['budget']),
-            'total_estimate' => (int) round($plan['totalEstimate']),
+            'total_estimate' => $total,
             'timeline_months' => (int) $plan['timelineMonths'],
-            'ai_materials' => $this->normalizeAiMaterials($plan['materials'] ?? []),
+            'ai_materials' => $materials,
+            'approved_plan' => array_replace($plan, [
+                'budget' => (int) round($plan['budget']),
+                'location' => (string) ($plan['location'] ?? ''),
+                'totalEstimate' => $total,
+                'materials' => $materials ?? [],
+            ]),
         ];
     }
 
@@ -145,6 +164,12 @@ class ProjectService
             'qty' => (float) $m['qty'],
             'unit' => (string) $m['unit'],
             'unitPrice' => (float) $m['unitPrice'],
+            // Which supplier listing the homeowner's plan was priced from, so the contractor's
+            // material request starts from that supplier instead of whoever is cheapest.
+            'supplierProductId' => (int) ($m['supplierProductId'] ?? 0),
+            'supplierName' => $m['supplierName'] ?? null,
+            // The phase it's first needed in, so materials can be ordered phase by phase on the schedule.
+            'phase' => (string) ($m['phase'] ?? ''),
         ], $materials));
     }
 
@@ -267,6 +292,8 @@ class ProjectService
 
         if ($accept) {
             $project->workers()->syncWithoutDetaching([$worker->id]);
+            // They arrive with a wage already worked out (their own minimum daily wage × the project's days).
+            $this->wages->syncAutoWages($project, [$worker->id]);
         }
 
         if ($request->isHomeownerInitiated()) {
@@ -446,7 +473,15 @@ class ProjectService
         $request->update(['status' => $accept ? 'approved' : 'rejected']);
 
         if ($accept) {
-            $project->contractors()->syncWithoutDetaching([$contractor->id]);
+            // A contractor who applied with a quote starts out agreed at that quote as a fixed fee;
+            // the homeowner can still change it. An invite has no quote, so the fee is worked out from
+            // the plan instead (WageService) — and the other automatic fees are re-split for the new head count.
+            $project->contractors()->syncWithoutDetaching(
+                $request->quote_amount
+                    ? [$contractor->id => ['wage_amount' => $request->quote_amount, 'wage_unit' => Wage::FIXED, 'wage_days' => null, 'wage_auto' => false]]
+                    : [$contractor->id]
+            );
+            $this->wages->syncAutoWages($project, [$contractor->id]);
         }
 
         if ($request->isHomeownerInitiated()) {
@@ -545,6 +580,7 @@ class ProjectService
         $this->authorizeOwner($project, $actingUser);
 
         $project->contractors()->detach($contractor->id);
+        $this->wages->syncAutoWages($project, fillMissing: false);
     }
 
     /** Cascades at the DB level (phases, tasks, worker/contractor assignments all
@@ -654,13 +690,17 @@ class ProjectService
 
         $projects = $asContractor->get()->merge($asWorker->get())->unique('id');
 
-        return $projects->map(fn (Project $project) => array_merge(
-            $this->present($project),
-            [
+        return $projects->map(function (Project $project) use ($user) {
+            $presented = $this->present($project, $user);
+            $mine = collect($presented[$user->role === 'worker' ? 'workers' : 'contractors'])->firstWhere('id', $user->id);
+
+            return array_merge($presented, [
                 'ownerName' => $project->user->name,
                 'canManageChecklist' => $project->isManageableBy($user),
-            ]
-        ))->values();
+                // The viewer's own pay on this project, so their screen doesn't have to dig it out of the team list.
+                'myWage' => $mine['wage'] ?? null,
+            ]);
+        })->values();
     }
 
     /**
@@ -677,12 +717,21 @@ class ProjectService
             : $query->latest('started_at')->latest('id')->first();
 
         return [
-            'project' => $project ? $this->present($project) : null,
+            'project' => $project ? $this->present($project, $user) : null,
             'stats' => [
                 'active' => $user->projects()->where('status', 'active')->count(),
                 'completed' => $user->projects()->where('status', 'completed')->count(),
             ],
         ];
+    }
+
+    /** A fresh owner-only snapshot for every planner request, resolved before streaming starts. */
+    public function planningContextFor(User $user, int $projectId): array
+    {
+        $project = $user->projects()->with(['phases.tasks', 'workers.workerProfile', 'contractors.contractorProfile'])
+            ->findOrFail($projectId);
+
+        return $this->present($project, $user);
     }
 
     /**
@@ -783,15 +832,23 @@ class ProjectService
     /**
      * @return array<string, mixed>
      */
-    private function present(Project $project): array
+    private function present(Project $project, ?User $viewer = null): array
     {
+        // The homeowner's estimate grows when the work outgrows the plan (unplanned materials, hiring beyond
+        // the plan's labor lines), so what's left of their budget shrinks with it. Everyone else keeps seeing
+        // the plan's own figure — the homeowner's money isn't theirs to see.
+        $adjustment = $viewer && $project->isOwnedBy($viewer) ? $this->estimates->forProject($project) : null;
+
         return [
             'id' => $project->id,
             'title' => $project->title,
             'location' => $project->location,
             'status' => $project->status,
             'budget' => $project->budget,
-            'totalEstimate' => $project->total_estimate,
+            'totalEstimate' => $adjustment['adjustedEstimate'] ?? $project->total_estimate,
+            // What the AI estimated at the start, before anything was added to it.
+            'planEstimate' => $project->total_estimate,
+            'estimateAdjustment' => $adjustment,
             'timelineMonths' => $project->timeline_months,
             'startedAt' => $project->started_at->toDateString(),
             'overallProgressPct' => $project->overallProgressPct(),
@@ -809,13 +866,133 @@ class ProjectService
                 'id' => $worker->id,
                 'name' => $worker->name,
                 'trade' => $worker->workerProfile?->trade,
+                // What the worker asks per day, for the people who agree their wage: the homeowner and the
+                // contractors on the project (and the worker themself).
+                'minDailyWage' => $viewer && ($project->isOwnedBy($viewer) || $project->hasAssignedContractor($viewer) || $viewer->id === $worker->id)
+                    ? $worker->workerProfile?->min_daily_wage
+                    : null,
+                'wage' => $this->visibleWage($project, $viewer, 'worker', $worker),
             ])->values(),
             'contractors' => $project->contractors->map(fn (User $contractor) => [
                 'id' => $contractor->id,
                 'name' => $contractor->name,
                 'specialization' => $contractor->contractorProfile?->specialization,
                 'companyName' => $contractor->contractorProfile?->company_name,
+                'wage' => $this->visibleWage($project, $viewer, 'contractor', $contractor),
             ])->values(),
+            // What the whole team costs — the homeowner's number, so nobody else gets it.
+            'teamWageTotal' => $viewer && $project->isOwnedBy($viewer) ? $this->teamWageTotal($project) : null,
+            // The homeowner's switch for letting plan-covered material requests approve themselves.
+            'autoApproveMaterials' => $viewer && $project->isOwnedBy($viewer) ? (bool) $project->auto_approve_materials : null,
+            'approvedPlan' => $viewer && $project->isOwnedBy($viewer) ? $project->approved_plan : null,
+            'budgetRecords' => $viewer && $project->isOwnedBy($viewer) ? $this->budgets->recordsFor($project) : null,
         ];
+    }
+
+    /**
+     * A team member's wage, only to people who are meant to see it: the homeowner sees everyone's, a
+     * contractor on the project sees the workers' (they manage that team) and their own, and a worker
+     * sees only their own. Other contractors' fees stay between each contractor and the homeowner.
+     *
+     * @return array{amount: int, unit: string, days: int|null, total: int}|null
+     */
+    private function visibleWage(Project $project, ?User $viewer, string $role, User $member): ?array
+    {
+        if ($viewer === null) {
+            return null;
+        }
+
+        $allowed = $project->isOwnedBy($viewer)
+            || $viewer->id === $member->id
+            || ($role === 'worker' && $project->hasAssignedContractor($viewer));
+
+        return $allowed ? Wage::fromPivot($member->pivot) : null;
+    }
+
+    private function teamWageTotal(Project $project): int
+    {
+        return (int) $project->workers->concat($project->contractors)
+            ->sum(fn (User $member) => Wage::fromPivot($member->pivot)['total'] ?? 0);
+    }
+
+    /**
+     * Sets (or clears, with a null amount) what one team member is paid on this project. The
+     * homeowner agrees every wage; a contractor on the project can also set their workers' — the same
+     * people who can invite workers — but never a contractor's, including their own.
+     *
+     * @return array{amount: int, unit: string, days: int|null, total: int}|null
+     */
+    public function setWage(Project $project, User $actingUser, User $member, string $role, ?int $amount, string $unit, ?int $days, bool $automatic = false): ?array
+    {
+        if ($role === 'contractor') {
+            $this->authorizeOwner($project, $actingUser);
+        } else {
+            $this->authorizeTeamManager($project, $actingUser);
+        }
+
+        $onProject = $role === 'contractor' ? $project->hasAssignedContractor($member) : $project->hasAssignedWorker($member);
+        if (! $onProject) {
+            throw ValidationException::withMessages(['member_id' => 'That person is not on this project.']);
+        }
+
+        $autoCalculated = false;
+        if ($automatic) {
+            $this->requireStarted($project);
+            $latestAcceptance = $role === 'contractor'
+                ? $project->contractorRequests()->where('contractor_id', $member->id)->where('status', 'approved')
+                    ->latest('id')->first()
+                : null;
+            $quote = $latestAcceptance?->initiated_by === 'contractor' && $latestAcceptance->quote_amount !== null
+                ? $latestAcceptance : null;
+            $attributes = $role === 'worker'
+                ? $this->wages->workerWage($project, $member->load('workerProfile'))
+                : ($quote
+                    ? ['wage_amount' => (int) $quote->quote_amount, 'wage_unit' => Wage::FIXED, 'wage_days' => null]
+                    : $this->wages->contractorFee($project, $project->contractors()->count()));
+            if ($attributes === null) {
+                throw ValidationException::withMessages(['automatic' => 'This project needs a cost estimate before a contractor fee can be calculated.']);
+            }
+            $amount = $attributes['wage_amount'];
+            $unit = $attributes['wage_unit'];
+            $days = $attributes['wage_days'];
+            // An accepted contractor quote is a recorded agreement, not a calculated estimate.
+            $autoCalculated = $quote === null;
+        }
+
+        if ($amount !== null && $unit === Wage::PER_DAY && ($days === null || $days < 1)) {
+            throw ValidationException::withMessages(['days' => 'Enter how many days the day rate covers.']);
+        }
+
+        $relation = $role === 'contractor' ? $project->contractors() : $project->workers();
+        $relation->updateExistingPivot($member->id, [
+            'wage_amount' => $amount,
+            'wage_unit' => $unit,
+            'wage_days' => $unit === Wage::PER_DAY ? $days : null,
+            'wage_auto' => $autoCalculated,
+        ]);
+
+        $wage = Wage::fromPivot($relation->where('users.id', $member->id)->first()?->pivot);
+
+        if ($wage !== null) {
+            $this->notifications->send(
+                $member,
+                'wage_set',
+                'Your wage was set',
+                "{$actingUser->name} set your wage on \"{$project->title}\" to ".self::describeWage($wage).'.',
+                ['projectId' => $project->id, 'projectTitle' => $project->title]
+            );
+        }
+
+        return $wage;
+    }
+
+    /** @param  array{amount: int, unit: string, days: int|null, total: int}  $wage */
+    private static function describeWage(array $wage): string
+    {
+        $peso = '₱'.number_format($wage['amount']);
+
+        return $wage['unit'] === Wage::FIXED
+            ? "{$peso} fixed"
+            : "{$peso}/day × {$wage['days']} days = ₱".number_format($wage['total']);
     }
 }

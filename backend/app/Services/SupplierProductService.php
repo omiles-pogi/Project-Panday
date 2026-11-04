@@ -107,32 +107,89 @@ class SupplierProductService
         }
     }
 
-    /**
-     * A compact, prompt-ready list of real current supplier prices — the cheapest active listing
-     * per distinct product name, across every supplier. Feeds the AI material estimator so
-     * materials[].unitPrice is grounded in actual marketplace prices where one exists, instead of
-     * an always-guessed figure.
-     *
-     * Capped at 80 entries: this shop is realistically never that large for a thesis demo, and
-     * capping keeps the prompt's token cost bounded regardless of catalog growth.
-     */
-    public function pricingContextForPrompt(): string
-    {
-        $cheapestPerName = SupplierProduct::query()
-            ->where('is_active', true)
-            ->orderBy('price')
-            ->get(['name', 'unit', 'price', 'stock'])
-            ->unique(fn (SupplierProduct $p) => mb_strtolower(trim($p->name)))
-            ->take(80);
+    /** Prompt-size caps: every row costs tokens against the AI's per-minute limit. */
+    private const CHOSEN_SUPPLIER_ROWS = 24;
 
-        if ($cheapestPerName->isEmpty()) {
+    private const AUTO_ROWS = 10;
+
+    /**
+     * Who can supply each of the plan's three supplier-sourced categories, for the homeowner's
+     * picker: approved suppliers with at least one active listing in that category.
+     *
+     * @return array<int, array{category: string, suppliers: array<int, array{id: int, name: string, itemCount: int, inStockCount: int}>}>
+     */
+    public function supplierOptions(): array
+    {
+        $products = SupplierProduct::query()->listed()->with('supplier:id,name,business_name')->get();
+
+        return collect(SupplierProduct::PLAN_CATEGORIES)->map(function (array $listingCategories, string $planCategory) use ($products) {
+            $suppliers = $products->whereIn('category', $listingCategories)
+                ->groupBy('supplier_id')
+                ->map(fn (Collection $items) => [
+                    'id' => $items->first()->supplier_id,
+                    'name' => $this->supplierName($items->first()),
+                    'itemCount' => $items->count(),
+                    'inStockCount' => $items->filter(fn (SupplierProduct $p) => $p->available_quantity > 0)->count(),
+                ])
+                ->sortByDesc('inStockCount')
+                ->values()
+                ->all();
+
+            return ['category' => $planCategory, 'suppliers' => $suppliers];
+        })->values()->all();
+    }
+
+    /**
+     * The real supplier listings the AI must price from, as prompt text. For each of the three
+     * supplier-sourced plan categories: the chosen supplier's in-stock items (and only those), or —
+     * when the homeowner hasn't chosen — the cheapest in-stock listing per item across suppliers.
+     * Every row carries its listing id so the AI can say exactly which listing a material is, and
+     * the server can then check that claim (see ConstructionPlanService::applySupplierData).
+     *
+     * @param  array<string, int|null>  $selections  Plan category => chosen supplier id.
+     */
+    public function pricingContextForPrompt(array $selections = []): string
+    {
+        $inStock = SupplierProduct::query()->listed()->with('supplier:id,name,business_name')
+            ->orderBy('price')->get()
+            ->filter(fn (SupplierProduct $p) => $p->available_quantity > 0);
+
+        if ($inStock->isEmpty()) {
             return '';
         }
 
-        $lines = $cheapestPerName
-            ->map(fn (SupplierProduct $p) => "- {$p->name} ({$p->unit}): ₱{$p->price}")
-            ->implode("\n");
+        $sections = [];
+        foreach (SupplierProduct::PLAN_CATEGORIES as $planCategory => $listingCategories) {
+            $inCategory = $inStock->whereIn('category', $listingCategories);
+            $chosenId = $selections[$planCategory] ?? null;
 
-        return "\n\nCurrent supplier-listed prices in the marketplace (PHP, per unit). Use one of these for a material's unitPrice whenever it matches (same or clearly equivalent item, case-insensitive) — only estimate a realistic market price for materials with no match below:\n{$lines}";
+            if ($chosenId) {
+                $rows = $inCategory->where('supplier_id', $chosenId)->take(self::CHOSEN_SUPPLIER_ROWS);
+                $name = $rows->first() ? $this->supplierName($rows->first()) : "supplier #{$chosenId}";
+                $header = $rows->isEmpty()
+                    ? "[{$planCategory}] the homeowner chose {$name}, who has nothing in stock here — estimate these prices and set supplierProductId 0."
+                    : "[{$planCategory}] the homeowner chose {$name} — use ONLY these listings for this category:";
+                $lines = $rows->map(fn (SupplierProduct $p) => "{$p->id} | {$p->name} | {$p->unit} | ₱{$p->price}");
+            } else {
+                $rows = $inCategory->unique(fn (SupplierProduct $p) => mb_strtolower(trim($p->name)))->take(self::AUTO_ROWS);
+                $header = "[{$planCategory}] no supplier chosen — the cheapest in-stock listing per item:";
+                $lines = $rows->map(fn (SupplierProduct $p) => "{$p->id} | {$p->name} | {$p->unit} | ₱{$p->price} | {$this->supplierName($p)}");
+            }
+
+            if ($rows->isNotEmpty() || $chosenId) {
+                $sections[] = $header.($lines->isEmpty() ? '' : "\n".$lines->implode("\n"));
+            }
+        }
+
+        if ($sections === []) {
+            return '';
+        }
+
+        return "\n\nREAL SUPPLIER LISTINGS (id | name | unit | price in PHP) — the only source for material prices:\n".implode("\n\n", $sections);
+    }
+
+    private function supplierName(SupplierProduct $product): string
+    {
+        return $product->supplier->business_name ?: $product->supplier->name;
     }
 }

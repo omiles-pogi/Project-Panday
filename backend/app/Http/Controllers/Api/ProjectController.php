@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\ApplyAsContractorRequest;
 use App\Http\Requests\AssignContractorRequest;
 use App\Http\Requests\AssignWorkerRequest;
+use App\Http\Requests\SetWageRequest;
 use App\Http\Requests\StoreProjectRequest;
 use App\Models\Project;
 use App\Models\User;
 use App\Services\ProjectService;
+use App\Support\Wage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -162,6 +164,36 @@ class ProjectController extends Controller
         }
 
         return response()->json(null, 204);
+    }
+
+    public function setWorkerWage(SetWageRequest $request, Project $project, User $worker): JsonResponse
+    {
+        return $this->setWage($request, $project, $worker, 'worker');
+    }
+
+    public function setContractorWage(SetWageRequest $request, Project $project, User $contractor): JsonResponse
+    {
+        return $this->setWage($request, $project, $contractor, 'contractor');
+    }
+
+    private function setWage(SetWageRequest $request, Project $project, User $member, string $role): JsonResponse
+    {
+        try {
+            $wage = $this->projects->setWage(
+                $project,
+                $request->user(),
+                $member,
+                $role,
+                $request->validated('amount'),
+                $request->validated('unit') ?? Wage::PER_DAY,
+                $request->validated('days'),
+                $request->boolean('automatic')
+            );
+        } catch (ValidationException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['wage' => $wage]);
     }
 
     public function activityLog(Request $request, Project $project): JsonResponse

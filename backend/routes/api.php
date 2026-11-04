@@ -6,7 +6,9 @@ use App\Http\Controllers\Api\ConstructionPlanController;
 use App\Http\Controllers\Api\ContractorController;
 use App\Http\Controllers\Api\ContractorRequestController;
 use App\Http\Controllers\Api\ConversationController;
+use App\Http\Controllers\Api\HiringWageController;
 use App\Http\Controllers\Api\MaterialCatalogController;
+use App\Http\Controllers\Api\MaterialPlanController;
 use App\Http\Controllers\Api\MaterialRequestController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProjectController;
@@ -27,6 +29,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/ai/plan', [ConstructionPlanController::class, 'store'])->middleware('throttle:20,1');
+    Route::get('/ai/supplier-options', [ConstructionPlanController::class, 'supplierOptions'])->middleware('role:homeowner');
     Route::post('/projects', [ProjectController::class, 'store']);
     // "New Project" adds a not-started placeholder right away; approving its AI plan fills it in and starts it.
     Route::post('/projects/draft', [ProjectController::class, 'storeDraft'])->middleware('role:homeowner');
@@ -36,8 +39,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/projects/available-for-contractors', [ProjectController::class, 'availableForContractors']);
     Route::delete('/projects/{project}', [ProjectController::class, 'destroy']);
     Route::get('/dashboard', [ProjectController::class, 'dashboard']);
+    Route::get('/projects/{project}/hiring-wages', [HiringWageController::class, 'show'])->middleware('role:homeowner');
     Route::post('/projects/{project}/workers', [ProjectController::class, 'assignWorker']);
     Route::delete('/projects/{project}/workers/{worker}', [ProjectController::class, 'unassignWorker']);
+    // What a team member is paid on the project: the homeowner sets anyone's, a contractor on the project their workers'.
+    Route::patch('/projects/{project}/workers/{worker}/wage', [ProjectController::class, 'setWorkerWage']);
+    Route::patch('/projects/{project}/contractors/{contractor}/wage', [ProjectController::class, 'setContractorWage']);
     Route::post('/projects/{project}/contractors', [ProjectController::class, 'assignContractor']);
     Route::delete('/projects/{project}/contractors/{contractor}', [ProjectController::class, 'unassignContractor']);
     Route::get('/my-projects', [ProjectController::class, 'myProjects']);
@@ -100,14 +107,21 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/material-requests/{materialRequest}', [MaterialRequestController::class, 'show']);
         Route::post('/material-requests/{materialRequest}/cancel', [MaterialRequestController::class, 'cancel']);
         Route::get('/projects/{project}/ai-materials', [MaterialRequestController::class, 'aiSuggestions']);
+        // The plan's materials by phase, each phase with the date its materials are needed by.
+        Route::get('/projects/{project}/material-plan', [MaterialPlanController::class, 'show']);
     });
     Route::middleware('role:contractor')->group(function () {
+        // Review the AI's quantities once, then raise a request per phase from the reviewed plan.
+        Route::put('/projects/{project}/material-plan/review', [MaterialPlanController::class, 'review']);
+        Route::post('/projects/{project}/material-plan/phases/{phase}/request', [MaterialPlanController::class, 'requestPhase']);
         Route::post('/material-requests', [MaterialRequestController::class, 'store']);
         Route::put('/material-requests/{materialRequest}', [MaterialRequestController::class, 'update']);
         Route::post('/material-requests/{materialRequest}/submit', [MaterialRequestController::class, 'submit']);
         Route::post('/supplier-orders/{supplierOrder}/receive', [MaterialRequestController::class, 'receive']);
     });
     Route::middleware('role:homeowner')->group(function () {
+        // Whether routine requests that stay inside the approved plan approve themselves.
+        Route::patch('/projects/{project}/material-settings', [MaterialPlanController::class, 'settings']);
         Route::post('/material-requests/{materialRequest}/approve', [MaterialRequestController::class, 'approve']);
         Route::post('/material-requests/{materialRequest}/request-revision', [MaterialRequestController::class, 'requestRevision']);
         Route::post('/material-requests/{materialRequest}/reject', [MaterialRequestController::class, 'reject']);

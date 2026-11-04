@@ -5,6 +5,8 @@ export interface UpdateWorkerProfileInput {
   trade: string;
   years_experience: number;
   bio?: string;
+  /** The lowest day rate (₱) the worker will take; null clears it. */
+  min_daily_wage?: number | null;
   skills: string[];
 }
 

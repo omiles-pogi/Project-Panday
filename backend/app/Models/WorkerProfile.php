@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['user_id', 'trade', 'years_experience', 'bio'])]
+#[Fillable(['user_id', 'trade', 'years_experience', 'bio', 'min_daily_wage'])]
 class WorkerProfile extends Model
 {
     public function user(): BelongsTo

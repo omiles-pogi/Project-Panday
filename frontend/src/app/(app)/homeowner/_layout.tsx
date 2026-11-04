@@ -15,17 +15,11 @@ export default function HomeownerLayout() {
         drawerContent={(props) => <HomeownerDrawerContent {...props} />}
       >
         <Drawer.Screen name="(tabs)" />
-        <Drawer.Screen name="budget-generator" />
         <Drawer.Screen name="material-estimator" />
         <Drawer.Screen name="marketplace" />
         <Drawer.Screen name="supplier-catalog" />
         <Drawer.Screen name="messages" />
-        <Drawer.Screen name="equipment-estimator" />
-        <Drawer.Screen name="labor-estimator" />
-        <Drawer.Screen name="expenses" />
         <Drawer.Screen name="approvals" />
-        <Drawer.Screen name="calendar" />
-        <Drawer.Screen name="ai-design" />
       </Drawer>
     </PlanProvider>
   );
