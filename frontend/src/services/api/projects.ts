@@ -48,6 +48,15 @@ export async function fetchDashboard(projectId?: number): Promise<DashboardData>
   return data as DashboardData;
 }
 
+/** Adds `amount` pesos to the homeowner's budget and returns the project as the dashboard shows it. */
+export async function addProjectBudget(projectId: number, amount: number): Promise<DashboardProject> {
+  const data = await apiFetch(`/api/projects/${projectId}/budget`, {
+    method: "POST",
+    body: JSON.stringify({ amount }),
+  });
+  return data as DashboardProject;
+}
+
 export async function fetchHiringWages(projectId: number): Promise<HiringWageData> {
   return await apiFetch(`/api/projects/${projectId}/hiring-wages`) as HiringWageData;
 }

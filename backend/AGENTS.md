@@ -37,6 +37,8 @@ instead: `php artisan serve --host=0.0.0.0 --port=8000`.
 - `app/Services/AuthService.php` - User registration/credential-check logic, used by `AuthController`
 - `app/Services/ConstructionPlanService.php` - The Groq API call + tool schema, used by `ConstructionPlanController`; throws `App\Exceptions\ConstructionPlanGenerationException` (carries the HTTP status to return) on failure
 - `app/Services/SupplierProductService.php` - Supplier inventory (`/api/supplier-products`, `role:supplier`, owner-only edits) and the read-only buyer catalog (`/api/materials`, `role:homeowner,contractor`). `stock_status` is always derived from `stock` (> 0 → `in_stock`), never stored; `is_active` only hides/shows a listing
+- `app/Services/SupplierProfileService.php` - A supplier's own profile (`GET`/`PUT /api/supplier-profile`, `role:supplier`): the verified account details (business name and license stay on `users`, read-only here) plus the editable shop details in `supplier_profiles` (`location`, `contact_number`, `bio`), and how many listings are active / in stock. Buyers see `location` and `contact_number` on the catalog's `supplier.supplier_profile`; `bio` stays on the profile page
+- `app/Services/HomeownerProfileService.php` - A homeowner's own profile (`GET`/`PUT /api/homeowner-profile`, `role:homeowner`): account details, project counts by status, and the editable `location` / `contact_number` in `homeowner_profiles`. Private — no other endpoint returns it (contractors and workers only get `ownerName`); share it deliberately, per project, if that is ever wanted. Name, email and role are not editable here
 - `app/Services/ChatService.php` - Homeowner ↔ contractor project messaging (`/api/conversations/*`). One thread per project + pair (unique index); access requires the real `project_contractors` link to start/send, and participation to read. Delivery is client polling (`after_id`), not websockets; `client_key` makes sends idempotent
 - `app/Services/MaterialRequestService.php` / `SupplierOrderService.php` / `MaterialWorkflow.php` - Material workflow: contractor drafts a request (`/api/material-requests`) → homeowner approves/revises/rejects → approval splits items into one `SupplierOrder` per supplier (`/api/supplier-orders`, supplier sees only their own) → supplier confirms (reserves stock) or reports insufficient/declines (request returns for revision) → changed prices need homeowner confirmation → preparing → for_delivery → delivered (deducts stock) → contractor confirms receipt → request `completed`. `material_requests.status` is approval only; fulfillment lives on `supplier_orders.status`; every transition is logged in `material_request_status_logs`
 - `app/Services/StockService.php` - The only code that moves `supplier_products.reserved`/`stock`, via single conditional UPDATEs (no double-promising, no negatives). Available-to-promise = `stock - reserved`, which `stock_status` is derived from
@@ -95,6 +97,16 @@ approved supplier, and the chosen supplier for its category) and overwrites the 
 price from the listing, dropping the link otherwise. The link is saved in `projects.ai_materials`, so the
 contractor's material request (`MaterialRequestService::aiSuggestions`) starts from the chosen listing.
 
+The prompt only has room for a dozen or so rows per plan category (`CHOSEN_SUPPLIER_ROWS` / `AUTO_ROWS`;
+the listings come out of the room left for the plan itself, see `replyTokenBudget`), so `spread()` takes
+them round-robin across listing categories, oldest listing first — never "the N cheapest", which on a
+~90-item catalog is all fasteners and no cement. Raise those caps only after checking the reply budget.
+
+Demo catalog: `php artisan db:seed --class=SupplierSheetSeeder` loads the 91-material listing sheet
+(foundation → finishes) as the supplier "Tripple R" and gives every other approved supplier the same list at
+their own prices. Materials Tripple R left unpriced are added inactive at ₱0 (hidden from buyers until it
+prices them); the other suppliers price those. Listings a supplier already has by name are never edited.
+
 ## Material planning
 
 Materials are planned **by phase** and approved **by exception**. The AI plan gives each material the
@@ -108,6 +120,16 @@ homeowner is notified; `POST .../material-plan/phases/{phase}/request` then draf
 the reviewed plan (refused until reviewed; asking again resumes the draft). Items remember `ai_quantity` (the
 AI's figure) and `plan_quantity` (what the reviewed plan allows), always worked out server-side by
 `PlanMaterials::match` — never from the client.
+
+**Importing the AI estimate** (`GET /api/projects/{id}/ai-materials`) gives each plan line a listing and a
+`matchKind`: `plan` (the listing the plan was priced from), `exact` (same name), `similar` (closest wording), or
+null. The AI rarely words a material like a listing, so `PlanMaterials::similarity` (also the last tier of
+`match`, which is how a similar listing still counts as the plan's material) accepts a listing when every size
+in the AI's name is in it (10mm ≠ 12mm), they share a real word, and ≥ half their words agree; ties go to the
+same unit, the homeowner's chosen supplier, then stock and price. A line nothing resembles stays unmatched and
+can't be submitted until a listing is picked — the app walks the contractor through those — and the catalog
+search (`SupplierProductService::catalog`) matches words in any order, falling back to the listings with the
+most of the words when none has them all.
 
 `MaterialApprovalPolicy` decides, on submit, whether a request approves itself: every item is in the plan, the
 totals per plan material (this request + earlier approved ones) stay within `plan_quantity`, each category
@@ -163,6 +185,12 @@ differences on in-plan materials aren't counted. Pending requests are only a hea
 they join on approval and drop out if cancelled. Only the **homeowner** gets the adjusted figures —
 contractors and workers see `planEstimate` as `totalEstimate` and a null `estimateAdjustment`. A pending request
 carries `estimateImpact` (what approving would do to the estimate and left over) for the homeowner's decision.
+
+When the estimate ends up past the homeowner's budget they can raise it: `POST /api/projects/{project}/budget`
+(`{amount}`, homeowner only, `ProjectService::addBudget`) **adds** `amount` pesos rather than setting a total, so
+two stale screens can't undo each other. It moves `projects.budget` and the copy in `approved_plan.budget`
+together and returns the project as the dashboard shows it. The estimate itself is never editable — more budget
+is the only way to close a shortfall. A "not started yet" project has no budget to add to.
 
 ## New projects
 

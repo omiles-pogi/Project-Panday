@@ -93,6 +93,18 @@ class User extends Authenticatable
         return $this->hasMany(SupplierProduct::class, 'supplier_id');
     }
 
+    /** A homeowner's own details (location, contact number); private to them. */
+    public function homeownerProfile(): HasOne
+    {
+        return $this->hasOne(HomeownerProfile::class);
+    }
+
+    /** The shop details (location, contact number, about) a supplier fills in. */
+    public function supplierProfile(): HasOne
+    {
+        return $this->hasOne(SupplierProfile::class);
+    }
+
     /** This user's in-app notification feed (invites, applications, decisions), newest first. */
     public function appNotifications(): HasMany
     {

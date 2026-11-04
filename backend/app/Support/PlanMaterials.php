@@ -47,7 +47,8 @@ final class PlanMaterials
 
     /**
      * The plan line a requested item corresponds to: the same supplier listing the plan was priced
-     * from, else the same material name. Null means the item isn't in the plan.
+     * from, else the same material name, else the line it is worded most like (the AI rarely writes a
+     * listing's name letter for letter). Null means the item isn't in the plan.
      *
      * @return array<string, mixed>|null
      */
@@ -63,8 +64,72 @@ final class PlanMaterials
         }
 
         $name = self::normalize($materialName);
+        if ($name === '') {
+            return null;
+        }
 
-        return $name === '' ? null : $lines->first(fn (array $l) => self::normalize($l['material']) === $name);
+        $exact = $lines->first(fn (array $l) => self::normalize($l['material']) === $name);
+        if ($exact) {
+            return $exact;
+        }
+
+        $best = null;
+        $bestScore = 0.0;
+        foreach ($lines as $line) {
+            $score = self::similarity($line['material'], $materialName);
+            if ($score > $bestScore) {
+                [$best, $bestScore] = [$line, $score];
+            }
+        }
+
+        return $best;
+    }
+
+    /** Below this two names are different materials, not the same one worded differently. */
+    private const SIMILAR_MIN = 0.5;
+
+    /**
+     * The words that tell materials apart: lower-cased, a size kept whole ("40 kg" is "40kg"), plurals folded,
+     * filler dropped.
+     *
+     * @return list<string>
+     */
+    public static function words(string $name): array
+    {
+        $name = preg_replace('/(\d)\s+([a-z])/u', '$1$2', mb_strtolower($name)) ?? '';
+        $words = preg_split('/[^\p{L}\p{N}]+/u', $name, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $words = array_map(fn (string $w) => mb_strlen($w) > 3 && str_ends_with($w, 's') ? mb_substr($w, 0, -1) : $w, $words);
+
+        return array_values(array_unique(array_diff($words, ['and', 'the', 'for', 'with', 'of', 'per'])));
+    }
+
+    /**
+     * How alike two material names are, 0–1, where 0 means "not the same material". Every size or grade in
+     * `$wanted` must appear in `$candidate` (10mm rebar is not 12mm rebar) and they must share a real word, not
+     * just a number; past that it is the share of words they have in common.
+     */
+    public static function similarity(string $wanted, string $candidate): float
+    {
+        $a = self::words($wanted);
+        $b = self::words($candidate);
+        if ($a === [] || $b === []) {
+            return 0.0;
+        }
+
+        foreach ($a as $word) {
+            if (preg_match('/\d/', $word) && ! in_array($word, $b, true)) {
+                return 0.0;
+            }
+        }
+
+        $shared = array_intersect($a, $b);
+        if (array_filter($shared, fn (string $w) => ! preg_match('/\d/', $w)) === []) {
+            return 0.0;
+        }
+
+        $score = 2 * count($shared) / (count($a) + count($b));
+
+        return $score >= self::SIMILAR_MIN ? $score : 0.0;
     }
 
     /** The key two requested items share when they are the same plan material (so quantities can be added up). */

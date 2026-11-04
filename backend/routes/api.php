@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\ContractorController;
 use App\Http\Controllers\Api\ContractorRequestController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\HiringWageController;
+use App\Http\Controllers\Api\HomeownerProfileController;
 use App\Http\Controllers\Api\MaterialCatalogController;
 use App\Http\Controllers\Api\MaterialPlanController;
 use App\Http\Controllers\Api\MaterialRequestController;
@@ -17,6 +18,7 @@ use App\Http\Controllers\Api\ProjectRatingController;
 use App\Http\Controllers\Api\ProjectTimelineController;
 use App\Http\Controllers\Api\SupplierOrderController;
 use App\Http\Controllers\Api\SupplierProductController;
+use App\Http\Controllers\Api\SupplierProfileController;
 use App\Http\Controllers\Api\WorkerController;
 use App\Http\Controllers\Api\WorkerRequestController;
 use Illuminate\Support\Facades\Route;
@@ -39,6 +41,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/projects/available-for-contractors', [ProjectController::class, 'availableForContractors']);
     Route::delete('/projects/{project}', [ProjectController::class, 'destroy']);
     Route::get('/dashboard', [ProjectController::class, 'dashboard']);
+    Route::post('/projects/{project}/budget', [ProjectController::class, 'addBudget'])->middleware('role:homeowner');
     Route::get('/projects/{project}/hiring-wages', [HiringWageController::class, 'show'])->middleware('role:homeowner');
     Route::post('/projects/{project}/workers', [ProjectController::class, 'assignWorker']);
     Route::delete('/projects/{project}/workers/{worker}', [ProjectController::class, 'unassignWorker']);
@@ -78,6 +81,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/contractors', [ContractorController::class, 'search']);
     Route::get('/contractors/{contractor}', [ContractorController::class, 'show']);
     Route::post('/contractors/{contractor}/ratings', [ContractorController::class, 'rate']);
+
+    Route::get('/homeowner-profile', [HomeownerProfileController::class, 'show'])->middleware('role:homeowner');
+    Route::put('/homeowner-profile', [HomeownerProfileController::class, 'update'])->middleware('role:homeowner');
+
+    Route::get('/supplier-profile', [SupplierProfileController::class, 'show'])->middleware('role:supplier');
+    Route::put('/supplier-profile', [SupplierProfileController::class, 'update'])->middleware('role:supplier');
 
     Route::get('/supplier-products', [SupplierProductController::class, 'index'])->middleware('role:supplier');
     Route::post('/supplier-products', [SupplierProductController::class, 'store'])->middleware('role:supplier');

@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { CountUp } from "@/components/charts";
 import { Badge, Button, Card, Field, InfoBox, MONO, ProgressBar, SubmitButton } from "@/components/ui";
 import Sheet from "@/components/Sheet";
 import { RequestStatusBadge } from "@/components/MaterialStatusBadge";
@@ -305,9 +306,7 @@ function PhaseRow({
           </Text>
         </View>
         <View className="items-end">
-          <Text className="text-sm font-bold text-primary" style={{ fontFamily: MONO }}>
-            {peso(phase.estimatedTotal)}
-          </Text>
+          <CountUp text={peso(phase.estimatedTotal)} className="text-sm font-bold text-primary" style={{ fontFamily: MONO }} />
           <Ionicons name={open ? "chevron-up" : "chevron-down"} size={16} color="#f59e0b" />
         </View>
       </Pressable>

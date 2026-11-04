@@ -117,7 +117,8 @@ class Project extends Model
         $phases = $this->phases;
         $totalWeight = $phases->sum('weight_pct');
         if ($totalWeight <= 0) {
-            return 0;
+            // With no stated shares, count phases equally, as the calendar already does.
+            return (int) round($phases->avg('progress_pct') ?? 0);
         }
 
         $weighted = $phases->sum(fn (ProjectPhase $phase) => $phase->weight_pct * $phase->progress_pct);

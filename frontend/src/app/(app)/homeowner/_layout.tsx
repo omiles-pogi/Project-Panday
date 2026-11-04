@@ -1,4 +1,4 @@
-import { Drawer } from "expo-router/drawer";
+import { Drawer, DrawerToggleButton } from "expo-router/drawer";
 import { PlanProvider } from "@/context/PlanContext";
 import { useTheme } from "@/context/ThemeContext";
 import HomeownerDrawerContent from "@/components/HomeownerDrawerContent";
@@ -15,11 +15,20 @@ export default function HomeownerLayout() {
         drawerContent={(props) => <HomeownerDrawerContent {...props} />}
       >
         <Drawer.Screen name="(tabs)" />
-        <Drawer.Screen name="material-estimator" />
         <Drawer.Screen name="marketplace" />
         <Drawer.Screen name="supplier-catalog" />
         <Drawer.Screen name="messages" />
         <Drawer.Screen name="approvals" />
+        <Drawer.Screen
+          name="profile"
+          options={{
+            headerShown: true,
+            title: "Profile",
+            headerStyle: { backgroundColor: chrome.card },
+            headerTintColor: chrome.foreground,
+            headerLeft: () => <DrawerToggleButton tintColor={chrome.mutedForeground} />,
+          }}
+        />
       </Drawer>
     </PlanProvider>
   );

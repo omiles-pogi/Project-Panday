@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Validation\ValidationException;
 
 class SupplierProductService
@@ -72,13 +73,38 @@ class SupplierProductService
      */
     public function catalog(array $filters): Collection
     {
-        $search = trim((string) ($filters['search'] ?? ''));
+        $words = preg_split('/\s+/', mb_strtolower(trim((string) ($filters['search'] ?? ''))), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        // Every word must be in the name, in any order. When none is (an AI-written name like "Portland cement
+        // 40kg bag" rarely matches a listing word for word), show what has most of the words instead of nothing.
+        $found = $this->catalogQuery($filters, $words, all: true)->get();
+        if ($found->isEmpty() && count($words) > 1) {
+            $found = $this->catalogQuery($filters, array_filter($words, fn (string $w) => mb_strlen($w) >= 3), all: false)->get()
+                ->sortByDesc(fn (SupplierProduct $p) => count(array_filter($words, fn (string $w) => str_contains(mb_strtolower($p->name), $w))))
+                ->values();
+        }
+
+        return $found;
+    }
+
+    /**
+     * @param  array{category?: ?string, stock?: ?string}  $filters
+     * @param  array<int, string>  $words  lower-case search words
+     * @param  bool  $all  every word must match the name (else any one of them)
+     * @return Builder<SupplierProduct>
+     */
+    private function catalogQuery(array $filters, array $words, bool $all): Builder
+    {
         $stock = $filters['stock'] ?? null;
 
         return SupplierProduct::query()
             ->listed()
-            ->with('supplier:id,name,business_name')
-            ->when($search !== '', fn (Builder $q) => $q->where('name', 'like', '%'.addcslashes($search, '%_\\').'%'))
+            ->with(['supplier:id,name,business_name', 'supplier.supplierProfile:id,user_id,location,contact_number'])
+            ->when($words !== [], fn (Builder $q) => $q->where(function (Builder $q) use ($words, $all) {
+                foreach ($words as $word) {
+                    $q->where('name', 'like', '%'.addcslashes($word, '%_\\').'%', $all ? 'and' : 'or');
+                }
+            }))
             ->when($filters['category'] ?? null, fn (Builder $q, string $category) => $q->where('category', $category))
             // Compared column-to-column (not `stock - reserved`) so MySQL never evaluates an unsigned
             // subtraction; "in stock" means available-to-promise > 0.
@@ -86,8 +112,7 @@ class SupplierProductService
             ->when($stock === 'out_of_stock', fn (Builder $q) => $q->whereColumn('stock', '<=', 'reserved'))
             ->orderByRaw('CASE WHEN stock > reserved THEN 0 ELSE 1 END')
             ->orderBy('name')
-            ->limit(200)
-            ->get();
+            ->limit(200);
     }
 
     /** A single catalog listing — 404s for a deactivated listing or an unapproved supplier. */
@@ -97,7 +122,7 @@ class SupplierProductService
             throw (new ModelNotFoundException)->setModel(SupplierProduct::class, [$product->id]);
         }
 
-        return $product->load('supplier:id,name,business_name');
+        return $product->load(['supplier:id,name,business_name', 'supplier.supplierProfile:id,user_id,location,contact_number']);
     }
 
     private function authorizeOwner(SupplierProduct $product, User $actingUser): void
@@ -107,10 +132,14 @@ class SupplierProductService
         }
     }
 
-    /** Prompt-size caps: every row costs tokens against the AI's per-minute limit. */
-    private const CHOSEN_SUPPLIER_ROWS = 24;
+    /**
+     * Prompt-size caps: every row costs tokens against the AI's per-minute limit, and what the listings
+     * use is taken from the room left for the plan itself. Rows are spread across listing categories
+     * (see spread()), so a dozen still cover the staples even when a supplier lists ~90 items.
+     */
+    private const CHOSEN_SUPPLIER_ROWS = 12;
 
-    private const AUTO_ROWS = 10;
+    private const AUTO_ROWS = 8;
 
     /**
      * Who can supply each of the plan's three supplier-sourced categories, for the homeowner's
@@ -164,14 +193,14 @@ class SupplierProductService
             $chosenId = $selections[$planCategory] ?? null;
 
             if ($chosenId) {
-                $rows = $inCategory->where('supplier_id', $chosenId)->take(self::CHOSEN_SUPPLIER_ROWS);
+                $rows = $this->spread($inCategory->where('supplier_id', $chosenId), self::CHOSEN_SUPPLIER_ROWS);
                 $name = $rows->first() ? $this->supplierName($rows->first()) : "supplier #{$chosenId}";
                 $header = $rows->isEmpty()
                     ? "[{$planCategory}] the homeowner chose {$name}, who has nothing in stock here — estimate these prices and set supplierProductId 0."
                     : "[{$planCategory}] the homeowner chose {$name} — use ONLY these listings for this category:";
                 $lines = $rows->map(fn (SupplierProduct $p) => "{$p->id} | {$p->name} | {$p->unit} | ₱{$p->price}");
             } else {
-                $rows = $inCategory->unique(fn (SupplierProduct $p) => mb_strtolower(trim($p->name)))->take(self::AUTO_ROWS);
+                $rows = $this->spread($inCategory->unique(fn (SupplierProduct $p) => mb_strtolower(trim($p->name))), self::AUTO_ROWS);
                 $header = "[{$planCategory}] no supplier chosen — the cheapest in-stock listing per item:";
                 $lines = $rows->map(fn (SupplierProduct $p) => "{$p->id} | {$p->name} | {$p->unit} | ₱{$p->price} | {$this->supplierName($p)}");
             }
@@ -186,6 +215,36 @@ class SupplierProductService
         }
 
         return "\n\nREAL SUPPLIER LISTINGS (id | name | unit | price in PHP) — the only source for material prices:\n".implode("\n\n", $sections);
+    }
+
+    /**
+     * At most $cap listings, taken round-robin across listing categories — the oldest listings of each
+     * first — so a big catalog shows cement, sand, steel, roofing… rather than only the cheapest odds and
+     * ends, which would leave the AI guessing prices the supplier really has. A supplier lists its main
+     * lines first, and unlike price the order doesn't shift as prices change. Returned cheapest-first.
+     *
+     * @param  SupportCollection<int, SupplierProduct>  $rows
+     * @return SupportCollection<int, SupplierProduct>
+     */
+    private function spread(SupportCollection $rows, int $cap): SupportCollection
+    {
+        $queues = $rows->groupBy('category')->map(fn ($group) => $group->sortBy('id')->values())->values();
+        $picked = collect();
+
+        for ($round = 0; $picked->count() < $cap; $round++) {
+            $added = false;
+            foreach ($queues as $queue) {
+                if ($picked->count() < $cap && $queue->has($round)) {
+                    $picked->push($queue[$round]);
+                    $added = true;
+                }
+            }
+            if (! $added) {
+                break;
+            }
+        }
+
+        return $picked->sortBy('price')->values();
     }
 
     private function supplierName(SupplierProduct $product): string

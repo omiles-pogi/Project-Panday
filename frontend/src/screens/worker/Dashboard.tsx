@@ -1,11 +1,10 @@
-import { useCallback, useState } from "react";
 import { Pressable, Text, View, ActivityIndicator } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Card, PageHeader, Screen, StatGrid, StatTile } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { fetchMyProjects } from "@/services/api/projects";
-import type { MyProject } from "@/types/project";
+import { useFocusedResource } from "@/hooks/useFocusedResource";
 
 const QUICK_ACTIONS = [
   { label: "Assignments", icon: "briefcase-outline", href: "/worker/assignments" },
@@ -16,16 +15,7 @@ const QUICK_ACTIONS = [
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [projects, setProjects] = useState<MyProject[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    fetchMyProjects()
-      .then(setProjects)
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load assignments."));
-  }, []);
-
-  useFocusEffect(load);
+  const { data: projects, error } = useFocusedResource(fetchMyProjects);
 
   if (!error && projects === null) {
     return (

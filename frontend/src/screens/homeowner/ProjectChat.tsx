@@ -14,6 +14,7 @@ import type { ChatHistoryMessage } from "@/services/ai/client";
 import type { ConstructionPlan, SupplierCategory, SupplierOption, SupplierSelections } from "@/types/plan";
 import SupplierPicker, { selectionsOf } from "@/components/SupplierPicker";
 import BudgetCategoryBreakdown from "@/components/BudgetCategoryBreakdown";
+import { CountUp } from "@/components/charts";
 import { peso } from "@/utils/currency";
 import { compareBudget } from "@/utils/budget";
 import { garageLabel } from "@/utils/garage";
@@ -150,9 +151,13 @@ function PlanCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: ()
                 <Text className="text-xs font-semibold mb-0.5" style={{ color: isDisapproved ? "#ef4444" : item.color }} numberOfLines={1}>
                   {item.title.toUpperCase()}
                 </Text>
-                <Text className="font-bold text-sm text-foreground" numberOfLines={1}>
-                  {item.value}
-                </Text>
+                {item.value.startsWith("₱") ? (
+                  <CountUp text={item.value} className="font-bold text-sm text-foreground" numberOfLines={1} />
+                ) : (
+                  <Text className="font-bold text-sm text-foreground" numberOfLines={1}>
+                    {item.value}
+                  </Text>
+                )}
                 <Text className="text-xs mt-0.5 leading-4 text-muted-foreground" numberOfLines={2}>
                   {item.detail}
                 </Text>
@@ -274,9 +279,7 @@ function MaterialsCard({
     <CardShell>
       <CardHeader>
         <SectionHeader icon="layers-outline" title="Material Estimates" badge="AI Generated" />
-        <Text className="text-sm font-bold" style={{ color: "#f59e0b" }}>
-          {peso(total)}
-        </Text>
+        <CountUp text={peso(total)} className="text-sm font-bold" style={{ color: "#f59e0b" }} />
       </CardHeader>
       <View className="p-4 border-b" style={{ borderColor: chrome.border }}>
         <SupplierPicker plan={plan} onChoose={onChooseSupplier} disabled={busy} />
@@ -384,9 +387,7 @@ function SummaryCard({ plan }: { plan: ConstructionPlan }) {
         <View className="flex-row gap-2 mb-4">
           <View className="flex-1 p-3 rounded-xl items-center bg-muted">
             <Text className="text-xs mb-1 text-muted-foreground">Total AI Estimate</Text>
-            <Text className="font-bold text-base" style={{ color: "#f59e0b" }}>
-              {peso(plan.totalEstimate)}
-            </Text>
+            <CountUp text={peso(plan.totalEstimate)} className="font-bold text-base" style={{ color: "#f59e0b" }} />
           </View>
           <View className="flex-1 p-3 rounded-xl items-center bg-muted">
             <Text className="text-xs mb-1 text-muted-foreground">Project Duration</Text>

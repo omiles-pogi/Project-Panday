@@ -1,11 +1,11 @@
 import { useCallback, useRef, useState } from "react";
-import { ScrollView, Text, View, Pressable, ActivityIndicator, Modal } from "react-native";
+import { AppState, ScrollView, Text, View, Pressable, ActivityIndicator, Modal } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ProgressRing } from "@/components/charts";
+import { CountUp, ProgressRing } from "@/components/charts";
 import { ProgressBar } from "@/components/ui";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { createDraftProject, deleteProject, fetchDashboard, fetchMyHomeownerProjects, setTeamWage } from "@/services/api/projects";
+import { addProjectBudget, createDraftProject, deleteProject, fetchDashboard, fetchMyHomeownerProjects, setTeamWage } from "@/services/api/projects";
 import type { DashboardData, ProjectSummary, Wage, WageInput } from "@/types/project";
 import { peso } from "@/utils/currency";
 import { compareBudget, formatBudget } from "@/utils/budget";
@@ -15,6 +15,7 @@ import MessageButton from "@/components/MessageButton";
 import ProjectRatingPrompt from "@/components/ProjectRatingPrompt";
 import ProjectCalendar from "@/screens/timeline/ProjectCalendar";
 import WageSheet from "@/components/WageSheet";
+import AddBudgetSheet from "@/components/AddBudgetSheet";
 import { wageLine } from "@/utils/wage";
 
 const QUICK_ACTIONS = [
@@ -190,6 +191,7 @@ export default function Dashboard() {
   const [creatingProject, setCreatingProject] = useState(false);
   // The team member whose wage is being set, if any.
   const [wageTarget, setWageTarget] = useState<{ role: "worker" | "contractor"; id: number; name: string; wage: Wage | null | undefined; minDailyWage?: number | null } | null>(null);
+  const [addingBudget, setAddingBudget] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Mirrors selectedProjectId but readable from inside the focus effect below without making it
@@ -209,26 +211,45 @@ export default function Dashboard() {
         consumedDeepLink.current = true;
       }
       let cancelled = false;
+      let inFlight = false;
+      let firstLoad = true;
       setLoading(true);
       setError(null);
-      Promise.all([fetchDashboard(selectedProjectIdRef.current ?? undefined), fetchMyHomeownerProjects()])
+      const refresh = () => {
+        if (inFlight) return;
+        inFlight = true;
+        const requestedId = selectedProjectIdRef.current;
+        Promise.all([fetchDashboard(requestedId ?? undefined), fetchMyHomeownerProjects()])
         .then(([dashboard, list]) => {
-          if (cancelled) return;
+          if (cancelled || selectedProjectIdRef.current !== requestedId) return;
           setData(dashboard);
+          setError(null);
           setProjects(list);
           const id = dashboard.project?.id ?? null;
           setSelectedProjectId(id);
           selectedProjectIdRef.current = id;
-          selectPlanProject(id, dashboard.project?.approvedPlan);
+          if (firstLoad || id !== requestedId) selectPlanProject(id, dashboard.project?.approvedPlan);
+          firstLoad = false;
         })
         .catch((err) => {
           if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load dashboard.");
         })
         .finally(() => {
+          inFlight = false;
           if (!cancelled) setLoading(false);
         });
+      };
+      refresh();
+      const timer = setInterval(() => {
+        if (AppState.currentState === "active") refresh();
+      }, 15000);
+      const subscription = AppState.addEventListener("change", (state) => {
+        if (state === "active") refresh();
+      });
       return () => {
         cancelled = true;
+        clearInterval(timer);
+        subscription.remove();
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [planReady])
@@ -242,6 +263,7 @@ export default function Dashboard() {
     selectPlanProject(projectId);
     fetchDashboard(projectId)
       .then((dashboard) => {
+        if (selectedProjectIdRef.current !== projectId) return;
         setData(dashboard);
         selectPlanProject(projectId, dashboard.project?.approvedPlan);
       })
@@ -342,6 +364,14 @@ export default function Dashboard() {
     if (!project || !wageTarget) return;
     await setTeamWage(project.id, wageTarget.role, wageTarget.id, input);
     setData(await fetchDashboard(project.id));
+  };
+
+  // Adds to the budget and swaps in the updated project. Rejects with the backend's message for the sheet.
+  const addBudget = async (amount: number) => {
+    if (!project) return;
+    const updated = await addProjectBudget(project.id, amount);
+    setData((current) => (current ? { ...current, project: updated } : current));
+    selectPlanProject(updated.id, updated.approvedPlan);
   };
 
   // Always shown (even with just one project), styled like browser tabs — compact, with
@@ -526,14 +556,10 @@ export default function Dashboard() {
           {budgetPills.map(({ label, value, color }) => (
             <View key={label} className="px-3 py-2.5 rounded-2xl bg-background" style={{ flexGrow: 1, flexBasis: "28%" }}>
               <Text className="text-xs mb-0.5 text-muted-foreground">{label}</Text>
-              <Text className="font-bold text-sm" style={{ color, fontFamily: "DMMono_500Medium" }}>
-                {value}
-              </Text>
+              <CountUp text={value} className="font-bold text-sm" style={{ color, fontFamily: "DMMono_500Medium" }} />
               {/* The estimate went up because the work outgrew the plan — say by how much, so "Left Over" shrinking isn't a mystery. */}
               {label === "AI Estimate" && !!project.estimateAdjustment?.additionsTotal && (
-                <Text className="text-xs mt-0.5" style={{ color: "#ef4444" }}>
-                  +{peso(project.estimateAdjustment.additionsTotal)} added
-                </Text>
+                <CountUp text={`+${peso(project.estimateAdjustment.additionsTotal)} added`} className="text-xs mt-0.5" style={{ color: "#ef4444" }} />
               )}
             </View>
           ))}
@@ -542,6 +568,19 @@ export default function Dashboard() {
           <Pressable onPress={() => router.push("/homeowner/approvals" as never)} className="mb-4">
             <Text className="text-xs" style={{ color: "#f97316" }}>
               {peso(project.estimateAdjustment.pendingMaterialsTotal)} more in material requests is waiting for your approval →
+            </Text>
+          </Pressable>
+        )}
+        {cmp.status === "over" && (
+          <Pressable
+            onPress={() => setAddingBudget(true)}
+            accessibilityRole="button"
+            className="flex-row items-center justify-center gap-2 py-2.5 rounded-xl mb-4"
+            style={{ backgroundColor: "#ef444420" }}
+          >
+            <Ionicons name="add-circle-outline" size={16} color="#ef4444" />
+            <Text className="text-sm font-bold" style={{ color: "#ef4444" }}>
+              Over budget — Add Budget
             </Text>
           </Pressable>
         )}
@@ -702,6 +741,9 @@ export default function Dashboard() {
           onClose={() => setWageTarget(null)}
           onSave={saveWage}
         />
+      )}
+      {addingBudget && (
+        <AddBudgetSheet budget={project.budget} estimate={project.totalEstimate} onClose={() => setAddingBudget(false)} onSave={addBudget} />
       )}
       {deleteModal}
       {newProjectModal}

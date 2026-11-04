@@ -1,11 +1,11 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
-import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Card, InfoBox, MONO, ProgressBar, StatGrid, StatTile } from "@/components/ui";
 import { GrowBar } from "@/components/charts";
 import { useTheme } from "@/context/ThemeContext";
 import { fetchProjectTimeline } from "@/services/api/timeline";
+import { useFocusedResource } from "@/hooks/useFocusedResource";
 import type { ProjectTimeline, TimelineMonth, TimelineTask } from "@/types/timeline";
 import {
   PHASE_STATUS_META,
@@ -32,33 +32,16 @@ const ACTUAL_COLOR = "#f59e0b";
  * the project's phases.
  */
 export default function ProjectCalendar({ projectId, showPhases = true }: { projectId: number; showPhases?: boolean }) {
-  const [timeline, setTimeline] = useState<ProjectTimeline | null>(null);
   const [monthKey, setMonthKey] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      setError(null);
-      fetchProjectTimeline(projectId)
-        .then((data) => {
-          if (cancelled) return;
-          setTimeline(data);
-          setMonthKey((current) => (current && data.months.some((m) => m.key === current) ? current : defaultMonthKey(data.months)));
-        })
-        .catch((err) => {
-          if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load the calendar.");
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }, [projectId])
-  );
+  const load = useCallback(() => fetchProjectTimeline(projectId), [projectId]);
+  const { data: timeline, loading, error } = useFocusedResource(load);
+  useEffect(() => {
+    if (!timeline) return;
+    // Preserve the chosen month while fresh progress arrives from the backend.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMonthKey((current) => current && timeline.months.some((month) => month.key === current) ? current : defaultMonthKey(timeline.months));
+  }, [timeline]);
 
   const pickMonth = (key: string) => {
     setMonthKey(key);
