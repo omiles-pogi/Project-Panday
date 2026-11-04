@@ -12,3 +12,6 @@
 Homestead.json
 Homestead.yaml
 auth.json
+
+# Local Expo development state
+/.expo/
