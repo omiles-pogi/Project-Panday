@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { INITIAL_BIDS, type BidRequest, type Product, type ProductInput } from "@/data/supplier";
+import type { Product, ProductInput } from "@/data/supplier";
 import {
   createSupplierProduct,
   deleteSupplierProduct,
@@ -12,7 +12,6 @@ import { fetchSupplierOrders } from "@/services/api/materialRequests";
 import type { SupplierOrder } from "@/types/materialRequest";
 
 interface SupplierContextValue {
-  bids: BidRequest[];
   /** Real material orders routed to this supplier from homeowner-approved requests. */
   orders: SupplierOrder[];
   ordersLoading: boolean;
@@ -24,7 +23,6 @@ interface SupplierContextValue {
   productsLoading: boolean;
   productsError: string | null;
   reloadProducts: () => void;
-  submitBid: (id: number, bid: { total: number; deliveryDate: string; paymentTerms: string; notes: string }) => void;
   /** Inventory mutations resolve once the backend has saved, and reject with its validation
    * message — callers show that error instead of the change silently not sticking. */
   addProduct: (product: ProductInput) => Promise<void>;
@@ -64,9 +62,7 @@ function toInput(patch: Partial<ProductInput>): Partial<SupplierProductInput> {
   };
 }
 
-// Bids are still in-memory sample data (no backend yet) — inventory and orders are real and persisted.
 export function SupplierProvider({ children }: { children: ReactNode }) {
-  const [bids, setBids] = useState(INITIAL_BIDS);
   const [orders, setOrders] = useState<SupplierOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [ordersError, setOrdersError] = useState<string | null>(null);
@@ -117,16 +113,6 @@ export function SupplierProvider({ children }: { children: ReactNode }) {
     [fetchProducts]
   );
 
-  const submitBid = useCallback<SupplierContextValue["submitBid"]>((id, bid) => {
-    setBids((list) =>
-      list.map((b) =>
-        b.id === id
-          ? { ...b, status: "submitted", myBid: bid.total, deliveryDate: bid.deliveryDate, paymentTerms: bid.paymentTerms, notes: bid.notes }
-          : b
-      )
-    );
-  }, []);
-
   const addProduct = useCallback<SupplierContextValue["addProduct"]>(async (product) => {
     const dto = await createSupplierProduct(toInput(product) as SupplierProductInput);
     setProducts((list) => [toProduct(dto), ...list]);
@@ -144,7 +130,6 @@ export function SupplierProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
-      bids,
       orders,
       ordersLoading,
       ordersError,
@@ -154,13 +139,11 @@ export function SupplierProvider({ children }: { children: ReactNode }) {
       productsLoading,
       productsError,
       reloadProducts,
-      submitBid,
       addProduct,
       updateProduct,
       removeProduct,
     }),
     [
-      bids,
       orders,
       ordersLoading,
       ordersError,
@@ -170,7 +153,6 @@ export function SupplierProvider({ children }: { children: ReactNode }) {
       productsLoading,
       productsError,
       reloadProducts,
-      submitBid,
       addProduct,
       updateProduct,
       removeProduct,

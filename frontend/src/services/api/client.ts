@@ -1,4 +1,24 @@
-const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
+import Constants from "expo-constants";
+
+/**
+ * Where the Laravel API lives. In development the phone already knows the PC's current LAN address —
+ * it's the one it just loaded the app from (`hostUri`, "192.168.1.18:8081") — so the API is that same
+ * machine on the API port. This is what stops the app breaking every time the router hands the PC a
+ * new IP, which a fixed EXPO_PUBLIC_API_BASE_URL can't survive. `hostUri` only exists under the dev
+ * server, and is a hostname (not an IPv4) in tunnel mode, so standalone builds and tunnels fall back
+ * to EXPO_PUBLIC_API_BASE_URL.
+ */
+function resolveBaseUrl(): string | undefined {
+  const configured = process.env.EXPO_PUBLIC_API_BASE_URL;
+  const devHost = Constants.expoConfig?.hostUri?.split(":")[0];
+  if (devHost && /^\d{1,3}(\.\d{1,3}){3}$/.test(devHost) && !devHost.startsWith("127.")) {
+    const port = configured?.match(/:(\d+)\/?$/)?.[1] ?? "8000";
+    return `http://${devHost}:${port}`;
+  }
+  return configured;
+}
+
+const BASE_URL = resolveBaseUrl();
 
 let authToken: string | null = null;
 
@@ -120,6 +140,11 @@ function extractErrorMessage(data: unknown): string {
   if (body.error) return body.error;
   const firstFieldError = body.errors && Object.values(body.errors)[0]?.[0];
   if (firstFieldError) return firstFieldError;
+  // Laravel's raw 404 ("No query results for model [App\Models\Project] 12") means the record was
+  // deleted or never existed — say that instead of leaking a class name.
+  if (body.message?.startsWith("No query results for model")) {
+    return "That item no longer exists — it may have been deleted. Go back and refresh, then try again.";
+  }
   if (body.message) return body.message;
   return "Request failed.";
 }

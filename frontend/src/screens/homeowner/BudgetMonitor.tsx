@@ -2,46 +2,59 @@ import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { Card, PageHeader, ProgressBar, Screen, StatGrid, StatTile } from "@/components/ui";
+import { Card, PageHeader, Screen, StatGrid, StatTile } from "@/components/ui";
 import { fetchDashboard } from "@/services/api/projects";
 import { usePlan } from "@/context/PlanContext";
-import { budgetCategoryMeta } from "@/utils/budgetCategories";
 import { peso } from "@/utils/currency";
 import { BUDGET_STATUS_META, compareBudget, formatBudget } from "@/utils/budget";
+import BudgetCategoryBreakdown from "@/components/BudgetCategoryBreakdown";
+import EstimateAdditionsCard from "@/components/EstimateAdditionsCard";
 import type { DashboardProject } from "@/types/project";
 
 export default function BudgetMonitor() {
-  const { plan, selectProject } = usePlan();
+  const { activeProjectKey, ready, selectProject } = usePlan();
   const [project, setProject] = useState<DashboardProject | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
+      if (!ready) return;
       let cancelled = false;
+      let inFlight = false;
       setLoading(true);
       setError(null);
-      fetchDashboard()
+      setProject(null);
+      const load = () => {
+        if (inFlight) return;
+        inFlight = true;
+        const projectId = /^\d+$/.test(activeProjectKey) ? Number(activeProjectKey) : undefined;
+        fetchDashboard(projectId)
         .then((dashboard) => {
           if (cancelled) return;
           // A "not started yet" project has no budget or estimate to monitor.
           setProject(dashboard.project?.status === "not_started" ? null : dashboard.project);
-          // Keeps the AI planner's per-project conversation in sync, so the category breakdown
-          // below (sourced from that conversation, not the backend record) matches whichever
-          // project this screen is actually showing.
-          selectProject(dashboard.project?.id ?? null);
+          setError(null);
+          if (dashboard.project) selectProject(dashboard.project.id, dashboard.project.approvedPlan);
         })
         .catch((err) => {
           if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load budget.");
         })
         .finally(() => {
+          inFlight = false;
           if (!cancelled) setLoading(false);
         });
+      };
+      load();
+      const timer = setInterval(load, 15000);
       return () => {
         cancelled = true;
+        clearInterval(timer);
       };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [])
+    // Changing refreshKey intentionally restarts the focused fetch for Retry / Refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ready, activeProjectKey, selectProject, refreshKey])
   );
 
   if (loading) {
@@ -52,11 +65,14 @@ export default function BudgetMonitor() {
     );
   }
 
-  if (error) {
+  if (error && !project) {
     return (
       <View className="flex-1 items-center justify-center bg-background px-8">
         <Ionicons name="warning-outline" size={28} color="#ef4444" style={{ marginBottom: 8 }} />
         <Text className="text-sm text-center text-muted-foreground">{error}</Text>
+        <Pressable onPress={() => setRefreshKey((key) => key + 1)} className="mt-4 px-4 py-2 rounded-xl bg-primary">
+          <Text className="text-sm font-semibold text-primary-foreground">Retry</Text>
+        </Pressable>
       </View>
     );
   }
@@ -85,21 +101,16 @@ export default function BudgetMonitor() {
   const cmp = compareBudget(project.budget, project.totalEstimate);
   const buffer = cmp.difference;
   const statusMeta = BUDGET_STATUS_META[cmp.status];
-  // The only real signal available for "how much of the budget is likely used" — there's no
-  // actual expense tracking yet (see the Expenses screen), so this is explicitly labeled as an
-  // estimate derived from completed work, not a recorded figure.
-  const estimatedSpend = Math.round((project.overallProgressPct / 100) * project.totalEstimate);
-
-  // The backend's saved project only stores the top-level budget/estimate — the category
-  // breakdown only exists in the AI conversation that created it, which PlanContext now keeps
-  // scoped per project. If that conversation isn't available (e.g. an older project), there's
-  // nothing to show here beyond the totals above.
-  const categories = plan?.budgetBreakdown ?? [];
-  const categoriesTotal = categories.reduce((s, c) => s + c.amount, 0) || project.totalEstimate;
+  const categories = project.approvedPlan?.budgetBreakdown ?? [];
 
   return (
     <Screen topInset={false}>
       <PageHeader title="Budget Monitor" subtitle={project.title} />
+      {error && <Text className="text-xs text-danger">Refresh failed. Showing the last loaded records: {error}</Text>}
+      <Pressable onPress={() => setRefreshKey((key) => key + 1)} accessibilityRole="button" className="self-start flex-row items-center gap-2">
+        <Ionicons name="refresh-outline" size={15} color="#f59e0b" />
+        <Text className="text-xs text-muted-foreground">Refresh records · updates every 15 seconds</Text>
+      </Pressable>
 
       <Card>
         <View className="self-start px-2 py-0.5 rounded-full mb-3" style={{ backgroundColor: `${statusMeta.color}20` }}>
@@ -121,56 +132,28 @@ export default function BudgetMonitor() {
         </StatGrid>
       </Card>
 
-      <Card title="Estimated Spend So Far">
+      {/* Why the estimate is above the AI's plan: sudden material requests and hiring beyond the plan's lines. */}
+      {project.estimateAdjustment && <EstimateAdditionsCard adjustment={project.estimateAdjustment} />}
+
+      <Card title="Team Costs and Material Orders">
         <Text className="text-xs mb-3 text-muted-foreground">
-          Based on {project.overallProgressPct}% overall progress — an estimate, not a recorded expense total.
+          Agreed wages and supplier-confirmed orders are commitments. Automatic wage estimates are shown separately. Payments are not tracked.
         </Text>
-        <View className="flex-row justify-between mb-1.5">
-          <Text className="text-xs text-muted-foreground">Estimated used</Text>
-          <Text className="text-xs font-semibold" style={{ color: "#f59e0b" }}>
-            {peso(estimatedSpend)} of {peso(project.totalEstimate)}
-          </Text>
-        </View>
-        <ProgressBar pct={project.overallProgressPct} color="#f59e0b" height={10} />
+        <StatGrid>
+          <StatTile label="Agreed Team Wages" value={project.budgetRecords ? peso(project.budgetRecords.agreedWageTotal) : "Unavailable"} color="#3b82f6" icon="people-outline" />
+          {!!project.budgetRecords?.automaticWageTotal && <StatTile label="Auto Wage Estimates" value={peso(project.budgetRecords.automaticWageTotal)} color="#8b5cf6" icon="calculator-outline" />}
+          <StatTile label="Confirmed Materials" value={project.budgetRecords ? peso(project.budgetRecords.confirmedMaterialTotal) : "Unavailable"} color="#10b981" icon="cube-outline" />
+          <StatTile label="Payments Made" value="Not tracked" color="#9ca3af" icon="wallet-outline" />
+        </StatGrid>
       </Card>
 
       <Card title="Budget by Category">
         {categories.length === 0 ? (
           <Text className="text-xs text-muted-foreground">
-            Category-level detail isn&apos;t available for this project — its AI planning conversation may no
-            longer be saved. Check Budget Generator right after approving a new plan to see this breakdown.
+            No category breakdown was saved for this project. Its recorded totals are shown above; category amounts cannot be reconstructed from them.
           </Text>
         ) : (
-          <View style={{ gap: 14 }}>
-            {categories.map(({ category, amount }, i) => {
-              const pct = categoriesTotal ? (amount / categoriesTotal) * 100 : 0;
-              const meta = budgetCategoryMeta(category);
-              return (
-                <View key={`${category}-${i}`}>
-                  <View className="flex-row items-start gap-2 mb-1.5">
-                    <Ionicons name={meta.icon} size={15} color={meta.color} style={{ marginTop: 1 }} />
-                    <View className="flex-1">
-                      <Text className="text-xs font-semibold text-foreground" numberOfLines={2}>
-                        {category}
-                      </Text>
-                      {meta.description ? (
-                        <Text className="text-xs mt-0.5 text-muted-foreground" numberOfLines={1}>
-                          {meta.description}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </View>
-                  <ProgressBar pct={pct} color={meta.color} height={6} />
-                  <View className="flex-row justify-between mt-1">
-                    <Text className="text-xs text-muted-foreground">{pct.toFixed(1)}% of total</Text>
-                    <Text className="text-xs font-semibold" style={{ color: meta.color }}>
-                      {peso(amount)}
-                    </Text>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
+          <BudgetCategoryBreakdown key={project.id} breakdown={categories} materials={project.approvedPlan?.materials} project={project} />
         )}
       </Card>
     </Screen>

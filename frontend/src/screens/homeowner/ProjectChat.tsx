@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ComponentRef } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
 import {
   Text,
   View,
@@ -6,17 +6,18 @@ import {
   Pressable,
   ScrollView,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { usePlan, type ApprovalStage } from "@/context/PlanContext";
 import { useTheme } from "@/context/ThemeContext";
 import type { ChatHistoryMessage } from "@/services/ai/client";
-import type { ConstructionPlan } from "@/types/plan";
-import { budgetCategoryMeta } from "@/utils/budgetCategories";
+import type { ConstructionPlan, SupplierCategory, SupplierOption, SupplierSelections } from "@/types/plan";
+import SupplierPicker, { selectionsOf } from "@/components/SupplierPicker";
+import BudgetCategoryBreakdown from "@/components/BudgetCategoryBreakdown";
 import { peso } from "@/utils/currency";
 import { compareBudget } from "@/utils/budget";
 import { garageLabel } from "@/utils/garage";
-import { createProject, startProjectFromPlan } from "@/services/api/projects";
+import { createProject, fetchDashboard, startProjectFromPlan } from "@/services/api/projects";
 import Mascot from "@/components/Mascot";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { useKeyboardState, useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
@@ -202,7 +203,6 @@ function PlanCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: ()
 /* BUDGET CARD */
 function BudgetCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: () => void; onEdit: () => void }) {
   const { chrome } = useTheme();
-  const total = plan.budgetBreakdown.reduce((s, b) => s + b.amount, 0) || plan.totalEstimate;
   const cmp = compareBudget(plan.budget, plan.totalEstimate);
   const millions = (n: number) => `₱${(n / 1000000).toFixed(2)}M`;
 
@@ -234,37 +234,8 @@ function BudgetCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: 
             </View>
           ))}
         </View>
-        <View style={{ gap: 14 }} className="mb-4">
-          {plan.budgetBreakdown.map(({ category, amount }, i) => {
-            const pct = total ? (amount / total) * 100 : 0;
-            const meta = budgetCategoryMeta(category);
-            return (
-              <View key={`${category}-${i}`}>
-                <View className="flex-row items-start gap-2 mb-1.5">
-                  <Ionicons name={meta.icon} size={15} color={meta.color} style={{ marginTop: 1 }} />
-                  <View className="flex-1">
-                    <Text className="text-xs font-semibold text-foreground" numberOfLines={2}>
-                      {category}
-                    </Text>
-                    {meta.description ? (
-                      <Text className="text-xs mt-0.5 text-muted-foreground" numberOfLines={1}>
-                        {meta.description}
-                      </Text>
-                    ) : null}
-                  </View>
-                </View>
-                <View className="h-1.5 rounded-full mb-1" style={{ backgroundColor: chrome.muted }}>
-                  <View className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: meta.color }} />
-                </View>
-                <View className="flex-row justify-between">
-                  <Text className="text-xs text-muted-foreground">{pct.toFixed(1)}% of total</Text>
-                  <Text className="text-xs font-semibold" style={{ color: meta.color }}>
-                    {peso(amount)}
-                  </Text>
-                </View>
-              </View>
-            );
-          })}
+        <View className="mb-4">
+          <BudgetCategoryBreakdown breakdown={plan.budgetBreakdown} materials={plan.materials} />
         </View>
         <View className="flex-row gap-2">
           <Pressable onPress={onNext} className="flex-1 py-2.5 rounded-xl items-center flex-row justify-center gap-1.5 bg-primary">
@@ -281,7 +252,19 @@ function BudgetCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: 
 }
 
 /* MATERIALS CARD */
-function MaterialsCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: () => void; onEdit: () => void }) {
+function MaterialsCard({
+  plan,
+  onNext,
+  onEdit,
+  onChooseSupplier,
+  busy,
+}: {
+  plan: ConstructionPlan;
+  onNext: () => void;
+  onEdit: () => void;
+  onChooseSupplier: (category: SupplierCategory, supplier: SupplierOption | null) => void;
+  busy: boolean;
+}) {
   const { chrome } = useTheme();
   const [approved, setApproved] = useState<Record<number, boolean>>({});
   const total = plan.materials.reduce((s, m) => s + m.qty * m.unitPrice, 0);
@@ -295,6 +278,9 @@ function MaterialsCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNex
           {peso(total)}
         </Text>
       </CardHeader>
+      <View className="p-4 border-b" style={{ borderColor: chrome.border }}>
+        <SupplierPicker plan={plan} onChoose={onChooseSupplier} disabled={busy} />
+      </View>
       <View className="px-4 py-2" style={{ maxHeight: 260 }}>
         <ScrollView>
           {plan.materials.map((m, i) => (
@@ -307,6 +293,10 @@ function MaterialsCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNex
                 <Text className="text-xs font-medium text-foreground">{m.material}</Text>
                 <Text className="text-xs text-muted-foreground">
                   {m.qty.toLocaleString()} {m.unit} × {peso(m.unitPrice)}
+                </Text>
+                <Text className="text-xs" style={{ color: m.supplierName ? "#10b981" : chrome.mutedForeground }}>
+                  {m.supplierName ? `From ${m.supplierName}` : "AI estimate"}
+                  {m.phase ? ` · ${m.phase}` : ""}
                 </Text>
               </View>
               <Text className="text-xs font-semibold mr-2" style={{ color: "#f59e0b" }}>
@@ -333,7 +323,8 @@ function MaterialsCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNex
         <View className="flex-row gap-1.5 mb-3">
           <Ionicons name="warning-outline" size={13} color={chrome.mutedForeground} style={{ marginTop: 1 }} />
           <Text className="text-xs flex-1 text-muted-foreground">
-            Prices are AI estimates. Actual costs may vary based on supplier and market conditions.
+            Items marked &quot;From …&quot; use that supplier&apos;s real listed price. The rest are AI estimates; actual
+            costs may vary with the supplier and market conditions.
           </Text>
         </View>
         <Pressable
@@ -440,7 +431,7 @@ const STAGE_TEXT: Record<ResolvedStage, (p: ConstructionPlan) => string> = {
       ? `Budget breakdown ready. Your budget of ${yours} covers my ${estimate} estimate.`
       : `Budget breakdown ready. Your budget of ${yours} is below my ${estimate} estimate — you may want to adjust the scope or the budget.`;
   },
-  materials: () => "Material estimates below, based on current market prices.",
+  materials: () => "Material estimates below. Linked items use saved supplier prices; other prices and all proposed quantities are estimates.",
   summary: (p) => `All sections approved. Your construction plan for ${p.projectTitle} is ready — next, find contractors who'll receive it.`,
 };
 
@@ -495,12 +486,16 @@ function AIBubble({
   onQuickReply,
   onAdvance,
   onEdit,
+  onChooseSupplier,
+  busy,
 }: {
   msg: ChatMessage;
   plan: ConstructionPlan | null;
   onQuickReply: (text: string) => void;
   onAdvance: () => void;
   onEdit: (tab: PlanEditorTab) => void;
+  onChooseSupplier: (category: SupplierCategory, supplier: SupplierOption | null) => void;
+  busy: boolean;
 }) {
   return (
     <View className="flex-row gap-3 items-start mb-4">
@@ -518,7 +513,13 @@ function AIBubble({
         {!msg.typing && plan && msg.card === "plan" && <PlanCard plan={plan} onNext={onAdvance} onEdit={() => onEdit("details")} />}
         {!msg.typing && plan && msg.card === "budget" && <BudgetCard plan={plan} onNext={onAdvance} onEdit={() => onEdit("budget")} />}
         {!msg.typing && plan && msg.card === "materials" && (
-          <MaterialsCard plan={plan} onNext={onAdvance} onEdit={() => onEdit("materials")} />
+          <MaterialsCard
+            plan={plan}
+            onNext={onAdvance}
+            onEdit={() => onEdit("materials")}
+            onChooseSupplier={onChooseSupplier}
+            busy={busy}
+          />
         )}
         {!msg.typing && plan && msg.card === "summary" && <SummaryCard plan={plan} />}
         {!msg.typing && msg.quickReplies && (
@@ -552,6 +553,8 @@ export default function ProjectChat() {
     setApprovalStage,
     ready,
     activeProjectKey,
+    restoredVersion,
+    selectProject,
     linkToProject,
     send,
     updatePlan,
@@ -567,7 +570,9 @@ export default function ProjectChat() {
   const [input, setInput] = useState("");
   const [stage, setStage] = useState<Stage>(() => approvalStage ?? (plan ? "plan" : "idle"));
   const [busy, setBusy] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  const operationRef = useRef(0);
 
   // PlanContext's conversation loads from storage asynchronously (so it survives an app
   // restart, not just in-app navigation) and switches to a different project's own conversation
@@ -576,6 +581,7 @@ export default function ProjectChat() {
   // instead of getting stuck showing a stale or empty conversation.
   useEffect(() => {
     if (!ready) return;
+    operationRef.current += 1;
     // Resyncing local UI state from an external store (PlanContext's active conversation)
     // changing out from under this component — not a derived-state anti-pattern this rule
     // otherwise guards against.
@@ -586,8 +592,28 @@ export default function ProjectChat() {
     // previous one must not follow the user into the next.
     setInput("");
     setEditorTab(null);
+    setBusy(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, activeProjectKey]);
+  }, [ready, activeProjectKey, restoredVersion]);
+
+  useFocusEffect(useCallback(() => {
+    if (!ready) return;
+    let cancelled = false;
+    const projectId = /^\d+$/.test(activeProjectKey) ? Number(activeProjectKey) : undefined;
+    // A deliberate unsaved draft must not be replaced by the latest saved project.
+    if (!projectId && (plan || planMessages.length > 0)) return;
+    fetchDashboard(projectId)
+      .then(({ project }) => {
+        if (cancelled) return;
+        setSyncError(null);
+        if (project) selectProject(project.id, project.approvedPlan);
+        else if (projectId) setSyncError("This project is no longer available. Select a project from Home.");
+      })
+      .catch((err) => {
+        if (!cancelled) setSyncError(err instanceof Error ? err.message : "Could not refresh project data.");
+      });
+    return () => { cancelled = true; };
+  }, [ready, activeProjectKey, plan, planMessages.length, selectProject]));
 
   useEffect(() => {
     scrollRef.current?.scrollToEnd({ animated: true });
@@ -599,8 +625,9 @@ export default function ProjectChat() {
 
   // Every message goes through here — the AI itself decides whether to just chat, ask a
   // clarifying question, or submit/update the plan, so there's one handler instead of three.
-  const handleSend = async (text: string) => {
-    if (!text.trim() || busy) return;
+  const handleSend = async (text: string, supplierSelections?: SupplierSelections) => {
+    if (!text.trim() || busy || !ready) return;
+    const operation = ++operationRef.current;
     const hadPlanBefore = !!plan;
     setMessages((p) => [...p, { id: nextId(), role: "user", text: text.trim() }]);
     setInput("");
@@ -614,11 +641,13 @@ export default function ProjectChat() {
     // like Claude/ChatGPT. Never fires for a plan/clarification (those stay as dots until done,
     // since there's no meaningful partial JSON to show).
     const onChunk = (partial: string) => {
+      if (operation !== operationRef.current) return;
       setMessages((p) => p.map((m) => (m.id === typingId ? { ...m, text: m.text + partial, typing: false } : m)));
     };
 
     try {
-      const result = await send(text.trim(), onChunk);
+      const result = await send(text.trim(), onChunk, supplierSelections ? { supplierSelections } : undefined);
+      if (operation !== operationRef.current) return;
 
       if (result.type === "chat") {
         resolveTyping(typingId, { text: result.message });
@@ -636,37 +665,49 @@ export default function ProjectChat() {
       // A plan — either the first one, or an update. Stay on whatever section the homeowner
       // was looking at and show its refreshed card, instead of always jumping back to the overview.
       const cardStage: ResolvedStage =
-        hadPlanBefore && (STAGE_ORDER as string[]).includes(stage) ? (stage as ResolvedStage) : "plan";
+        hadPlanBefore && stage !== "summary" && (STAGE_ORDER as string[]).includes(stage) ? (stage as ResolvedStage) : "plan";
       resolveTyping(typingId, { text: STAGE_TEXT[cardStage](result.plan), card: cardStage });
       setStage(cardStage);
       setApprovalStage(cardStage);
     } catch (err) {
+      if (operation !== operationRef.current) return;
       const message = err instanceof Error ? err.message : "Something went wrong.";
       resolveTyping(typingId, { text: `Sorry: ${message}` });
       if (!hadPlanBefore) setStage("idle");
     } finally {
-      setBusy(false);
+      if (operation === operationRef.current) setBusy(false);
     }
   };
 
-  const advance = () => {
+  const advance = async () => {
     if (!plan || busy) return;
     const currentIndex = STAGE_ORDER.indexOf(stage as ResolvedStage);
     const next = STAGE_ORDER[currentIndex + 1];
     if (!next) return;
+    const operation = ++operationRef.current;
     const label = NEXT_LABEL[stage as ResolvedStage];
 
     if (next === "summary") {
+      setBusy(true);
       // A chat that belongs to a project already (the "not started yet" one New Project created)
       // fills that project in; only a chat with no project yet creates a new one.
       const placeholderId = /^\d+$/.test(activeProjectKey) ? Number(activeProjectKey) : null;
-      const saved =
-        placeholderId !== null
-          ? startProjectFromPlan(placeholderId, plan)
-          : createProject(plan).then((created) => linkToProject(created.id));
-      saved.catch((err) => {
-        console.warn("Failed to save project to dashboard:", err);
-      });
+      try {
+        if (placeholderId !== null) await startProjectFromPlan(placeholderId, plan);
+        else {
+          const created = await createProject(plan);
+          if (operation !== operationRef.current) return;
+          setApprovalStage("summary");
+          linkToProject(created.id);
+        }
+      } catch (err) {
+        if (operation !== operationRef.current) return;
+        const message = err instanceof Error ? err.message : "Could not save the project.";
+        setMessages((previous) => [...previous, { id: nextId(), role: "ai", text: `Your plan was not saved. ${message} Please try again.` }]);
+        setBusy(false);
+        return;
+      }
+      if (operation !== operationRef.current) return;
     }
 
     setMessages((p) => [...p, { id: nextId(), role: "user", text: label }]);
@@ -674,11 +715,22 @@ export default function ProjectChat() {
     const typingId = nextId();
     setMessages((p) => [...p, { id: typingId, role: "ai", text: "", typing: true }]);
     setTimeout(() => {
+      if (operation !== operationRef.current) return;
       resolveTyping(typingId, { text: STAGE_TEXT[next](plan), card: next });
       setStage(next);
       setApprovalStage(next);
       setBusy(false);
     }, 650);
+  };
+
+  // Picking a supplier is a plan change like any other: the AI re-sources that category from the
+  // supplier's real listings, and the server checks every line it returns against them.
+  const handleChooseSupplier = (category: SupplierCategory, supplier: SupplierOption | null) => {
+    if (!plan) return;
+    handleSend(
+      supplier ? `Use ${supplier.name} as my supplier for ${category}.` : `Use the best-priced supplier for ${category}.`,
+      { ...selectionsOf(plan), [category]: supplier?.id ?? null }
+    );
   };
 
   const handleSaveEdit = (next: ConstructionPlan) => {
@@ -716,6 +768,8 @@ export default function ProjectChat() {
               onQuickReply={handleQuickReply}
               onAdvance={advance}
               onEdit={setEditorTab}
+              onChooseSupplier={handleChooseSupplier}
+              busy={busy}
             />
           ) : (
             <UserBubble key={msg.id} msg={msg} />
@@ -728,6 +782,7 @@ export default function ProjectChat() {
       )}
 
       <View className="px-4" style={{ paddingBottom: keyboardVisible ? 12 : 16 }}>
+        {syncError && <Text className="text-xs mb-2 text-danger">{syncError}</Text>}
         <View className="flex-row gap-3 items-end rounded-2xl p-3 bg-card border border-border">
           <TextInput
             value={input}
@@ -741,13 +796,13 @@ export default function ProjectChat() {
                   : "Describe your project or ask a question..."
             }
             placeholderTextColor={chrome.mutedForeground}
-            editable={!busy}
+            editable={!busy && ready}
             className="flex-1 text-sm text-foreground"
             style={{ minHeight: 24, maxHeight: 120 }}
           />
           <Pressable
             onPress={() => handleSend(input)}
-            disabled={!input.trim() || busy}
+            disabled={!input.trim() || busy || !ready}
             className="w-9 h-9 rounded-xl items-center justify-center"
             style={{ backgroundColor: input.trim() && !busy ? "#f59e0b" : chrome.muted }}
           >

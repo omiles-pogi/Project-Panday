@@ -50,7 +50,6 @@ export const colors = {
   danger: "#ef4444",
 } as const;
 
-export const radius = 8;
 
 // Per-role accent colors, from resources/js/components/MobileLayout.tsx's roleConfig.
 export const roleColors: Record<Role, string> = {

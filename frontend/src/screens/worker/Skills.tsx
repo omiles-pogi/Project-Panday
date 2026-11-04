@@ -10,6 +10,7 @@ export default function Skills() {
   const [trade, setTrade] = useState("");
   const [yearsExperience, setYearsExperience] = useState("");
   const [bio, setBio] = useState("");
+  const [minDailyWage, setMinDailyWage] = useState("");
   const [skills, setSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState("");
   const [averageRating, setAverageRating] = useState<number | null>(null);
@@ -26,6 +27,7 @@ export default function Skills() {
         setTrade(profile.trade ?? "");
         setYearsExperience(profile.yearsExperience != null ? String(profile.yearsExperience) : "");
         setBio(profile.bio ?? "");
+        setMinDailyWage(profile.minDailyWage != null ? String(profile.minDailyWage) : "");
         setSkills(profile.skills);
         setAverageRating(profile.averageRating);
         setRatingCount(profile.ratingCount);
@@ -60,6 +62,8 @@ export default function Skills() {
         trade: trade.trim(),
         years_experience: Number(yearsExperience) || 0,
         bio: bio.trim() || undefined,
+        // Blank clears it, so a worker can take the rate back down.
+        min_daily_wage: minDailyWage.trim() ? Number(minDailyWage) : null,
         skills,
       });
       setSaved(true);
@@ -129,6 +133,16 @@ export default function Skills() {
             placeholder="e.g. 5"
             keyboardType="number-pad"
           />
+          <Field
+            label="Minimum daily wage (₱, optional)"
+            value={minDailyWage}
+            onChangeText={(t) => setMinDailyWage(t.replace(/[^0-9]/g, ""))}
+            placeholder="e.g. 850 — the lowest day rate you'll take"
+            keyboardType="number-pad"
+          />
+          <Text className="text-xs -mt-1 text-muted-foreground">
+            Homeowners and contractors see this when they look for a worker. Other workers don&apos;t.
+          </Text>
           <Field
             label="Bio (optional)"
             value={bio}

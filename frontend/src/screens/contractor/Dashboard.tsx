@@ -1,20 +1,24 @@
 import { useCallback, useState } from "react";
-import { Pressable, Text, View, ActivityIndicator } from "react-native";
+import { Pressable, ScrollView, Text, View, ActivityIndicator } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Card, PageHeader, Screen, StatGrid, StatTile } from "@/components/ui";
 import { fetchMyProjects } from "@/services/api/projects";
 import type { MyProject } from "@/types/project";
+import { useTheme } from "@/context/ThemeContext";
+import ProjectCalendar from "@/screens/timeline/ProjectCalendar";
 import { peso } from "@/utils/currency";
 
 const QUICK_ACTIONS = [
   { label: "Browse", icon: "list-outline", href: "/contractor/available" },
   { label: "Projects", icon: "briefcase-outline", href: "/contractor/projects" },
-  { label: "Schedule", icon: "calendar-outline", href: "/contractor/equipment-schedule" },
-  { label: "Analysis", icon: "trending-up-outline", href: "/contractor/progress-analysis" },
+  { label: "Messages", icon: "chatbubbles-outline", href: "/contractor/messages" },
+  { label: "Requests", icon: "clipboard-outline", href: "/contractor/material-requests" },
 ] as const;
 
 export default function Dashboard() {
+  const { chrome } = useTheme();
+  const [calendarProjectId, setCalendarProjectId] = useState<number | null>(null);
   const [projects, setProjects] = useState<MyProject[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,6 +42,8 @@ export default function Dashboard() {
 
   const active = projects?.filter((p) => p.status === "active") ?? [];
   const completed = projects?.filter((p) => p.status === "completed") ?? [];
+  // Whichever project they picked for the calendar, else their first active one.
+  const calendarProject = active.find((p) => p.id === calendarProjectId) ?? active[0] ?? null;
   const avgProgress = active.length
     ? Math.round(active.reduce((sum, p) => sum + p.overallProgressPct, 0) / active.length)
     : 0;
@@ -113,6 +119,31 @@ export default function Dashboard() {
           </Pressable>
         ))}
       </View>
+
+      {calendarProject && (
+        <View style={{ gap: 12 }}>
+          {active.length > 1 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {active.map((p) => {
+                const selected = p.id === calendarProject.id;
+                return (
+                  <Pressable
+                    key={p.id}
+                    onPress={() => setCalendarProjectId(p.id)}
+                    className="px-3 py-2 rounded-xl border"
+                    style={{ backgroundColor: selected ? "#f59e0b20" : chrome.muted, borderColor: selected ? "#f59e0b" : chrome.border }}
+                  >
+                    <Text className="text-xs font-semibold" style={{ color: selected ? "#f59e0b" : chrome.mutedForeground }} numberOfLines={1}>
+                      {p.title}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          )}
+          <ProjectCalendar key={calendarProject.id} projectId={calendarProject.id} />
+        </View>
+      )}
     </Screen>
   );
 }

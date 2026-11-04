@@ -24,6 +24,7 @@ import {
 import { fetchMaterialCatalog, type CatalogMaterialDto } from "@/services/api/supplierProducts";
 import type { AiMaterialSuggestion, MaterialItemInput, MaterialRequest, MaterialRequestOrder } from "@/types/materialRequest";
 import { peso } from "@/utils/currency";
+import { formatShortDate } from "@/utils/timeline";
 
 type Viewer = "contractor" | "homeowner";
 
@@ -39,6 +40,9 @@ interface DraftItem {
   unitPrice: number;
   availableQuantity: number | null;
   source: "manual" | "ai";
+  /** The AI's estimate and what the reviewed plan allows, when the item is in the plan (set by the server on save). */
+  aiQuantity: number | null;
+  planQuantity: number | null;
 }
 
 let keySeq = 0;
@@ -61,6 +65,8 @@ function toDraftItems(r: MaterialRequest): DraftItem[] {
       unitPrice: i.estimatedUnitPrice,
       availableQuantity: i.availableQuantity,
       source: i.source,
+      aiQuantity: i.aiQuantity,
+      planQuantity: i.planQuantity,
     }));
 }
 
@@ -76,6 +82,8 @@ function fromListing(m: CatalogMaterialDto, quantity: string, source: DraftItem[
     unitPrice: m.price,
     availableQuantity: m.available_quantity,
     source,
+    aiQuantity: null,
+    planQuantity: null,
   };
 }
 
@@ -178,6 +186,13 @@ function RequestDetailBody({ request: r, viewer, onChange }: { request: Material
             </Text>
           </View>
         </View>
+        {(r.phase || r.autoApproved) && (
+          <View className="flex-row flex-wrap items-center gap-2">
+            {r.phase && <Badge label={`For ${r.phase.name}`} color="#8b5cf6" />}
+            {r.neededBy && <Text className="text-xs text-muted-foreground">Needed by {formatShortDate(r.neededBy)}</Text>}
+            {r.autoApproved && <Badge label="Auto-approved" color="#3b82f6" />}
+          </View>
+        )}
         {r.decisionReason && ["revision_requested", "rejected", "cancelled"].includes(r.status) && (
           <View className="p-3 rounded-xl" style={{ backgroundColor: "#f9731615" }}>
             <Text className="text-xs font-semibold" style={{ color: "#f97316" }}>
@@ -217,8 +232,34 @@ function RequestDetailBody({ request: r, viewer, onChange }: { request: Material
         </Card>
       )}
 
+      {r.canDecide && r.approvalFlags.length > 0 && (
+        <Card title="Why this needs your decision" gap={8}>
+          <Text className="text-xs text-muted-foreground">Everything else in this request is inside your approved plan.</Text>
+          {r.approvalFlags.map((flag) => (
+            <View key={flag} className="flex-row items-start gap-2 p-3 rounded-xl" style={{ backgroundColor: "#f9731615" }}>
+              <Ionicons name="alert-circle-outline" size={16} color="#f97316" style={{ marginTop: 1 }} />
+              <Text className="flex-1 text-xs text-foreground">{flag}</Text>
+            </View>
+          ))}
+        </Card>
+      )}
+
       {r.canDecide && (
         <Card title="Your decision" gap={10}>
+          {r.estimateImpact && (
+            <View className="p-3 rounded-xl" style={{ backgroundColor: "#ef444415", gap: 4 }}>
+              <Text className="text-xs font-semibold" style={{ color: "#ef4444" }}>
+                Approving adds {peso(r.estimateImpact.amount)} outside your plan
+              </Text>
+              <Text className="text-xs text-foreground">
+                Your estimate goes from {peso(r.estimateImpact.estimateBefore)} to {peso(r.estimateImpact.estimateAfter)}
+                {r.estimateImpact.leftOverAfter !== null && r.estimateImpact.leftOverBefore !== null
+                  ? `, and what's left of your budget from ${peso(r.estimateImpact.leftOverBefore)} to ${peso(r.estimateImpact.leftOverAfter)}`
+                  : ""}
+                .
+              </Text>
+            </View>
+          )}
           <Text className="text-xs text-muted-foreground">
             Approving sends each supplier their own items to confirm stock and final pricing. Nothing is ordered automatically.
           </Text>
@@ -313,6 +354,21 @@ function TotalRow({ label, value }: { label: string; value: number }) {
   );
 }
 
+/** "AI estimated 54 → 66 requested (+22%, includes 10% waste)" — how a line compares with the AI's own estimate. */
+function QuantityNote({ item: i }: { item: MaterialRequest["items"][number] }) {
+  if (i.aiQuantity === null) {
+    return i.planQuantity === null ? <Text className="text-xs" style={{ color: "#f97316" }}>Not in the approved plan</Text> : null;
+  }
+  if (i.quantity === i.aiQuantity) return null;
+  const pct = Math.round(((i.quantity - i.aiQuantity) / i.aiQuantity) * 100);
+  return (
+    <Text className="text-xs" style={{ color: i.planQuantity !== null && i.quantity > i.planQuantity ? "#ef4444" : "#8b5cf6" }}>
+      AI estimated {i.aiQuantity.toLocaleString()} → {i.quantity.toLocaleString()} requested ({pct > 0 ? "+" : ""}
+      {pct}%{i.wastePct > 0 ? `, includes ${i.wastePct}% waste` : ""})
+    </Text>
+  );
+}
+
 function ReadOnlyItem({ item: i }: { item: MaterialRequest["items"][number] }) {
   return (
     <View className="p-3 rounded-xl bg-muted" style={{ gap: 4 }}>
@@ -322,6 +378,7 @@ function ReadOnlyItem({ item: i }: { item: MaterialRequest["items"][number] }) {
           {peso(i.confirmedSubtotal ?? i.estimatedSubtotal)}
         </Text>
       </View>
+      <QuantityNote item={i} />
       <Text className="text-xs text-muted-foreground">
         {i.quantity.toLocaleString()} {i.unit} × {peso(i.confirmedUnitPrice ?? i.estimatedUnitPrice)}
         {i.confirmedUnitPrice !== null && i.confirmedUnitPrice !== i.estimatedUnitPrice ? ` (estimate was ${peso(i.estimatedUnitPrice)})` : ""}
@@ -499,6 +556,8 @@ function ItemEditor({ request: r, onSaved }: { request: MaterialRequest; onSaved
             unitPrice: s.match.price,
             availableQuantity: s.match.availableQuantity,
             source: "ai",
+            aiQuantity: null,
+            planQuantity: null,
           }
         : {
             key: newKey(),
@@ -510,6 +569,8 @@ function ItemEditor({ request: r, onSaved }: { request: MaterialRequest; onSaved
             unitPrice: s.estimatedUnitPrice,
             availableQuantity: null,
             source: "ai",
+            aiQuantity: null,
+            planQuantity: null,
           }
     );
     update([...items, ...imported]);
@@ -545,6 +606,15 @@ function ItemEditor({ request: r, onSaved }: { request: MaterialRequest; onSaved
                 )}
                 {d.source === "ai" && <Badge label="AI suggested" color="#8b5cf6" />}
               </View>
+              {d.planQuantity !== null && qty > d.planQuantity ? (
+                <Text className="text-xs" style={{ color: "#f97316" }}>
+                  Above the plan&apos;s {d.planQuantity.toLocaleString()} {d.unit} — the homeowner will be asked to approve.
+                </Text>
+              ) : d.aiQuantity !== null && qty !== d.aiQuantity ? (
+                <Text className="text-xs" style={{ color: "#8b5cf6" }}>
+                  AI estimated {d.aiQuantity.toLocaleString()} {d.unit}.
+                </Text>
+              ) : null}
               {short && (
                 <View className="flex-row items-center gap-1.5">
                   <Ionicons name="warning-outline" size={14} color="#ef4444" />

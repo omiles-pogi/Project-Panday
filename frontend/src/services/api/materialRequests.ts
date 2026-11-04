@@ -2,7 +2,9 @@ import { apiFetch } from "@/services/api/client";
 import type {
   AiMaterialSuggestion,
   MaterialItemInput,
+  MaterialPlan,
   MaterialRequest,
+  MaterialReviewLine,
   SupplierOrder,
   SupplierOrderStatus,
 } from "@/types/materialRequest";
@@ -96,4 +98,32 @@ export async function declineSupplierOrder(orderId: number, reason: string): Pro
 
 export async function advanceSupplierOrder(orderId: number, status: SupplierOrderStatus): Promise<SupplierOrder> {
   return (await post(`/api/supplier-orders/${orderId}/status`, { status })) as SupplierOrder;
+}
+
+// ---- Planning materials by phase ----
+
+/** The project's materials grouped by phase, each with the date to order them by. */
+export async function fetchMaterialPlan(projectId: number): Promise<MaterialPlan> {
+  return (await apiFetch(`/api/projects/${projectId}/material-plan`)) as MaterialPlan;
+}
+
+/** The contractor's one-time check of the AI's quantities (quantity they need + waste allowance per line). */
+export async function reviewMaterialPlan(projectId: number, lines: MaterialReviewLine[]): Promise<MaterialPlan> {
+  return (await apiFetch(`/api/projects/${projectId}/material-plan/review`, {
+    method: "PUT",
+    body: JSON.stringify({ lines }),
+  })) as MaterialPlan;
+}
+
+/** Drafts the request for one phase from the reviewed plan (or returns the draft already started). */
+export async function requestPhaseMaterials(projectId: number, phaseId: number): Promise<MaterialRequest> {
+  return (await post(`/api/projects/${projectId}/material-plan/phases/${phaseId}/request`)) as MaterialRequest;
+}
+
+/** Homeowner: whether requests that stay inside the approved plan approve themselves. */
+export async function setAutoApproveMaterials(projectId: number, enabled: boolean): Promise<{ autoApprove: boolean }> {
+  return (await apiFetch(`/api/projects/${projectId}/material-settings`, {
+    method: "PATCH",
+    body: JSON.stringify({ auto_approve_materials: enabled }),
+  })) as { autoApprove: boolean };
 }

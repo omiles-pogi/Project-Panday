@@ -1,11 +1,10 @@
 import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { Badge, Card, InfoBox, MONO, PageHeader, ProgressBar, Screen, StatGrid, StatTile } from "@/components/ui";
+import { Badge, Card, InfoBox, MONO, ProgressBar, StatGrid, StatTile } from "@/components/ui";
 import { GrowBar } from "@/components/charts";
 import { useTheme } from "@/context/ThemeContext";
-import { fetchMyHomeownerProjects, fetchMyProjects } from "@/services/api/projects";
 import { fetchProjectTimeline } from "@/services/api/timeline";
 import type { ProjectTimeline, TimelineMonth, TimelineTask } from "@/types/timeline";
 import {
@@ -19,67 +18,29 @@ import {
   formatShortDate,
 } from "@/utils/timeline";
 
-type Role = "homeowner" | "contractor";
-
-interface ProjectOption {
-  id: number;
-  title: string;
-}
-
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 const CHART_HEIGHT = 90;
 const PLANNED_COLOR = "#6b7280";
 const ACTUAL_COLOR = "#f59e0b";
 
 /**
- * Calendar-based project monitoring — shared by the homeowner and contractor (the only two roles
- * the backend lets see it). Shows the AI-proposed schedule month by month and how real progress
- * compares with it.
+ * Calendar-based project monitoring, as a section of the homeowner's and contractor's dashboards (the
+ * only two roles the backend lets see it): the AI-proposed schedule month by month, and how real
+ * progress compares with it. Mount it with `key={projectId}` so switching projects starts clean.
+ *
+ * `showPhases` adds the phase-by-phase schedule card; pass false where the dashboard already lists
+ * the project's phases.
  */
-export default function ProjectCalendar({ role }: { role: Role }) {
-  const { chrome } = useTheme();
-  const [projects, setProjects] = useState<ProjectOption[] | null>(null);
-  const [projectId, setProjectId] = useState<number | null>(null);
+export default function ProjectCalendar({ projectId, showPhases = true }: { projectId: number; showPhases?: boolean }) {
   const [timeline, setTimeline] = useState<ProjectTimeline | null>(null);
   const [monthKey, setMonthKey] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const [loadingProjects, setLoadingProjects] = useState(true);
-  const [loadingTimeline, setLoadingTimeline] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      const request = role === "homeowner" ? fetchMyHomeownerProjects() : fetchMyProjects();
-      request
-        .then((list) => {
-          if (cancelled) return;
-          // A "not started yet" project has no schedule to show.
-          const options = list.filter((p) => p.status !== "not_started").map((p) => ({ id: p.id, title: p.title }));
-          setProjects(options);
-          // Keep the user's pick across refocus; otherwise open the first project.
-          setProjectId((current) => (current && options.some((o) => o.id === current) ? current : (options[0]?.id ?? null)));
-        })
-        .catch((err) => {
-          if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load projects.");
-        })
-        .finally(() => {
-          if (!cancelled) setLoadingProjects(false);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }, [role])
-  );
-
-  useFocusEffect(
-    useCallback(() => {
-      if (projectId === null) {
-        setTimeline(null);
-        return undefined;
-      }
-      let cancelled = false;
-      setLoadingTimeline(true);
       setError(null);
       fetchProjectTimeline(projectId)
         .then((data) => {
@@ -91,7 +52,7 @@ export default function ProjectCalendar({ role }: { role: Role }) {
           if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load the calendar.");
         })
         .finally(() => {
-          if (!cancelled) setLoadingTimeline(false);
+          if (!cancelled) setLoading(false);
         });
       return () => {
         cancelled = true;
@@ -99,82 +60,20 @@ export default function ProjectCalendar({ role }: { role: Role }) {
     }, [projectId])
   );
 
-  const pickProject = (id: number) => {
-    if (id === projectId) return;
-    setTimeline(null);
-    setMonthKey(null);
-    setSelectedDay(null);
-    setProjectId(id);
-  };
-
   const pickMonth = (key: string) => {
     setMonthKey(key);
     setSelectedDay(null);
   };
 
-  if (loadingProjects) {
-    return (
-      <View className="flex-1 items-center justify-center bg-background">
-        <ActivityIndicator color="#f59e0b" />
-      </View>
-    );
-  }
-
-  if (!projects || projects.length === 0) {
-    return (
-      <Screen topInset={role === "homeowner"}>
-        <PageHeader title="Project Calendar" subtitle="Track the construction schedule month by month." />
-        <View className="rounded-3xl p-6 items-center bg-card border border-border">
-          <Ionicons name="calendar-outline" size={28} color="#f59e0b" style={{ marginBottom: 8 }} />
-          <Text className="font-bold text-base mb-1 text-foreground">
-            {role === "homeowner" ? "No project yet" : "No assigned projects"}
-          </Text>
-          <Text className="text-sm text-center mb-4 text-muted-foreground">
-            {error ??
-              (role === "homeowner"
-                ? "Describe your project to the AI planner and approve the plan — its proposed schedule will appear here."
-                : "Once a homeowner accepts you onto a project, its schedule will appear here.")}
-          </Text>
-          <Pressable
-            onPress={() => router.push((role === "homeowner" ? "/homeowner/project-chat" : "/contractor/available") as never)}
-            className="px-5 py-2.5 rounded-xl bg-primary"
-          >
-            <Text className="font-bold text-sm text-primary-foreground">
-              {role === "homeowner" ? "Start AI Plan" : "Browse Projects"}
-            </Text>
-          </Pressable>
-        </View>
-      </Screen>
-    );
-  }
-
   const monthIndex = timeline ? timeline.months.findIndex((m) => m.key === monthKey) : -1;
   const month = timeline && monthIndex >= 0 ? timeline.months[monthIndex] : null;
-  const activeTitle = projects.find((p) => p.id === projectId)?.title;
 
   return (
-    <Screen topInset={role === "homeowner"}>
-      <PageHeader title="Project Calendar" subtitle={activeTitle ?? "Track the construction schedule month by month."} />
-
-      {projects.length > 1 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-          {projects.map((p) => {
-            const active = p.id === projectId;
-            return (
-              <Pressable
-                key={p.id}
-                onPress={() => pickProject(p.id)}
-                className="px-3 py-2 rounded-xl border"
-                style={{ backgroundColor: active ? "#f59e0b20" : chrome.muted, borderColor: active ? "#f59e0b" : chrome.border }}
-              >
-                <Text className="text-xs font-semibold" style={{ color: active ? "#f59e0b" : chrome.mutedForeground }} numberOfLines={1}>
-                  {p.title}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      )}
+    <View style={{ gap: 16 }}>
+      <View className="flex-row items-center gap-2">
+        <Ionicons name="calendar-outline" size={16} color="#f59e0b" />
+        <Text className="font-bold text-sm text-foreground">Project Calendar</Text>
+      </View>
 
       {error && (
         <InfoBox color="#ef4444" title="Couldn't load the calendar">
@@ -182,7 +81,7 @@ export default function ProjectCalendar({ role }: { role: Role }) {
         </InfoBox>
       )}
 
-      {loadingTimeline && !timeline && <ActivityIndicator color="#f59e0b" style={{ marginTop: 24 }} />}
+      {loading && !timeline && <ActivityIndicator color="#f59e0b" style={{ marginVertical: 24 }} />}
 
       {timeline && (
         <>
@@ -200,10 +99,10 @@ export default function ProjectCalendar({ role }: { role: Role }) {
               onSelectDay={setSelectedDay}
             />
           )}
-          <PhaseSchedule timeline={timeline} />
+          {showPhases && <PhaseSchedule timeline={timeline} />}
         </>
       )}
-    </Screen>
+    </View>
   );
 }
 

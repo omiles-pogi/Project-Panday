@@ -4,6 +4,7 @@ import { router, useFocusEffect } from "expo-router";
 import { Badge, Button, Card, ChipPicker, MONO, PageHeader, Screen } from "@/components/ui";
 import Sheet from "@/components/Sheet";
 import { RequestStatusBadge } from "@/components/MaterialStatusBadge";
+import MaterialPlanSection from "@/screens/materialRequests/MaterialPlanSection";
 import { createMaterialRequest, fetchMaterialRequests } from "@/services/api/materialRequests";
 import { fetchMyProjects } from "@/services/api/projects";
 import type { MaterialRequest } from "@/types/materialRequest";
@@ -74,6 +75,8 @@ export default function RequestList({
         }
       />
 
+      <MaterialPlanSection viewer={viewer} detailPath={detailPath} />
+
       {viewer === "contractor" && (
         <View className="flex-row">
           <Button label="+ Create Material Request" onPress={() => setCreating(true)} />
@@ -133,6 +136,8 @@ function RequestCard({ request: r, viewer, onPress }: { request: MaterialRequest
             <View className="flex-row flex-wrap gap-2 mt-1">
               <RequestStatusBadge status={r.status} />
               {action && <Badge label="Action needed" color="#ef4444" />}
+              {r.autoApproved && <Badge label="Auto-approved" color="#3b82f6" />}
+              {r.phase && <Badge label={r.phase.name} color="#8b5cf6" />}
             </View>
           </View>
           <View className="items-end">

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useFocusEffect } from "expo-router";
 import { Text, View, Pressable, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Card, Field, PageHeader, Screen, SubmitButton } from "@/components/ui";
@@ -10,10 +11,14 @@ import {
   assignContractorToProject,
   unassignContractorFromProject,
   fetchDashboard,
+  fetchHiringWages,
 } from "@/services/api/projects";
 import { usePlan } from "@/context/PlanContext";
 import { useTheme } from "@/context/ThemeContext";
 import { recommendedSkillsForPlan } from "@/utils/teamRecommendations";
+import { peso } from "@/utils/currency";
+import { wageLine } from "@/utils/wage";
+import type { HiringWage, HiringWageData } from "@/types/project";
 import type { WorkerSearchResult } from "@/types/worker";
 import type { ContractorSearchResult } from "@/types/contractor";
 
@@ -110,16 +115,62 @@ function AssignButton({
   );
 }
 
+function HiringWageInfo({ preview, projectId, loading }: { preview?: HiringWage; projectId: number | null; loading: boolean }) {
+  let label = "Project wage";
+  let explanation = projectId ? "Wage information is unavailable. Refresh to try again." : "Select an approved project to see its wage or fee estimate.";
+  if (preview) {
+    switch (preview.source) {
+      case "project":
+        label = preview.wage?.auto ? "Automatic wage estimate" : "Wage on this project";
+        explanation = !preview.wage ? "No wage has been set for this person on the selected project." : preview.wage.auto ? "Calculated for this project; confirm the amount before hiring." : "Saved for this person on the selected project.";
+        break;
+      case "worker_minimum":
+        label = "Estimated project wage";
+        explanation = "Based on the worker's asking daily rate and this project's working days.";
+        break;
+      case "app_default":
+        label = "Estimated project wage";
+        explanation = "Uses the app's default daily rate. This worker has not provided an asking rate.";
+        break;
+      case "application_quote":
+        label = "Contractor's project quote";
+        explanation = "Submitted by this contractor for your project; subject to acceptance.";
+        break;
+      case "project_estimate":
+        label = "Estimated contractor fee";
+        explanation = "Based on this project's fee estimate, split across the contractors after this person joins.";
+        break;
+    }
+  }
+
+  return (
+    <View className="rounded-xl p-3 mb-3 bg-muted border border-border" style={{ gap: 4 }}>
+      <View className="flex-row items-center gap-1.5">
+        <Ionicons name="wallet-outline" size={14} color="#10b981" />
+        <Text className="text-xs font-semibold text-foreground">{label}</Text>
+      </View>
+      <Text className="text-sm font-bold" style={{ color: "#10b981" }}>
+        {loading ? "Loading wage…" : preview ? preview.wage ? wageLine(preview.wage) : "No wage set" : "Not available"}
+      </Text>
+      {!loading && <Text className="text-xs leading-4 text-muted-foreground">{explanation}</Text>}
+    </View>
+  );
+}
+
 function WorkerCard({
   worker,
   projectId,
   assigned,
   onAssignedChange,
+  hiringWage,
+  wageLoading,
 }: {
   worker: WorkerSearchResult;
   projectId: number | null;
   assigned: boolean;
   onAssignedChange: (id: number, assigned: boolean) => void;
+  hiringWage?: HiringWage;
+  wageLoading: boolean;
 }) {
   const [rating, setRating] = useState(false);
   const [done, setDone] = useState(false);
@@ -157,6 +208,9 @@ function WorkerCard({
           <Text className="text-xs text-muted-foreground">
             {worker.trade} · {worker.yearsExperience} yrs experience
           </Text>
+          <Text className="text-xs mt-0.5 font-semibold" style={{ color: worker.minDailyWage != null ? "#10b981" : "#9ca3af" }}>
+            {worker.minDailyWage != null ? `Asks from ${peso(worker.minDailyWage)}/day` : "Asking daily rate not provided"}
+          </Text>
         </View>
         {worker.averageRating != null ? (
           <View className="flex-row items-center gap-1">
@@ -170,6 +224,7 @@ function WorkerCard({
         )}
       </View>
 
+      <HiringWageInfo preview={hiringWage} projectId={projectId} loading={wageLoading} />
       {worker.bio && <Text className="text-xs text-secondary-foreground mb-2">{worker.bio}</Text>}
 
       <View className="flex-row flex-wrap gap-1.5 mb-3">
@@ -212,11 +267,15 @@ function ContractorCard({
   projectId,
   assigned,
   onAssignedChange,
+  hiringWage,
+  wageLoading,
 }: {
   contractor: ContractorSearchResult;
   projectId: number | null;
   assigned: boolean;
   onAssignedChange: (id: number, assigned: boolean) => void;
+  hiringWage?: HiringWage;
+  wageLoading: boolean;
 }) {
   const [rating, setRating] = useState(false);
   const [done, setDone] = useState(false);
@@ -265,6 +324,7 @@ function ContractorCard({
         )}
       </View>
 
+      <HiringWageInfo preview={hiringWage} projectId={projectId} loading={wageLoading} />
       {contractor.bio && <Text className="text-xs text-secondary-foreground mb-2">{contractor.bio}</Text>}
 
       <View className="flex-row flex-wrap gap-1.5 mb-3">
@@ -303,7 +363,7 @@ function ContractorCard({
 }
 
 export default function FindWorkers() {
-  const { plan } = usePlan();
+  const { plan, activeProjectKey, ready } = usePlan();
   // A plan's phases/budget categories drive an initial skills filter, so a homeowner arriving
   // from their approved plan sees AI-suggested matches first, instead of an empty generic browse.
   const recommendedSkills = plan ? recommendedSkillsForPlan(plan) : [];
@@ -320,19 +380,60 @@ export default function FindWorkers() {
   const [projectTitle, setProjectTitle] = useState<string | null>(null);
   const [assignedWorkerIds, setAssignedWorkerIds] = useState<Set<number>>(new Set());
   const [assignedContractorIds, setAssignedContractorIds] = useState<Set<number>>(new Set());
+  const [hiringWages, setHiringWages] = useState<HiringWageData | null>(null);
+  const [wageLoading, setWageLoading] = useState(true);
+  const [wageError, setWageError] = useState<string | null>(null);
+  const [wageVersion, setWageVersion] = useState(0);
 
-  useEffect(() => {
-    fetchDashboard()
-      .then(({ project }) => {
-        // A team can only join a started project — a "not started yet" one has no plan to work from.
-        if (!project || project.status === "not_started") return;
-        setProjectId(project.id);
-        setProjectTitle(project.title);
-        setAssignedWorkerIds(new Set(project.workers.map((w) => w.id)));
-        setAssignedContractorIds(new Set(project.contractors.map((c) => c.id)));
-      })
-      .catch(() => undefined);
-  }, []);
+  // The title of a "not started yet" project the team can't join until its plan is approved.
+  const [pendingTitle, setPendingTitle] = useState<string | null>(null);
+
+  // Re-checked every time the screen is opened, not once on mount: drawer screens stay mounted, so a
+  // project that was deleted, replaced or just approved since would otherwise leave this pointing at
+  // a stale id — and every invite to it fails with a "no query results" 404.
+  useFocusEffect(
+    useCallback(() => {
+      if (!ready) return;
+      let cancelled = false;
+      setHiringWages(null);
+      setWageLoading(true);
+      setWageError(null);
+      setProjectId(null);
+      setProjectTitle(null);
+      setPendingTitle(null);
+      setAssignedWorkerIds(new Set());
+      setAssignedContractorIds(new Set());
+      // The project the homeowner is looking at (the dashboard selects it for the AI chat too).
+      const selected = /^\d+$/.test(activeProjectKey) ? Number(activeProjectKey) : undefined;
+      fetchDashboard(selected)
+        // A selection that no longer exists comes back empty — fall back to their latest project.
+        .then(({ project }) => project ?? (selected ? fetchDashboard().then((d) => d.project) : null))
+        .then((project) => {
+          if (cancelled) return;
+          // A team can only join a started project — a "not started yet" one has no plan to work from.
+          const started = project && project.status !== "not_started" ? project : null;
+          setProjectId(started?.id ?? null);
+          setProjectTitle(started?.title ?? null);
+          setPendingTitle(project && !started ? project.title : null);
+          setAssignedWorkerIds(new Set(started?.workers.map((w) => w.id) ?? []));
+          setAssignedContractorIds(new Set(started?.contractors.map((c) => c.id) ?? []));
+          if (started) {
+            return fetchHiringWages(started.id).then((wages) => {
+              if (!cancelled) setHiringWages(wages);
+            });
+          }
+        })
+        .catch((err) => {
+          if (!cancelled) setWageError(err instanceof Error ? err.message : "Could not load team wages.");
+        })
+        .finally(() => { if (!cancelled) setWageLoading(false); });
+      return () => {
+        cancelled = true;
+      };
+    // The version intentionally refreshes records after removing a member or retrying.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeProjectKey, ready, wageVersion])
+  );
 
   const loadResults = (targetMode: Mode) => {
     setLoading(true);
@@ -372,6 +473,7 @@ export default function FindWorkers() {
   };
 
   const handleWorkerAssignedChange = (id: number, assigned: boolean) => {
+    setWageVersion((version) => version + 1);
     setAssignedWorkerIds((prev) => {
       const next = new Set(prev);
       if (assigned) next.add(id);
@@ -381,6 +483,7 @@ export default function FindWorkers() {
   };
 
   const handleContractorAssignedChange = (id: number, assigned: boolean) => {
+    setWageVersion((version) => version + 1);
     setAssignedContractorIds((prev) => {
       const next = new Set(prev);
       if (assigned) next.add(id);
@@ -418,6 +521,8 @@ export default function FindWorkers() {
   };
 
   const results = mode === "workers" ? workerResults : contractorResults;
+  const workerWagesById = new Map(hiringWages?.workers.map((entry) => [entry.userId, entry]));
+  const contractorWagesById = new Map(hiringWages?.contractors.map((entry) => [entry.userId, entry]));
 
   return (
     <Screen>
@@ -429,6 +534,7 @@ export default function FindWorkers() {
             : "Browse workers and contractors who signed up on Project-Panday, ranked by rating and experience. Filter to narrow it down."
         }
       />
+      <Text className="text-xs leading-5 text-muted-foreground">Wages are filled in automatically when team members join your project. Estimates are marked below; you do not need to enter amounts manually.</Text>
 
       {recommendedSkills.length > 0 && (
         <View className="flex-row items-center gap-1.5 px-1">
@@ -444,6 +550,14 @@ export default function FindWorkers() {
           <Ionicons name="briefcase-outline" size={13} color="#9ca3af" />
           <Text className="text-xs text-muted-foreground">
             Adding team members to: <Text className="text-foreground font-semibold">{projectTitle}</Text>
+          </Text>
+        </View>
+      )}
+      {!projectId && pendingTitle && (
+        <View className="flex-row items-start gap-1.5 px-1">
+          <Ionicons name="hourglass-outline" size={13} color="#f59e0b" style={{ marginTop: 1 }} />
+          <Text className="text-xs flex-1" style={{ color: "#f59e0b" }}>
+            &quot;{pendingTitle}&quot; hasn&apos;t started yet. Finish its plan with PandAi, then you can invite a team.
           </Text>
         </View>
       )}
@@ -504,6 +618,14 @@ export default function FindWorkers() {
       </Card>
 
       {error && <Text className="text-xs text-danger px-1">{error}</Text>}
+      {wageError && (
+        <View style={{ gap: 6 }}>
+          <Text className="text-xs text-danger">Could not refresh team wages: {wageError}</Text>
+          <Pressable accessibilityRole="button" onPress={() => setWageVersion((version) => version + 1)} className="self-start px-3 py-2 rounded-lg bg-muted border border-border">
+            <Text className="text-xs font-semibold text-foreground">Retry wages</Text>
+          </Pressable>
+        </View>
+      )}
 
       {loading && (
         <View className="items-center py-6">
@@ -521,11 +643,13 @@ export default function FindWorkers() {
         mode === "workers" &&
         workerResults?.map((worker) => (
           <WorkerCard
-            key={worker.id}
+            key={`${projectId}-${worker.id}`}
             worker={worker}
             projectId={projectId}
             assigned={assignedWorkerIds.has(worker.id)}
             onAssignedChange={handleWorkerAssignedChange}
+            hiringWage={workerWagesById.get(worker.id)}
+            wageLoading={wageLoading}
           />
         ))}
 
@@ -533,11 +657,13 @@ export default function FindWorkers() {
         mode === "contractors" &&
         contractorResults?.map((contractor) => (
           <ContractorCard
-            key={contractor.id}
+            key={`${projectId}-${contractor.id}`}
             contractor={contractor}
             projectId={projectId}
             assigned={assignedContractorIds.has(contractor.id)}
             onAssignedChange={handleContractorAssignedChange}
+            hiringWage={contractorWagesById.get(contractor.id)}
+            wageLoading={wageLoading}
           />
         ))}
     </Screen>

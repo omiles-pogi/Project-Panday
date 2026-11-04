@@ -26,6 +26,42 @@ For a deployed build, set `VITE_API_BASE_URL` (e.g. `https://api.example.com`) a
 `npm run build`; the static output lands in `dist/`. Browsers will then need the
 backend to allow this origin via CORS.
 
+## Cloudflare Tunnel (admin.pandaydomain.com)
+
+The admin is served from this PC through a Cloudflare Tunnel. `npm run preview` serves
+the built files on port 5174 and proxies `/api` to Laravel, so the public site is a
+single origin (no CORS, no `VITE_API_BASE_URL`).
+
+One-time setup (needs `cloudflared`: `winget install Cloudflare.cloudflared`):
+
+```bash
+cloudflared tunnel login                                   # pick the pandaydomain.com zone
+cloudflared tunnel create panday-admin
+cloudflared tunnel route dns panday-admin admin.pandaydomain.com
+```
+
+Then write `~/.cloudflared/config.yml` (use the tunnel ID printed by `create`):
+
+```yaml
+tunnel: panday-admin
+credentials-file: C:\Users\<you>\.cloudflared\<tunnel-id>.json
+ingress:
+  - hostname: admin.pandaydomain.com
+    service: http://localhost:5174
+  - service: http_status:404
+```
+
+Each time you want it online, run these three (separate terminals):
+
+```bash
+php artisan serve --host=0.0.0.0 --port=8000   # in backend/
+npm run build && npm run preview               # in admin/
+cloudflared tunnel run panday-admin
+```
+
+The site is only up while all three are running. Allowed hostnames are listed in
+`vite.config.ts` (`allowedHosts`).
+
 ## Access
 
 Only one account can use this page: the superadmin whose email matches `ADMIN_EMAIL`

@@ -10,8 +10,7 @@ import type { MyProject } from "@/types/project";
 const QUICK_ACTIONS = [
   { label: "Assignments", icon: "briefcase-outline", href: "/worker/assignments" },
   { label: "Browse", icon: "list-outline", href: "/worker/available" },
-  { label: "Log Work", icon: "document-text-outline", href: "/worker/daily-log" },
-  { label: "Timesheet", icon: "time-outline", href: "/worker/timesheet" },
+  { label: "Messages", icon: "chatbubbles-outline", href: "/worker/messages" },
   { label: "Profile", icon: "build-outline", href: "/worker/skills" },
 ] as const;
 

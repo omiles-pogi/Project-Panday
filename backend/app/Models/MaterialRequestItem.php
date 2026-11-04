@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /** One material line. Name/unit/price are snapshots taken from the supplier listing. */
-#[Fillable(['material_request_id', 'supplier_order_id', 'supplier_product_id', 'supplier_id', 'material_name', 'unit', 'quantity', 'estimated_unit_price', 'confirmed_unit_price', 'reserved_quantity', 'status', 'source'])]
+#[Fillable(['material_request_id', 'supplier_order_id', 'supplier_product_id', 'supplier_id', 'material_name', 'unit', 'quantity', 'estimated_unit_price', 'confirmed_unit_price', 'reserved_quantity', 'status', 'source', 'ai_quantity', 'plan_quantity', 'waste_pct'])]
 class MaterialRequestItem extends Model
 {
     public const PENDING = 'pending';
@@ -25,6 +25,9 @@ class MaterialRequestItem extends Model
             'estimated_unit_price' => 'integer',
             'confirmed_unit_price' => 'integer',
             'reserved_quantity' => 'integer',
+            'ai_quantity' => 'integer',
+            'plan_quantity' => 'integer',
+            'waste_pct' => 'integer',
         ];
     }
 

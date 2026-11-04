@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * A contractor's material list for one project. `status` tracks only approval; each supplier's
  * fulfillment progress is a SupplierOrder, so the two can never contradict each other.
  */
-#[Fillable(['project_id', 'contractor_id', 'homeowner_id', 'status', 'notes', 'decision_reason', 'estimated_total', 'submitted_at', 'approved_at'])]
+#[Fillable(['project_id', 'contractor_id', 'homeowner_id', 'status', 'notes', 'decision_reason', 'estimated_total', 'submitted_at', 'approved_at', 'phase_id', 'needed_by', 'auto_approved', 'approval_flags'])]
 class MaterialRequest extends Model
 {
     public const DRAFT = 'draft';
@@ -40,6 +40,9 @@ class MaterialRequest extends Model
             'estimated_total' => 'integer',
             'submitted_at' => 'datetime',
             'approved_at' => 'datetime',
+            'needed_by' => 'date',
+            'auto_approved' => 'boolean',
+            'approval_flags' => 'array',
         ];
     }
 
@@ -56,6 +59,12 @@ class MaterialRequest extends Model
     public function homeowner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'homeowner_id');
+    }
+
+    /** The construction phase these materials are for, if the request was made from the phase plan. */
+    public function phase(): BelongsTo
+    {
+        return $this->belongsTo(ProjectPhase::class, 'phase_id');
     }
 
     public function items(): HasMany

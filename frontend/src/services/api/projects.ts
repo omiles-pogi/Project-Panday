@@ -5,10 +5,13 @@ import type {
   AvailableProject,
   DashboardData,
   DashboardProject,
+  HiringWageData,
   MyProject,
   PhaseTask,
   ProjectRatingStatus,
   ProjectSummary,
+  Wage,
+  WageInput,
 } from "@/types/project";
 import type { ContractorRequest, WorkerRequest } from "@/types/notification";
 
@@ -43,6 +46,10 @@ export async function fetchDashboard(projectId?: number): Promise<DashboardData>
   const data = await apiFetch(`/api/dashboard${query}`);
 
   return data as DashboardData;
+}
+
+export async function fetchHiringWages(projectId: number): Promise<HiringWageData> {
+  return await apiFetch(`/api/projects/${projectId}/hiring-wages`) as HiringWageData;
 }
 
 /** All projects the homeowner owns, newest first — for the dashboard's project picker. */
@@ -87,6 +94,21 @@ export async function unassignContractorFromProject(projectId: number, contracto
   await apiFetch(`/api/projects/${projectId}/contractors/${contractorId}`, {
     method: "DELETE",
   });
+}
+
+/** Sets (or, with a null amount, clears) what a worker or contractor is paid on the project. The
+ * homeowner can set anyone's; a contractor on the project can set their workers'. */
+export async function setTeamWage(
+  projectId: number,
+  role: "worker" | "contractor",
+  memberId: number,
+  input: WageInput
+): Promise<Wage | null> {
+  const data = (await apiFetch(`/api/projects/${projectId}/${role}s/${memberId}/wage`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  })) as { wage: Wage | null };
+  return data.wage;
 }
 
 export async function fetchMyProjects(): Promise<MyProject[]> {

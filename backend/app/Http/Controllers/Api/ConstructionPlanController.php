@@ -6,11 +6,24 @@ use App\Exceptions\ConstructionPlanGenerationException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\GeneratePlanRequest;
 use App\Services\ConstructionPlanService;
+use App\Services\ProjectService;
+use App\Services\SupplierProductService;
+use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ConstructionPlanController extends Controller
 {
-    public function __construct(private readonly ConstructionPlanService $planService) {}
+    public function __construct(
+        private readonly ConstructionPlanService $planService,
+        private readonly SupplierProductService $suppliers,
+        private readonly ProjectService $projects,
+    ) {}
+
+    /** Who can supply each of the plan's supplier-sourced categories — feeds the homeowner's supplier picker. */
+    public function supplierOptions(): JsonResponse
+    {
+        return response()->json($this->suppliers->supplierOptions());
+    }
 
     /**
      * Streams newline-delimited JSON events as the AI responds: {"type":"chunk","text":"..."} for
@@ -28,8 +41,12 @@ class ConstructionPlanController extends Controller
         // GeneratePlanRequest still apply, and the plan is only ever fed to the model as data.
         $currentPlan = $request->input('current_plan');
         $currentPlan = is_array($currentPlan) ? $currentPlan : null;
+        $supplierSelections = $request->validated('supplier_selections') ?? [];
+        $projectId = $request->validated('project_id');
+        $projectContext = $projectId ? $this->projects->planningContextFor($request->user(), (int) $projectId) : null;
+        $currentPlan ??= $projectContext['approvedPlan'] ?? null;
 
-        return response()->stream(function () use ($messages, $forcePlan, $currentPlan) {
+        return response()->stream(function () use ($messages, $forcePlan, $currentPlan, $supplierSelections, $projectContext) {
             $emit = function (array $event) {
                 echo json_encode($event)."\n";
                 if (ob_get_level() > 0) {
@@ -43,7 +60,9 @@ class ConstructionPlanController extends Controller
                     $messages,
                     $forcePlan,
                     fn (string $text) => $emit(['type' => 'chunk', 'text' => $text]),
-                    $currentPlan
+                    $currentPlan,
+                    $supplierSelections,
+                    $projectContext
                 );
                 $emit(['type' => 'done', 'result' => $result]);
             } catch (ConstructionPlanGenerationException $e) {

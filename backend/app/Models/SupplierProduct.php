@@ -25,6 +25,29 @@ class SupplierProduct extends Model
         'Other',
     ];
 
+    /**
+     * The three AI-plan budget categories whose materials come from suppliers — the homeowner picks one
+     * supplier for each — and the listing categories each one covers. Together they cover every
+     * entry in CATEGORIES, so any listing belongs to exactly one.
+     */
+    public const PLAN_CATEGORIES = [
+        'Construction Materials' => ['Cement', 'Sand', 'Gravel', 'Aggregate', 'Steel', 'Lumber', 'Masonry', 'Roofing', 'Hardware'],
+        'Electrical and Plumbing' => ['Electrical', 'Plumbing'],
+        'Finishing Works' => ['Paint', 'Other'],
+    ];
+
+    /** Which plan category a listing's own category falls under. */
+    public static function planCategoryFor(string $listingCategory): ?string
+    {
+        foreach (self::PLAN_CATEGORIES as $planCategory => $listingCategories) {
+            if (in_array($listingCategory, $listingCategories, true)) {
+                return $planCategory;
+            }
+        }
+
+        return null;
+    }
+
     public const STOCK_STATUSES = ['in_stock', 'out_of_stock'];
 
     protected $fillable = [

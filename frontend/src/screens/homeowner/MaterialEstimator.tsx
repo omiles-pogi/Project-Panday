@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { usePlan } from "@/context/PlanContext";
 import BriefPrompt from "@/components/BriefPrompt";
+import SupplierPicker, { selectionsOf } from "@/components/SupplierPicker";
 import { KeyboardView } from "@/components/ui";
 import KeyboardAwareScrollView from "@/components/KeyboardAwareScrollView";
 
@@ -85,8 +86,25 @@ export default function MaterialEstimator() {
       <View className="rounded-xl px-4 py-3 mb-4 flex-row gap-2" style={{ backgroundColor: "#f59e0b15", borderWidth: 1, borderColor: "#f59e0b30" }}>
         <Ionicons name="warning-outline" size={16} color="#fbbf24" />
         <Text className="text-xs leading-relaxed flex-1" style={{ color: "#fbbf24" }}>
-          AI-estimated prices. Final prices depend on supplier negotiations and market conditions.
+          Items marked &quot;From …&quot; use that supplier&apos;s real listed price; the rest are AI estimates. Final
+          prices depend on supplier negotiations and market conditions.
         </Text>
+      </View>
+
+      <View className="rounded-xl p-4 mb-4 bg-card border border-border">
+        <SupplierPicker
+          plan={plan}
+          disabled={loading}
+          onChoose={(category, supplier) =>
+            send(
+              supplier
+                ? `Use ${supplier.name} as my supplier for ${category}.`
+                : `Use the best-priced supplier for ${category}.`,
+              undefined,
+              { supplierSelections: { ...selectionsOf(plan), [category]: supplier?.id ?? null } }
+            ).catch(() => undefined)
+          }
+        />
       </View>
 
       <View className="rounded-xl px-4 py-3 mb-4 flex-row items-center gap-2 bg-card border border-border">
@@ -128,6 +146,10 @@ export default function MaterialEstimator() {
                   </Text>
                   <Text className="text-xs text-muted-foreground">
                     {m.qty.toLocaleString()} {m.unit} × ₱{m.unitPrice.toLocaleString()}
+                  </Text>
+                  <Text className="text-xs" style={{ color: m.supplierName ? "#10b981" : "#6b7280" }}>
+                    {m.supplierName ? `From ${m.supplierName}` : "AI estimate"}
+                    {m.phase ? ` · ${m.phase}` : ""}
                   </Text>
                 </View>
               </View>
