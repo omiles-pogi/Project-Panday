@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
+use App\Http\Requests\UpdateAccountRequest;
 use App\Services\AuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -74,5 +75,11 @@ class AuthController extends Controller
     public function me(Request $request): JsonResponse
     {
         return response()->json($request->user());
+    }
+
+    /** Any signed-in user can change their own name from their profile. */
+    public function updateMe(UpdateAccountRequest $request): JsonResponse
+    {
+        return response()->json($this->authService->updateName($request->user(), $request->validated()['name']));
     }
 }

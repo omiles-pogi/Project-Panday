@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { CountUp } from "@/components/charts";
 import { Badge, Card, Field, PageHeader, Screen } from "@/components/ui";
 import MessageButton from "@/components/MessageButton";
+import TeamActivity from "@/components/TeamActivity";
 import { addPhaseTask, deletePhaseTask, fetchMyProjects, setTeamWage, togglePhaseTask } from "@/services/api/projects";
 import { createMaterialRequest } from "@/services/api/materialRequests";
 import WageSheet from "@/components/WageSheet";
@@ -284,6 +285,12 @@ function ProjectCard({
 
       {expanded && (
         <View style={{ gap: 10 }} className="mt-2">
+          {project.workers.length > 0 && (
+            <View style={{ gap: 6 }}>
+              <Text className="text-xs font-bold text-foreground">Team on site</Text>
+              <TeamActivity projectId={project.id} />
+            </View>
+          )}
           {project.phases.map((phase) => (
             <PhaseChecklist key={phase.id} project={project} phase={phase} onChanged={onChanged} />
           ))}

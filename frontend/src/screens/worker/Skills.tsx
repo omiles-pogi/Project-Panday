@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Text, View, Pressable, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Card, Field, PageHeader, Screen, SubmitButton } from "@/components/ui";
+import NameCard from "@/components/NameCard";
 import { useAuth } from "@/context/AuthContext";
 import { fetchWorkerProfile, updateMyWorkerProfile } from "@/services/api/workers";
 
@@ -122,6 +123,8 @@ export default function Skills() {
           </View>
         </View>
       </Card>
+
+      <NameCard />
 
       <Card title="Edit profile">
         <View style={{ gap: 12 }}>

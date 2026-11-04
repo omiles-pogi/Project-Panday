@@ -7,6 +7,7 @@ import Sheet from "@/components/Sheet";
 import { CountUp } from "@/components/charts";
 import StockBadge from "@/components/StockBadge";
 import MessageButton from "@/components/MessageButton";
+import ExportPdfButton from "@/components/ExportPdfButton";
 import { ItemStatusBadge, OrderStatusBadge, RequestStatusBadge, statusLabel } from "@/components/MaterialStatusBadge";
 import { useTheme } from "@/context/ThemeContext";
 import {
@@ -25,6 +26,7 @@ import {
 import { fetchMaterialCatalog, type CatalogMaterialDto } from "@/services/api/supplierProducts";
 import type { AiMaterialSuggestion, MaterialItemInput, MaterialRequest, MaterialRequestOrder } from "@/types/materialRequest";
 import { peso } from "@/utils/currency";
+import { materialRequestPdfHtml, sharePdf } from "@/utils/pdf";
 import { formatShortDate } from "@/utils/timeline";
 
 type Viewer = "contractor" | "homeowner";
@@ -213,6 +215,7 @@ function RequestDetailBody({ request: r, viewer, onChange }: { request: Material
             label="Open Project Chat"
           />
         </View>
+        <ExportPdfButton label="Export Request PDF" onExport={() => sharePdf(materialRequestPdfHtml(r), `Material request #${r.id}`)} />
       </Card>
 
       {r.canEdit ? (

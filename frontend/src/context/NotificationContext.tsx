@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { router } from "expo-router";
 import {
   deleteNotification,
   fetchNotifications,
@@ -9,6 +10,8 @@ import {
 import { respondToContractorRequest, respondToWorkerRequest } from "@/services/api/projects";
 import type { AppNotification } from "@/types/notification";
 import { useAuth } from "@/context/AuthContext";
+import { enablePush } from "@/services/push";
+import { notificationRoute } from "@/utils/notificationRoutes";
 
 // Polling, not a websocket — "near real-time" (worst case ~20s stale) without new infra.
 const POLL_MS = 20_000;
@@ -88,6 +91,25 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [relevant]);
+
+  // Push: register this phone once signed in, and open the right screen when a push is tapped.
+  const role = user?.role;
+  useEffect(() => {
+    if (!relevant || !role) return;
+    let cancelled = false;
+    let stop = () => {};
+    enablePush((data) => {
+      const route = notificationRoute({ type: data.type, data } as unknown as AppNotification, role);
+      if (route) router.push(route as never);
+    }).then((cleanup) => {
+      if (cancelled) cleanup();
+      else stop = cleanup;
+    });
+    return () => {
+      cancelled = true;
+      stop();
+    };
+  }, [relevant, role]);
 
   const dismissPopup = useCallback(() => setPopup(null), []);
 

@@ -21,18 +21,27 @@ class NotificationService
         'contractor_application' => ProjectContractorRequest::class,
     ];
 
+    public function __construct(private readonly PushService $push) {}
+
     /**
+     * Records the notification in the recipient's feed and, if they're signed in on a phone,
+     * pushes it there too so it reaches them with the app closed.
+     *
      * @param  array<string, mixed>  $data
      */
     public function send(User $recipient, string $type, string $title, string $body, array $data = []): AppNotification
     {
-        return AppNotification::create([
+        $notification = AppNotification::create([
             'user_id' => $recipient->id,
             'type' => $type,
             'title' => $title,
             'body' => $body,
             'data' => $data,
         ]);
+
+        $this->push->notify($recipient, $notification);
+
+        return $notification;
     }
 
     public function unreadCountFor(User $user): int

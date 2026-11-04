@@ -46,6 +46,12 @@ export const ICON: Record<NotificationType, IconName> = {
   supplier_order_cancelled: "close-circle-outline",
   supplier_order_received_by_contractor: "checkmark-done-outline",
   rating_received: "star-outline",
+  schedule_delay: "warning-outline",
+  quote_request_received: "pricetags-outline",
+  quote_bid_received: "pricetag-outline",
+  quote_bid_awarded: "trophy-outline",
+  quote_bid_not_selected: "close-circle-outline",
+  quote_request_cancelled: "close-circle-outline",
 };
 
 // Only these carry a pending request that this viewer can act on directly from the panel.

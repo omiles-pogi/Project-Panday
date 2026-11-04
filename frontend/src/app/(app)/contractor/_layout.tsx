@@ -8,6 +8,7 @@ const NAV_ITEMS: DrawerNavItem[] = [
   { href: "/contractor/material-requests", label: "Material Requests", icon: "clipboard-outline" },
   { href: "/contractor/messages", label: "Messages", icon: "chatbubbles-outline", chatBadge: true },
   { href: "/contractor/materials", label: "Supplier Materials", icon: "storefront-outline" },
+  { href: "/contractor/quotes", label: "Supplier Quotes", icon: "pricetags-outline" },
   { href: "/contractor/profile", label: "Profile", icon: "person-outline" },
 ];
 
@@ -19,6 +20,7 @@ export default function ContractorLayout() {
       pages={[
         { name: "profile", title: "Profile" },
         { name: "materials", title: "Supplier Materials" },
+        { name: "quotes", title: "Supplier Quotes" },
         { name: "material-request/[id]", title: "Material Request", detail: true },
         { name: "chat/[id]", title: "Chat", detail: true },
       ]}

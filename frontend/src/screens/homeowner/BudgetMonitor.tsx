@@ -10,6 +10,8 @@ import { peso } from "@/utils/currency";
 import { BUDGET_STATUS_META, compareBudget, formatBudget } from "@/utils/budget";
 import BudgetCategoryBreakdown from "@/components/BudgetCategoryBreakdown";
 import EstimateAdditionsCard from "@/components/EstimateAdditionsCard";
+import ExportPdfButton from "@/components/ExportPdfButton";
+import { planPdfHtml, sharePdf } from "@/utils/pdf";
 import type { DashboardProject } from "@/types/project";
 
 export default function BudgetMonitor() {
@@ -187,6 +189,13 @@ export default function BudgetMonitor() {
             <Button label="Order Materials" variant="muted" onPress={() => router.push("/homeowner/approvals" as never)} />
           </View>
         </Card>
+      )}
+
+      {project.approvedPlan && (
+        <ExportPdfButton
+          label="Export Plan & Budget PDF"
+          onExport={() => sharePdf(planPdfHtml({ projectTitle: project.title, ...project.approvedPlan }), `${project.title} plan`)}
+        />
       )}
 
       <Card title="Budget by Category">

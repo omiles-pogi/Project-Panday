@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Text, View, Pressable, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Card, Field, PageHeader, Screen, SubmitButton } from "@/components/ui";
+import NameCard from "@/components/NameCard";
 import { useAuth } from "@/context/AuthContext";
 import { fetchContractorProfile, updateMyContractorProfile } from "@/services/api/contractors";
 
@@ -121,6 +122,8 @@ export default function Profile() {
           </View>
         </View>
       </Card>
+
+      <NameCard hint="Your own name. Your company name, if you have one, is set below." />
 
       <Card title="Edit profile">
         <View style={{ gap: 12 }}>

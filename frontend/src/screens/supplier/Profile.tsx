@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Card, Field, PageHeader, Screen, StatGrid, StatTile, SubmitButton } from "@/components/ui";
+import NameCard from "@/components/NameCard";
+import { useAuth } from "@/context/AuthContext";
 import { fetchMySupplierProfile, updateMySupplierProfile, type SupplierProfile } from "@/services/api/supplierProfile";
 
 const STATUS_BADGE: Record<SupplierProfile["approvalStatus"], { label: string; color: string }> = {
@@ -11,6 +13,7 @@ const STATUS_BADGE: Record<SupplierProfile["approvalStatus"], { label: string; c
 };
 
 export default function Profile() {
+  const { user } = useAuth();
   const [profile, setProfile] = useState<SupplierProfile | null>(null);
   const [location, setLocation] = useState("");
   const [contactNumber, setContactNumber] = useState("");
@@ -89,7 +92,9 @@ export default function Profile() {
     );
   }
 
-  const shopName = profile.businessName || profile.name;
+  // The signed-in name, so a rename shows here at once instead of waiting for this screen to reload.
+  const contactName = user?.name ?? profile.name;
+  const shopName = profile.businessName || contactName;
   const initials = shopName
     .split(" ")
     .map((part) => part[0])
@@ -98,7 +103,7 @@ export default function Profile() {
     .toUpperCase();
   const status = STATUS_BADGE[profile.approvalStatus];
   const accountRows: [string, string][] = [
-    ["Contact person", profile.name],
+    ["Contact person", contactName],
     ["Email", profile.email],
     ...(profile.licenseNumber ? ([["License / ID no.", profile.licenseNumber]] as [string, string][]) : []),
     ...(profile.memberSince
@@ -133,6 +138,8 @@ export default function Profile() {
         <StatTile label="Visible to Buyers" value={profile.listings.active} color="#3b82f6" icon="eye-outline" />
         <StatTile label="In Stock" value={profile.listings.inStock} color="#10b981" icon="checkmark-circle-outline" />
       </StatGrid>
+
+      <NameCard hint="The contact person on your shop. Your business name was verified when you registered, so it can't be changed here." />
 
       <Card title="Shop details">
         <View style={{ gap: 12 }}>

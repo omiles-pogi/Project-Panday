@@ -2,9 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Card, Field, PageHeader, Screen, StatGrid, StatTile, SubmitButton } from "@/components/ui";
+import NameCard from "@/components/NameCard";
+import { useAuth } from "@/context/AuthContext";
 import { fetchMyHomeownerProfile, updateMyHomeownerProfile, type HomeownerProfile } from "@/services/api/homeownerProfile";
 
 export default function Profile() {
+  const { user } = useAuth();
   const [profile, setProfile] = useState<HomeownerProfile | null>(null);
   const [location, setLocation] = useState("");
   const [contactNumber, setContactNumber] = useState("");
@@ -81,14 +84,16 @@ export default function Profile() {
     );
   }
 
-  const initials = profile.name
+  // The signed-in name, so a rename shows here at once instead of waiting for this screen to reload.
+  const name = user?.name ?? profile.name;
+  const initials = name
     .split(" ")
     .map((part) => part[0])
     .slice(0, 2)
     .join("")
     .toUpperCase();
   const accountRows: [string, string][] = [
-    ["Name", profile.name],
+    ["Name", name],
     ["Email", profile.email],
     ...(profile.memberSince
       ? ([["Member since", new Date(profile.memberSince).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })]] as [string, string][])
@@ -107,7 +112,7 @@ export default function Profile() {
             </Text>
           </View>
           <View className="flex-1" style={{ gap: 4 }}>
-            <Text className="text-lg font-bold text-foreground">{profile.name}</Text>
+            <Text className="text-lg font-bold text-foreground">{name}</Text>
             <View className="flex-row items-center gap-1">
               <Ionicons name="location-outline" size={13} color="#9ca3af" />
               <Text className="flex-1 text-xs text-secondary-foreground">{profile.location || "No location set yet"}</Text>
@@ -122,6 +127,8 @@ export default function Profile() {
         <StatTile label="Active" value={profile.projects.active} color="#f59e0b" icon="construct-outline" />
         <StatTile label="Completed" value={profile.projects.completed} color="#10b981" icon="checkmark-circle-outline" />
       </StatGrid>
+
+      <NameCard />
 
       <Card title="Your details">
         <View style={{ gap: 12 }}>

@@ -23,6 +23,8 @@ import Mascot from "@/components/Mascot";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { useKeyboardState, useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import PlanEditorSheet, { type PlanEditorTab } from "@/components/PlanEditorSheet";
+import ExportPdfButton from "@/components/ExportPdfButton";
+import { planPdfHtml, sharePdf } from "@/utils/pdf";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -250,6 +252,9 @@ function BudgetCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: 
           <Pressable onPress={onEdit} className="px-4 py-2.5 rounded-xl items-center bg-muted border border-border">
             <Text className="text-sm text-muted-foreground">Modify</Text>
           </Pressable>
+        </View>
+        <View className="mt-2">
+          <ExportPdfButton label="Export Plan PDF" onExport={() => sharePdf(planPdfHtml(plan), `${plan.projectTitle} plan`)} />
         </View>
       </View>
     </CardShell>

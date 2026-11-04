@@ -111,6 +111,12 @@ class User extends Authenticatable
         return $this->hasMany(AppNotification::class)->latest();
     }
 
+    /** The phones this user is signed in on, for push notifications. */
+    public function deviceTokens(): HasMany
+    {
+        return $this->hasMany(DeviceToken::class);
+    }
+
     /** Invite/application requests where this user is the worker side. */
     public function workerRequests(): HasMany
     {

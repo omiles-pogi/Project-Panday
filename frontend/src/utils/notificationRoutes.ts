@@ -24,6 +24,11 @@ export function notificationRoute(n: AppNotification, role: UserRole): string | 
     return null;
   }
 
+  // Supplier bidding: every role's quotes screen lists the request.
+  if (n.data.quoteRequestId) {
+    return role === "supplier" || role === "homeowner" || role === "contractor" ? `/${role}/quotes` : null;
+  }
+
   const projectId = n.data.projectId;
   if (!projectId) return null;
   if (role === "homeowner") return `/homeowner?projectId=${projectId}`;
