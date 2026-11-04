@@ -10,26 +10,59 @@ use Illuminate\Database\Seeder;
  *
  *   php artisan db:seed --class=DemoPeopleSeeder
  *
- * Creates two skilled workers (Rene the mason, Kulas the electrician), one contractor (Porman) and
- * two suppliers who list the same materials at different prices — and differ from the existing
- * "Supplier Test" listings too. All accounts are pre-approved and share PASSWORD. Safe to re-run:
- * accounts are matched by email and listings by name, so it updates instead of duplicating.
+ * Creates seven skilled workers covering different trades, six contractors covering different
+ * specializations, and two suppliers who list the same materials at different prices — and differ
+ * from the existing "Supplier Test" listings too. All accounts are pre-approved and share PASSWORD.
+ * Safe to re-run: accounts are matched by email and listings by name, so it updates instead of
+ * duplicating.
  */
 class DemoPeopleSeeder extends Seeder
 {
     private const PASSWORD = 'password123';
 
-    /** [name, email, trade, years, bio, skills[]] */
+    /** [name, email, trade, years, bio, skills[], min daily wage] */
     private const WORKERS = [
         [
             'Rene Dela Cruz', 'rene@panday.test', 'Mason', 12,
             'Mason with 12 years on residential builds — hollow block laying, plastering and concrete finishing.',
             ['CHB Laying', 'Plastering', 'Concrete Works', 'Tile Setting', 'Formworks'],
+            650,
         ],
         [
             'Kulas Bautista', 'kulas@panday.test', 'Electrician', 9,
             'Licensed electrician for houses and small commercial units — wiring, panel boards and lighting layouts.',
             ['House Wiring', 'Panel Board Installation', 'Lighting Layout', 'Conduit Works', 'Troubleshooting'],
+            700,
+        ],
+        [
+            'Jun Mercado', 'jun@panday.test', 'Carpenter', 10,
+            'Finish carpentry and rough framing for houses — door and window installation, built-in cabinets and roof framing.',
+            ['Door & Window Installation', 'Cabinetry', 'Roof Framing', 'Formworks', 'Wood Finishing'],
+            650,
+        ],
+        [
+            'Ariel Santos', 'ariel@panday.test', 'Plumber', 8,
+            'Plumbing for new builds and repairs — water supply lines, drainage and fixture installation.',
+            ['Water Supply Lines', 'Drainage Systems', 'Fixture Installation', 'Pipe Fitting', 'Leak Repair'],
+            600,
+        ],
+        [
+            'Noel Villanueva', 'noel@panday.test', 'Painter', 7,
+            'Interior and exterior painting — surface preparation, skim coating and spray finishes.',
+            ['Surface Preparation', 'Skim Coating', 'Spray Painting', 'Waterproofing', 'Varnishing'],
+            500,
+        ],
+        [
+            'Danilo Cruz', 'danilo@panday.test', 'Welder', 14,
+            'Steel fabrication and welding for gates, grills and structural steel framing.',
+            ['Arc Welding', 'Steel Fabrication', 'Gate & Grill Works', 'Structural Steel Framing', 'Metal Cutting'],
+            700,
+        ],
+        [
+            'Boyet Ramos', 'boyet@panday.test', 'Tile Setter', 6,
+            'Tile setting and floor finishing — ceramic, porcelain and granite tiles for floors and walls.',
+            ['Tile Setting', 'Floor Leveling', 'Grouting', 'Waterproofing', 'Granite Installation'],
+            550,
         ],
     ];
 
@@ -40,6 +73,36 @@ class DemoPeopleSeeder extends Seeder
             'Residential Construction', 15,
             'General contractor building and renovating single-family homes, from foundation to finishing.',
             ['Residential Construction', 'Renovation', 'Project Management', 'Structural Works'],
+        ],
+        [
+            'Edgar Villamor', 'edgar@panday.test', 'Villamor Construction Corp', 'PCAB-DEMO-0002',
+            'Commercial Construction', 18,
+            'Commercial contractor delivering retail, office and warehouse buildouts from groundbreaking to turnover.',
+            ['Commercial Construction', 'Site Development', 'Structural Works', 'Project Scheduling'],
+        ],
+        [
+            'Carmela Fuentes', 'carmela@panday.test', 'Fuentes Renovation Specialists', 'PCAB-DEMO-0003',
+            'Renovation & Remodeling', 11,
+            'Renovation specialist for home extensions, kitchen and bathroom remodels.',
+            ['Renovation', 'Home Extension', 'Kitchen Remodeling', 'Bathroom Remodeling'],
+        ],
+        [
+            'Ramil Torres', 'ramil@panday.test', 'Torres Electrical Contracting', 'PCAB-DEMO-0004',
+            'Electrical Contracting', 13,
+            'Licensed electrical contractor handling full house wiring, panel upgrades and solar-ready installations.',
+            ['Electrical Contracting', 'Panel Upgrades', 'Solar-Ready Wiring', 'Permit Compliance'],
+        ],
+        [
+            'Lorna Aquino', 'lorna@panday.test', 'Aquino Plumbing & Sanitary Works', 'PCAB-DEMO-0005',
+            'Plumbing & Sanitary Contracting', 10,
+            'Plumbing contractor for residential water supply, sewage and septic systems.',
+            ['Plumbing Contracting', 'Septic Systems', 'Sewage Lines', 'Water Supply Design'],
+        ],
+        [
+            'Mike Enriquez', 'mike@panday.test', 'Enriquez Interiors & Fit-out', 'PCAB-DEMO-0006',
+            'Interior Fit-out & Finishing', 9,
+            'Interior fit-out contractor for ceiling works, partitions and finishing carpentry.',
+            ['Interior Fit-out', 'Ceiling Works', 'Partition Walls', 'Finishing Carpentry'],
         ],
     ];
 
@@ -76,12 +139,13 @@ class DemoPeopleSeeder extends Seeder
 
     public function run(): void
     {
-        foreach (self::WORKERS as [$name, $email, $trade, $years, $bio, $skills]) {
+        foreach (self::WORKERS as [$name, $email, $trade, $years, $bio, $skills, $minDailyWage]) {
             $user = $this->account($name, $email, 'worker');
             $profile = $user->workerProfile()->updateOrCreate([], [
                 'trade' => $trade,
                 'years_experience' => $years,
                 'bio' => $bio,
+                'min_daily_wage' => $minDailyWage,
             ]);
             foreach ($skills as $skill) {
                 $profile->skills()->firstOrCreate(['skill' => $skill]);
