@@ -230,7 +230,9 @@ class PlannerAppDataTest extends TestCase
 
         $result = app(ConstructionPlanService::class)->generate([['role' => 'user', 'content' => 'Build a house']], true, fn () => null);
         $this->assertTrue($result['needsClarification']);
-        Http::assertSent(fn (Request $request) => $request->data()['tool_choice'] === 'auto');
+        // forcePlan requires SOME tool call (never a bare chat reply), but request_clarification
+        // remains one of the two tools offered, so asking instead of guessing is still a valid choice.
+        Http::assertSent(fn (Request $request) => $request->data()['tool_choice'] === 'required');
     }
 
     public function test_a_typical_plan_and_fresh_records_fit_the_default_token_limit(): void

@@ -74,6 +74,10 @@ const PlanContext = createContext<PlanContextValue | null>(null);
 const STORAGE_KEY = "panday_plan_conversations";
 const DRAFT_KEY = "draft";
 
+/** After this many consecutive clarifying-question rounds, nudge the AI to decide with what it has
+ * instead of asking indefinitely — see FORCE_PLAN_ADDENDUM on the backend. */
+const FORCE_PLAN_AFTER_CLARIFICATIONS = 3;
+
 interface Conversation {
   plan: ConstructionPlan | null;
   messages: ChatHistoryMessage[];
@@ -184,7 +188,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
       try {
         const result = await generateConstructionPlan(
           historyForRequest,
-          false,
+          clarificationRounds >= FORCE_PLAN_AFTER_CLARIFICATIONS,
           (chunk) => { if (requestEpoch === conversationEpoch.current) onChunk?.(chunk); },
           plan,
           options?.supplierSelections,
@@ -223,7 +227,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
         if (requestEpoch === conversationEpoch.current) setLoading(false);
       }
     },
-    [messages, plan, activeProjectKey]
+    [messages, plan, activeProjectKey, clarificationRounds]
   );
 
   const updatePlan = useCallback((next: ConstructionPlan) => {

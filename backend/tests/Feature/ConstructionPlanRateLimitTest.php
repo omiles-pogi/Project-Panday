@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Exceptions\ConstructionPlanGenerationException;
 use App\Services\ConstructionPlanService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
@@ -140,6 +141,20 @@ class ConstructionPlanRateLimitTest extends TestCase
         } catch (ConstructionPlanGenerationException $e) {
             $this->assertStringContainsString('temporarily unavailable', $e->getMessage());
             $this->assertStringNotContainsString('upstream exploded', $e->getMessage());
+        }
+    }
+
+    public function test_a_dropped_connection_is_not_reported_as_a_busy_service(): void
+    {
+        Http::fake([self::GROQ => fn () => throw new ConnectionException('cURL error 28: Connection timed out')]);
+
+        try {
+            $this->generate();
+            $this->fail('Expected a failure.');
+        } catch (ConstructionPlanGenerationException $e) {
+            $this->assertSame(502, $e->statusCode());
+            $this->assertStringContainsString('temporarily unavailable', $e->getMessage());
+            $this->assertStringNotContainsString('cURL error', $e->getMessage());
         }
     }
 
