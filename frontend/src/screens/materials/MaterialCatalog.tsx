@@ -134,6 +134,7 @@ function MaterialCard({ material: m, onPress }: { material: CatalogMaterialDto; 
           <Ionicons name="storefront-outline" size={13} color={chrome.mutedForeground} />
           <Text className="flex-1 text-xs text-muted-foreground" numberOfLines={1}>
             {supplierLabel(m)}
+            {m.supplier.supplier_profile?.location ? ` · ${m.supplier.supplier_profile.location}` : ""}
           </Text>
           <Text className="text-xs font-medium text-primary">Details</Text>
         </View>
@@ -151,6 +152,8 @@ function MaterialDetailSheet({ material: m, onClose }: { material: CatalogMateri
     ["Minimum order", `${m.min_order.toLocaleString()} ${m.unit}`],
     ["Supplier", supplierLabel(m)],
     ...(m.supplier.business_name ? ([["Contact person", m.supplier.name]] as [string, string][]) : []),
+    ...(m.supplier.supplier_profile?.contact_number ? ([["Contact number", m.supplier.supplier_profile.contact_number]] as [string, string][]) : []),
+    ...(m.supplier.supplier_profile?.location ? ([["Location", m.supplier.supplier_profile.location]] as [string, string][]) : []),
   ];
 
   return (

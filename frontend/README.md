@@ -72,11 +72,13 @@ Every screen runs on the real backend — there is no sample-data screen left in
 - **Homeowner** — AI planner chat (`ProjectChat` → `PlanContext` → `/api/ai/plan`) that builds a
   timeline, budget and materials, with a supplier picker per category; project dashboard with "not
   started yet" projects and the project calendar (AI-proposed schedule vs actual progress); Progress,
-  Budget Monitor, Material Estimator, Find Your Team, Material Approvals, Supplier Catalog, Messages.
+  Budget Monitor, Find Your Team, Material Approvals, Supplier Catalog, Messages, and a private Profile
+  (location, contact number, project counts).
 - **Contractor** — browse and apply to projects, My Projects (checklist), a dashboard with each
   project's calendar, Material Requests (draft → homeowner approval → supplier orders), Supplier Materials, Messages, Profile.
 - **Worker** — dashboard, assignments, browse and apply to projects, skills profile, Messages.
-- **Supplier** — dashboard, inventory (listings and stock), material orders (confirm / decline / deliver).
+- **Supplier** — dashboard, inventory (listings and stock), material orders (confirm / decline / deliver), and a
+  shop Profile (location, contact number, about — shown to buyers on the catalog).
 
 `src/data/` only holds display constants now (inventory types and colours, the PandAi tour text).
 

@@ -104,6 +104,10 @@ export default function BudgetMonitor() {
   const buffer = cmp.difference;
   const statusMeta = BUDGET_STATUS_META[cmp.status];
   const categories = project.approvedPlan?.budgetBreakdown ?? [];
+  const materials = project.approvedPlan?.materials ?? [];
+  const materialTotal = materials.reduce((sum, m) => sum + m.qty * m.unitPrice, 0);
+  const supplierPriced = materials.filter((m) => !!m.supplierProductId);
+  const supplierPricedTotal = supplierPriced.reduce((sum, m) => sum + m.qty * m.unitPrice, 0);
 
   // Rejects with the backend's message so the sheet can show it instead of closing.
   const addBudget = async (amount: number) => {
@@ -163,6 +167,27 @@ export default function BudgetMonitor() {
           <StatTile label="Payments Made" value="Not tracked" color="#9ca3af" icon="wallet-outline" />
         </StatGrid>
       </Card>
+
+      {materials.length > 0 && (
+        <Card title="Material Estimate">
+          <Text className="text-xs mb-3 text-muted-foreground">
+            The materials the AI itemized in your approved plan. They may cover only part of each category&apos;s allocation below.
+          </Text>
+          <StatGrid>
+            <StatTile label="Itemized Materials" value={peso(materialTotal)} color="#f59e0b" icon="layers-outline" sub={`${materials.length} items`} />
+            <StatTile
+              label="Supplier Priced"
+              value={peso(supplierPricedTotal)}
+              color="#10b981"
+              icon="storefront-outline"
+              sub={`${supplierPriced.length} of ${materials.length} items; the rest are AI estimates`}
+            />
+          </StatGrid>
+          <View className="mt-3">
+            <Button label="Order Materials" variant="muted" onPress={() => router.push("/homeowner/approvals" as never)} />
+          </View>
+        </Card>
+      )}
 
       <Card title="Budget by Category">
         {categories.length === 0 ? (

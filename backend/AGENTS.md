@@ -37,6 +37,8 @@ instead: `php artisan serve --host=0.0.0.0 --port=8000`.
 - `app/Services/AuthService.php` - User registration/credential-check logic, used by `AuthController`
 - `app/Services/ConstructionPlanService.php` - The Groq API call + tool schema, used by `ConstructionPlanController`; throws `App\Exceptions\ConstructionPlanGenerationException` (carries the HTTP status to return) on failure
 - `app/Services/SupplierProductService.php` - Supplier inventory (`/api/supplier-products`, `role:supplier`, owner-only edits) and the read-only buyer catalog (`/api/materials`, `role:homeowner,contractor`). `stock_status` is always derived from `stock` (> 0 → `in_stock`), never stored; `is_active` only hides/shows a listing
+- `app/Services/SupplierProfileService.php` - A supplier's own profile (`GET`/`PUT /api/supplier-profile`, `role:supplier`): the verified account details (business name and license stay on `users`, read-only here) plus the editable shop details in `supplier_profiles` (`location`, `contact_number`, `bio`), and how many listings are active / in stock. Buyers see `location` and `contact_number` on the catalog's `supplier.supplier_profile`; `bio` stays on the profile page
+- `app/Services/HomeownerProfileService.php` - A homeowner's own profile (`GET`/`PUT /api/homeowner-profile`, `role:homeowner`): account details, project counts by status, and the editable `location` / `contact_number` in `homeowner_profiles`. Private — no other endpoint returns it (contractors and workers only get `ownerName`); share it deliberately, per project, if that is ever wanted. Name, email and role are not editable here
 - `app/Services/ChatService.php` - Homeowner ↔ contractor project messaging (`/api/conversations/*`). One thread per project + pair (unique index); access requires the real `project_contractors` link to start/send, and participation to read. Delivery is client polling (`after_id`), not websockets; `client_key` makes sends idempotent
 - `app/Services/MaterialRequestService.php` / `SupplierOrderService.php` / `MaterialWorkflow.php` - Material workflow: contractor drafts a request (`/api/material-requests`) → homeowner approves/revises/rejects → approval splits items into one `SupplierOrder` per supplier (`/api/supplier-orders`, supplier sees only their own) → supplier confirms (reserves stock) or reports insufficient/declines (request returns for revision) → changed prices need homeowner confirmation → preparing → for_delivery → delivered (deducts stock) → contractor confirms receipt → request `completed`. `material_requests.status` is approval only; fulfillment lives on `supplier_orders.status`; every transition is logged in `material_request_status_logs`
 - `app/Services/StockService.php` - The only code that moves `supplier_products.reserved`/`stock`, via single conditional UPDATEs (no double-promising, no negatives). Available-to-promise = `stock - reserved`, which `stock_status` is derived from
@@ -94,6 +96,16 @@ with the listing id it used (`supplierProductId`, 0 = estimate), but the server 
 approved supplier, and the chosen supplier for its category) and overwrites the line's name, unit and
 price from the listing, dropping the link otherwise. The link is saved in `projects.ai_materials`, so the
 contractor's material request (`MaterialRequestService::aiSuggestions`) starts from the chosen listing.
+
+The prompt only has room for a dozen or so rows per plan category (`CHOSEN_SUPPLIER_ROWS` / `AUTO_ROWS`;
+the listings come out of the room left for the plan itself, see `replyTokenBudget`), so `spread()` takes
+them round-robin across listing categories, oldest listing first — never "the N cheapest", which on a
+~90-item catalog is all fasteners and no cement. Raise those caps only after checking the reply budget.
+
+Demo catalog: `php artisan db:seed --class=SupplierSheetSeeder` loads the 91-material listing sheet
+(foundation → finishes) as the supplier "Tripple R" and gives every other approved supplier the same list at
+their own prices. Materials Tripple R left unpriced are added inactive at ₱0 (hidden from buyers until it
+prices them); the other suppliers price those. Listings a supplier already has by name are never edited.
 
 ## Material planning
 

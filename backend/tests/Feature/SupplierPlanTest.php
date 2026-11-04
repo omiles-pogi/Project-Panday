@@ -165,6 +165,33 @@ class SupplierPlanTest extends TestCase
         $this->assertStringContainsString('no supplier chosen', $context);
     }
 
+    public function test_a_big_catalog_still_shows_every_kind_of_material_not_just_the_cheapest_odds_and_ends(): void
+    {
+        $supplier = $this->supplier('Big Shop');
+        // The main line is listed first; far more cheaper odds and ends follow than the prompt has room for.
+        $cement = $this->product($supplier, 'Portland Cement', 'Cement', 265);
+        foreach (range(1, 30) as $i) {
+            $this->product($supplier, "Cheap Fastener {$i}", 'Hardware', 5 + $i);
+            $this->product($supplier, "Cement Additive {$i}", 'Cement', 10 + $i);
+        }
+        $sand = $this->product($supplier, 'Washed Sand', 'Sand', 1350);
+        $gravel = $this->product($supplier, 'Gravel 3/4"', 'Gravel', 1500);
+        $steel = $this->product($supplier, 'Rebar 10mm', 'Steel', 195);
+
+        $chosen = app(SupplierProductService::class)->pricingContextForPrompt(['Construction Materials' => $supplier->id]);
+        $auto = app(SupplierProductService::class)->pricingContextForPrompt();
+
+        foreach ([$chosen, $auto] as $context) {
+            $this->assertStringContainsString("{$cement->id} | Portland Cement", $context);
+            $this->assertStringContainsString("{$sand->id} | Washed Sand", $context);
+            $this->assertStringContainsString("{$gravel->id} | Gravel 3/4\"", $context);
+            $this->assertStringContainsString("{$steel->id} | Rebar 10mm", $context);
+        }
+        // The cap still holds: 12 rows for a chosen supplier, 8 without a choice.
+        $this->assertSame(12, substr_count($chosen, "\n") - 3);
+        $this->assertSame(8, substr_count($auto, "\n") - 3);
+    }
+
     public function test_out_of_stock_inactive_and_unapproved_listings_are_never_shown(): void
     {
         $supplier = $this->supplier();

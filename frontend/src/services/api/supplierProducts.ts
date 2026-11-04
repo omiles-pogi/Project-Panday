@@ -38,7 +38,13 @@ export interface SupplierProductInput {
 
 /** A catalog listing as homeowners/contractors see it — includes the supplier's public details. */
 export interface CatalogMaterialDto extends SupplierProductDto {
-  supplier: { id: number; name: string; business_name: string | null };
+  supplier: {
+    id: number;
+    name: string;
+    business_name: string | null;
+    /** Filled in from the supplier's own profile; null until they set one up. */
+    supplier_profile?: { location: string | null; contact_number: string | null } | null;
+  };
 }
 
 export interface CatalogFilters {
