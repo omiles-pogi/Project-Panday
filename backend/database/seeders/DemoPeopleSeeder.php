@@ -10,15 +10,21 @@ use Illuminate\Database\Seeder;
  *
  *   php artisan db:seed --class=DemoPeopleSeeder
  *
- * Creates seven skilled workers covering different trades, six contractors covering different
- * specializations, and two suppliers who list the same materials at different prices — and differ
- * from the existing "Supplier Test" listings too. All accounts are pre-approved and share PASSWORD.
- * Safe to re-run: accounts are matched by email and listings by name, so it updates instead of
- * duplicating.
+ * Creates two homeowners, seven skilled workers covering different trades, six contractors covering
+ * different specializations, and two suppliers who list the same materials at different prices — and
+ * differ from the existing "Supplier Test" listings too. All accounts are pre-approved and share
+ * PASSWORD. Safe to re-run: accounts are matched by email and listings by name, so it updates instead
+ * of duplicating.
  */
 class DemoPeopleSeeder extends Seeder
 {
     private const PASSWORD = 'password123';
+
+    /** [name, email, location, contact number] */
+    private const HOMEOWNERS = [
+        ['Maria Santos', 'maria@panday.test', 'Quezon City, Metro Manila', '09171234567'],
+        ['Carlo Reyes', 'carlo@panday.test', 'Davao City, Davao del Sur', '09179876543'],
+    ];
 
     /** [name, email, trade, years, bio, skills[], min daily wage] */
     private const WORKERS = [
@@ -139,6 +145,14 @@ class DemoPeopleSeeder extends Seeder
 
     public function run(): void
     {
+        foreach (self::HOMEOWNERS as [$name, $email, $location, $contactNumber]) {
+            $user = $this->account($name, $email, 'homeowner');
+            $user->homeownerProfile()->updateOrCreate([], [
+                'location' => $location,
+                'contact_number' => $contactNumber,
+            ]);
+        }
+
         foreach (self::WORKERS as [$name, $email, $trade, $years, $bio, $skills, $minDailyWage]) {
             $user = $this->account($name, $email, 'worker');
             $profile = $user->workerProfile()->updateOrCreate([], [
@@ -186,7 +200,7 @@ class DemoPeopleSeeder extends Seeder
         }
 
         $this->command?->info('Demo people seeded (password for all: '.self::PASSWORD.'):');
-        foreach ([...self::WORKERS, ...self::CONTRACTORS, ...self::SUPPLIERS] as $row) {
+        foreach ([...self::HOMEOWNERS, ...self::WORKERS, ...self::CONTRACTORS, ...self::SUPPLIERS] as $row) {
             $this->command?->line("  {$row[0]} <{$row[1]}>");
         }
     }
