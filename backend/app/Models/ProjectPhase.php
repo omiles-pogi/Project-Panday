@@ -33,6 +33,8 @@ class ProjectPhase extends Model
     {
         $total = $this->tasks()->count();
         if ($total === 0) {
+            $this->update(['progress_pct' => 0]);
+
             return;
         }
 

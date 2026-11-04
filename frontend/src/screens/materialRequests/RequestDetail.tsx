@@ -4,6 +4,7 @@ import { Stack, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Button, Card, Field, MONO, Screen, SubmitButton } from "@/components/ui";
 import Sheet from "@/components/Sheet";
+import { CountUp } from "@/components/charts";
 import StockBadge from "@/components/StockBadge";
 import MessageButton from "@/components/MessageButton";
 import { ItemStatusBadge, OrderStatusBadge, RequestStatusBadge, statusLabel } from "@/components/MaterialStatusBadge";
@@ -43,6 +44,8 @@ interface DraftItem {
   /** The AI's estimate and what the reviewed plan allows, when the item is in the plan (set by the server on save). */
   aiQuantity: number | null;
   planQuantity: number | null;
+  /** The AI's own wording, when the listing was only the closest one it could find — so the contractor checks it. */
+  similarTo?: string;
 }
 
 let keySeq = 0;
@@ -347,9 +350,7 @@ function TotalRow({ label, value }: { label: string; value: number }) {
   return (
     <View className="flex-row justify-between items-center pt-1">
       <Text className="text-sm font-semibold text-foreground">{label}</Text>
-      <Text className="text-base font-bold text-primary" style={{ fontFamily: MONO }}>
-        {peso(value)}
-      </Text>
+      <CountUp text={peso(value)} duration={500} className="text-base font-bold text-primary" style={{ fontFamily: MONO }} />
     </View>
   );
 }
@@ -496,11 +497,14 @@ function ItemEditor({ request: r, onSaved }: { request: MaterialRequest; onSaved
   const [error, setError] = useState<string | null>(null);
   const [picker, setPicker] = useState<null | { replaceKey?: string; search: string }>(null);
   const [importing, setImporting] = useState(false);
+  // Set when Submit found materials without a listing: the picker then walks through each of them in turn.
+  const [guided, setGuided] = useState(false);
 
   const update = (next: DraftItem[]) => {
     setItems(next);
     setDirty(true);
   };
+  const missing = items.filter((d) => !d.supplierProductId);
   const lockedTotal = r.items.filter((i) => i.locked).reduce((s, i) => s + i.estimatedSubtotal, 0);
   const total = lockedTotal + items.reduce((s, d) => s + (Number(d.quantity) || 0) * d.unitPrice, 0);
 
@@ -515,8 +519,11 @@ function ItemEditor({ request: r, onSaved }: { request: MaterialRequest; onSaved
     if (busy) return;
     const problem = validate();
     if (problem) return setError(problem);
-    if (andSubmit && items.some((d) => !d.supplierProductId)) {
-      return setError("Choose a supplier listing for every material before submitting.");
+    if (andSubmit && missing.length > 0) {
+      // Don't just refuse: open the picker on the first one, searching for what the AI called it.
+      setError(`${missing.length} material${missing.length === 1 ? " still needs" : "s still need"} a supplier listing — pick one for each, or remove it.`);
+      setGuided(true);
+      return setPicker({ replaceKey: missing[0].key, search: missing[0].materialName });
     }
     setBusy(andSubmit ? "submit" : "save");
     setError(null);
@@ -534,12 +541,26 @@ function ItemEditor({ request: r, onSaved }: { request: MaterialRequest; onSaved
 
   const onPick = (m: CatalogMaterialDto) => {
     const replaceKey = picker?.replaceKey;
-    setPicker(null);
-    if (replaceKey) {
-      update(items.map((d) => (d.key === replaceKey ? fromListing(m, d.quantity, d.source, d.key, d.id) : d)));
-    } else {
-      update([...items, fromListing(m, "1", "manual")]);
+    const next = replaceKey
+      ? items.map((d) => (d.key === replaceKey ? fromListing(m, d.quantity, d.source, d.key, d.id) : d))
+      : [...items, fromListing(m, "1", "manual")];
+    update(next);
+
+    const stillMissing = next.find((d) => !d.supplierProductId);
+    if (guided && stillMissing) {
+      setPicker({ replaceKey: stillMissing.key, search: stillMissing.materialName });
+      return;
     }
+    setPicker(null);
+    if (guided) {
+      setGuided(false);
+      setError(null);
+    }
+  };
+
+  const closePicker = () => {
+    setPicker(null);
+    setGuided(false);
   };
 
   const onImport = (picked: AiMaterialSuggestion[]) => {
@@ -558,6 +579,7 @@ function ItemEditor({ request: r, onSaved }: { request: MaterialRequest; onSaved
             source: "ai",
             aiQuantity: null,
             planQuantity: null,
+            similarTo: s.matchKind === "similar" ? s.material : undefined,
           }
         : {
             key: newKey(),
@@ -606,6 +628,11 @@ function ItemEditor({ request: r, onSaved }: { request: MaterialRequest; onSaved
                 )}
                 {d.source === "ai" && <Badge label="AI suggested" color="#8b5cf6" />}
               </View>
+              {d.similarTo && (
+                <Text className="text-xs" style={{ color: "#3b82f6" }}>
+                  Closest listing to the AI&apos;s “{d.similarTo}” — check it&apos;s the right one, or change it.
+                </Text>
+              )}
               {d.planQuantity !== null && qty > d.planQuantity ? (
                 <Text className="text-xs" style={{ color: "#f97316" }}>
                   Above the plan&apos;s {d.planQuantity.toLocaleString()} {d.unit} — the homeowner will be asked to approve.
@@ -652,6 +679,11 @@ function ItemEditor({ request: r, onSaved }: { request: MaterialRequest; onSaved
           <Button label="Import AI Estimate" variant="tint" color="#8b5cf6" onPress={() => setImporting(true)} />
         </View>
         <TotalRow label="Estimated total" value={total} />
+        {missing.length > 0 && (
+          <Text className="text-xs" style={{ color: "#f97316" }}>
+            {missing.length} material{missing.length === 1 ? " has" : "s have"} no supplier listing yet. Tap Submit and you&apos;ll be taken through them one by one.
+          </Text>
+        )}
         <Text className="text-xs text-muted-foreground">Prices are current supplier list prices. Suppliers confirm final prices after approval.</Text>
       </Card>
 
@@ -672,14 +704,33 @@ function ItemEditor({ request: r, onSaved }: { request: MaterialRequest; onSaved
         <Button label={busy === "save" ? "Saving…" : dirty ? "Save Draft" : "Saved"} variant="muted" onPress={() => save(false)} />
       </Card>
 
-      {picker && <CatalogPickerSheet initialSearch={picker.search} onPick={onPick} onClose={() => setPicker(null)} />}
+      {picker && (
+        <CatalogPickerSheet
+          key={picker.replaceKey ?? "new"}
+          initialSearch={picker.search}
+          forMaterial={picker.replaceKey ? items.find((d) => d.key === picker.replaceKey)?.materialName : undefined}
+          onPick={onPick}
+          onClose={closePicker}
+        />
+      )}
       {importing && <AiImportSheet projectId={r.project.id} onImport={onImport} onClose={() => setImporting(false)} />}
     </>
   );
 }
 
 /** Search every supplier's listed materials and pick one. */
-function CatalogPickerSheet({ initialSearch, onPick, onClose }: { initialSearch: string; onPick: (m: CatalogMaterialDto) => void; onClose: () => void }) {
+function CatalogPickerSheet({
+  initialSearch,
+  forMaterial,
+  onPick,
+  onClose,
+}: {
+  initialSearch: string;
+  /** The material a listing is being chosen for, when replacing one. */
+  forMaterial?: string;
+  onPick: (m: CatalogMaterialDto) => void;
+  onClose: () => void;
+}) {
   const [search, setSearch] = useState(initialSearch);
   const [results, setResults] = useState<CatalogMaterialDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -703,7 +754,12 @@ function CatalogPickerSheet({ initialSearch, onPick, onClose }: { initialSearch:
   }, [search]);
 
   return (
-    <Sheet visible title="Supplier Materials" subtitle="Pick a listing — its supplier and current price are used." onClose={onClose}>
+    <Sheet
+      visible
+      title="Supplier Materials"
+      subtitle={forMaterial ? `Pick the listing for “${forMaterial}” — its supplier and current price are used.` : "Pick a listing — its supplier and current price are used."}
+      onClose={onClose}
+    >
       <Field label="Search" value={search} onChangeText={setSearch} placeholder="e.g. cement, rebar, plywood" maxLength={100} />
       {error && <Text className="text-xs text-danger">{error}</Text>}
       {results === null && !error ? (
@@ -774,12 +830,18 @@ function AiImportSheet({ projectId, onImport, onClose }: { projectId: number; on
                   {s.quantity.toLocaleString()} {s.unit} · AI estimate {peso(s.estimatedUnitPrice)}/{s.unit}
                 </Text>
                 {s.match ? (
-                  <View className="flex-row flex-wrap items-center gap-2">
-                    <Badge label={`Matched: ${s.match.supplierName ?? "supplier"} ${peso(s.match.price)}`} color="#10b981" />
-                    <StockBadge status={s.match.stockStatus} quantity={s.match.availableQuantity} unit={s.match.unit} />
-                  </View>
+                  <>
+                    <View className="flex-row flex-wrap items-center gap-2">
+                      <Badge
+                        label={`${s.matchKind === "similar" ? "Closest" : "Matched"}: ${s.match.supplierName ?? "supplier"} ${peso(s.match.price)}`}
+                        color={s.matchKind === "similar" ? "#3b82f6" : "#10b981"}
+                      />
+                      <StockBadge status={s.match.stockStatus} quantity={s.match.availableQuantity} unit={s.match.unit} />
+                    </View>
+                    {s.matchKind === "similar" && <Text className="text-xs text-muted-foreground">{s.match.name} — check it&apos;s the right one.</Text>}
+                  </>
                 ) : (
-                  <Badge label="No matching listing — choose one after import" color="#f97316" />
+                  <Badge label="No listing found — you'll pick one when you submit" color="#f97316" />
                 )}
               </View>
             </Pressable>

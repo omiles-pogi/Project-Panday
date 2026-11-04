@@ -1,11 +1,13 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Card, PageHeader, ProgressBar, Screen, StatGrid, StatTile } from "@/components/ui";
 import { ProgressRing } from "@/components/charts";
 import { fetchDashboard, fetchProjectActivityLog } from "@/services/api/projects";
 import type { ActivityLogDay, DashboardProject } from "@/types/project";
+import { usePlan } from "@/context/PlanContext";
+import { useFocusedResource } from "@/hooks/useFocusedResource";
 
 function dayLabel(dateStr: string): string {
   const date = new Date(`${dateStr}T00:00:00`);
@@ -19,41 +21,16 @@ function dayLabel(dateStr: string): string {
 }
 
 export default function ProgressMonitor() {
-  const [project, setProject] = useState<DashboardProject | null>(null);
-  const [log, setLog] = useState<ActivityLogDay[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      setLoading(true);
-      setError(null);
-      fetchDashboard()
-        .then((dashboard) => {
-          if (cancelled) return undefined;
-          // A "not started yet" project has no plan, phases or progress to track.
-          const started = dashboard.project?.status === "not_started" ? null : dashboard.project;
-          setProject(started);
-          if (!started) {
-            setLog([]);
-            return undefined;
-          }
-          return fetchProjectActivityLog(started.id).then((days) => {
-            if (!cancelled) setLog(days);
-          });
-        })
-        .catch((err) => {
-          if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load progress.");
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }, [])
-  );
+  const { activeProjectKey, ready } = usePlan();
+  const load = useCallback(async (): Promise<{ project: DashboardProject | null; log: ActivityLogDay[] }> => {
+    const id = /^\d+$/.test(activeProjectKey) ? Number(activeProjectKey) : undefined;
+    const dashboard = await fetchDashboard(id);
+    const project = dashboard.project?.status === "not_started" ? null : dashboard.project;
+    return { project, log: project ? await fetchProjectActivityLog(project.id) : [] };
+  }, [activeProjectKey]);
+  const { data, loading, error, refresh } = useFocusedResource(load, ready);
+  const project = data?.project ?? null;
+  const log = data?.log ?? [];
 
   if (loading) {
     return (
@@ -63,11 +40,14 @@ export default function ProgressMonitor() {
     );
   }
 
-  if (error) {
+  if (error && !project) {
     return (
       <View className="flex-1 items-center justify-center bg-background px-8">
         <Ionicons name="warning-outline" size={28} color="#ef4444" style={{ marginBottom: 8 }} />
         <Text className="text-sm text-center text-muted-foreground">{error}</Text>
+        <Pressable accessibilityRole="button" onPress={refresh} className="mt-4 px-4 py-2 rounded-xl bg-primary">
+          <Text className="text-sm font-semibold text-primary-foreground">Retry</Text>
+        </Pressable>
       </View>
     );
   }
@@ -99,6 +79,11 @@ export default function ProgressMonitor() {
   return (
     <Screen topInset={false}>
       <PageHeader title="Progress Monitor" subtitle={project.title} />
+      {error && <Text className="text-xs text-danger">Refresh failed. Showing the last loaded progress: {error}</Text>}
+      <Pressable accessibilityRole="button" onPress={refresh} className="self-start flex-row items-center gap-1.5">
+        <Ionicons name="refresh-outline" size={14} color="#f59e0b" />
+        <Text className="text-xs text-muted-foreground">Refresh progress · updates every 15 seconds</Text>
+      </Pressable>
 
       <Card>
         <View className="flex-row items-center gap-4">

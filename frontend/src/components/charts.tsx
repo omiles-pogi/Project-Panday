@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Text, View, type TextProps } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import Animated, {
@@ -65,7 +65,8 @@ export function ProgressRing({ pct, size = 64, color = "#f59e0b" }: { pct: numbe
 
 /**
  * Text that counts up to its number: "46%" -> 0%..46%, "+12%", "₱2.5M" etc. keep their
- * prefix/suffix; text without a number renders as-is.
+ * prefix/suffix; text without a number renders as-is. When the number later changes it glides from
+ * where it was to the new figure, so a price that moves is seen moving.
  */
 export function CountUp({ text, duration = 900, ...props }: { text: string; duration?: number } & TextProps) {
   const match = /^([^\d-]*)(-?[\d,]*\.?\d+)(.*)$/.exec(text);
@@ -73,13 +74,17 @@ export function CountUp({ text, duration = 900, ...props }: { text: string; dura
   const decimals = match?.[2].includes(".") ? match[2].split(".")[1].length : 0;
   const grouped = !!match && match[2].includes(",");
   const [value, setValue] = useState(0);
+  // Where the last animation had got to, so the next one starts there instead of back at 0.
+  const lastValue = useRef(0);
 
   useEffect(() => {
     if (Number.isNaN(target)) return;
+    const from = lastValue.current;
     const start = Date.now();
     const id = setInterval(() => {
       const t = Math.min(1, (Date.now() - start) / duration);
-      setValue(target * (1 - Math.pow(1 - t, 3)));
+      lastValue.current = from + (target - from) * (1 - Math.pow(1 - t, 3));
+      setValue(lastValue.current);
       if (t >= 1) clearInterval(id);
     }, 33);
     return () => clearInterval(id);

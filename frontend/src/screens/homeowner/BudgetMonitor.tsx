@@ -2,8 +2,9 @@ import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { Card, PageHeader, Screen, StatGrid, StatTile } from "@/components/ui";
-import { fetchDashboard } from "@/services/api/projects";
+import { Button, Card, PageHeader, Screen, StatGrid, StatTile } from "@/components/ui";
+import AddBudgetSheet from "@/components/AddBudgetSheet";
+import { addProjectBudget, fetchDashboard } from "@/services/api/projects";
 import { usePlan } from "@/context/PlanContext";
 import { peso } from "@/utils/currency";
 import { BUDGET_STATUS_META, compareBudget, formatBudget } from "@/utils/budget";
@@ -17,6 +18,7 @@ export default function BudgetMonitor() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [addingBudget, setAddingBudget] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -103,6 +105,13 @@ export default function BudgetMonitor() {
   const statusMeta = BUDGET_STATUS_META[cmp.status];
   const categories = project.approvedPlan?.budgetBreakdown ?? [];
 
+  // Rejects with the backend's message so the sheet can show it instead of closing.
+  const addBudget = async (amount: number) => {
+    const updated = await addProjectBudget(project.id, amount);
+    setProject(updated);
+    selectProject(updated.id, updated.approvedPlan);
+  };
+
   return (
     <Screen topInset={false}>
       <PageHeader title="Budget Monitor" subtitle={project.title} />
@@ -130,6 +139,14 @@ export default function BudgetMonitor() {
             />
           )}
         </StatGrid>
+        {cmp.status === "over" && (
+          <View className="mt-3" style={{ gap: 8 }}>
+            <Text className="text-xs text-muted-foreground">
+              The estimate is {peso(-buffer)} past your budget. Add budget to cover it.
+            </Text>
+            <Button label="Add Budget" onPress={() => setAddingBudget(true)} />
+          </View>
+        )}
       </Card>
 
       {/* Why the estimate is above the AI's plan: sudden material requests and hiring beyond the plan's lines. */}
@@ -156,6 +173,10 @@ export default function BudgetMonitor() {
           <BudgetCategoryBreakdown key={project.id} breakdown={categories} materials={project.approvedPlan?.materials} project={project} />
         )}
       </Card>
+
+      {addingBudget && (
+        <AddBudgetSheet budget={project.budget} estimate={project.totalEstimate} onClose={() => setAddingBudget(false)} onSave={addBudget} />
+      )}
     </Screen>
   );
 }

@@ -72,13 +72,38 @@ class SupplierProductService
      */
     public function catalog(array $filters): Collection
     {
-        $search = trim((string) ($filters['search'] ?? ''));
+        $words = preg_split('/\s+/', mb_strtolower(trim((string) ($filters['search'] ?? ''))), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        // Every word must be in the name, in any order. When none is (an AI-written name like "Portland cement
+        // 40kg bag" rarely matches a listing word for word), show what has most of the words instead of nothing.
+        $found = $this->catalogQuery($filters, $words, all: true)->get();
+        if ($found->isEmpty() && count($words) > 1) {
+            $found = $this->catalogQuery($filters, array_filter($words, fn (string $w) => mb_strlen($w) >= 3), all: false)->get()
+                ->sortByDesc(fn (SupplierProduct $p) => count(array_filter($words, fn (string $w) => str_contains(mb_strtolower($p->name), $w))))
+                ->values();
+        }
+
+        return $found;
+    }
+
+    /**
+     * @param  array{category?: ?string, stock?: ?string}  $filters
+     * @param  array<int, string>  $words  lower-case search words
+     * @param  bool  $all  every word must match the name (else any one of them)
+     * @return Builder<SupplierProduct>
+     */
+    private function catalogQuery(array $filters, array $words, bool $all): Builder
+    {
         $stock = $filters['stock'] ?? null;
 
         return SupplierProduct::query()
             ->listed()
             ->with('supplier:id,name,business_name')
-            ->when($search !== '', fn (Builder $q) => $q->where('name', 'like', '%'.addcslashes($search, '%_\\').'%'))
+            ->when($words !== [], fn (Builder $q) => $q->where(function (Builder $q) use ($words, $all) {
+                foreach ($words as $word) {
+                    $q->where('name', 'like', '%'.addcslashes($word, '%_\\').'%', $all ? 'and' : 'or');
+                }
+            }))
             ->when($filters['category'] ?? null, fn (Builder $q, string $category) => $q->where('category', $category))
             // Compared column-to-column (not `stock - reserved`) so MySQL never evaluates an unsigned
             // subtraction; "in stock" means available-to-promise > 0.
@@ -86,8 +111,7 @@ class SupplierProductService
             ->when($stock === 'out_of_stock', fn (Builder $q) => $q->whereColumn('stock', '<=', 'reserved'))
             ->orderByRaw('CASE WHEN stock > reserved THEN 0 ELSE 1 END')
             ->orderBy('name')
-            ->limit(200)
-            ->get();
+            ->limit(200);
     }
 
     /** A single catalog listing — 404s for a deactivated listing or an unapproved supplier. */

@@ -1,10 +1,10 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { Pressable, ScrollView, Text, View, ActivityIndicator } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Card, PageHeader, Screen, StatGrid, StatTile } from "@/components/ui";
 import { fetchMyProjects } from "@/services/api/projects";
-import type { MyProject } from "@/types/project";
+import { useFocusedResource } from "@/hooks/useFocusedResource";
 import { useTheme } from "@/context/ThemeContext";
 import ProjectCalendar from "@/screens/timeline/ProjectCalendar";
 import { peso } from "@/utils/currency";
@@ -19,16 +19,7 @@ const QUICK_ACTIONS = [
 export default function Dashboard() {
   const { chrome } = useTheme();
   const [calendarProjectId, setCalendarProjectId] = useState<number | null>(null);
-  const [projects, setProjects] = useState<MyProject[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    fetchMyProjects()
-      .then(setProjects)
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load projects."));
-  }, []);
-
-  useFocusEffect(load);
+  const { data: projects, error } = useFocusedResource(fetchMyProjects);
 
   if (!error && projects === null) {
     return (

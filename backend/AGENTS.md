@@ -109,6 +109,16 @@ the reviewed plan (refused until reviewed; asking again resumes the draft). Item
 AI's figure) and `plan_quantity` (what the reviewed plan allows), always worked out server-side by
 `PlanMaterials::match` — never from the client.
 
+**Importing the AI estimate** (`GET /api/projects/{id}/ai-materials`) gives each plan line a listing and a
+`matchKind`: `plan` (the listing the plan was priced from), `exact` (same name), `similar` (closest wording), or
+null. The AI rarely words a material like a listing, so `PlanMaterials::similarity` (also the last tier of
+`match`, which is how a similar listing still counts as the plan's material) accepts a listing when every size
+in the AI's name is in it (10mm ≠ 12mm), they share a real word, and ≥ half their words agree; ties go to the
+same unit, the homeowner's chosen supplier, then stock and price. A line nothing resembles stays unmatched and
+can't be submitted until a listing is picked — the app walks the contractor through those — and the catalog
+search (`SupplierProductService::catalog`) matches words in any order, falling back to the listings with the
+most of the words when none has them all.
+
 `MaterialApprovalPolicy` decides, on submit, whether a request approves itself: every item is in the plan, the
 totals per plan material (this request + earlier approved ones) stay within `plan_quantity`, each category
 stays within the approved plan's `budgetBreakdown` (counting what earlier requests already committed), items
@@ -163,6 +173,12 @@ differences on in-plan materials aren't counted. Pending requests are only a hea
 they join on approval and drop out if cancelled. Only the **homeowner** gets the adjusted figures —
 contractors and workers see `planEstimate` as `totalEstimate` and a null `estimateAdjustment`. A pending request
 carries `estimateImpact` (what approving would do to the estimate and left over) for the homeowner's decision.
+
+When the estimate ends up past the homeowner's budget they can raise it: `POST /api/projects/{project}/budget`
+(`{amount}`, homeowner only, `ProjectService::addBudget`) **adds** `amount` pesos rather than setting a total, so
+two stale screens can't undo each other. It moves `projects.budget` and the copy in `approved_plan.budget`
+together and returns the project as the dashboard shows it. The estimate itself is never editable — more budget
+is the only way to close a shortfall. A "not started yet" project has no budget to add to.
 
 ## New projects
 

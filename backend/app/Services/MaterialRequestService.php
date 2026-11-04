@@ -436,8 +436,10 @@ class MaterialRequestService
     }
 
     /**
-     * The AI plan's suggested materials for this project, each matched to the cheapest listing
-     * whose name is the same (case/space-insensitive) — only exact matches count as reliable.
+     * The AI plan's suggested materials for this project, each matched to a supplier listing: the one the
+     * plan was priced from, else the cheapest listing with the same name (case/space-insensitive), else the
+     * closest-worded one (`matchKind` says which, so the contractor can check a "similar" one). A line
+     * nothing resembles has no match and needs a listing picked by hand.
      *
      * @return Collection<int, array<string, mixed>>
      */
@@ -452,12 +454,20 @@ class MaterialRequestService
         $listings = $all->groupBy(fn (SupplierProduct $p) => $this->normalize($p->name));
         $byId = $all->keyBy('id');
 
-        return PlanMaterials::lines($project)->map(function (array $line) use ($listings, $byId) {
+        $selections = $project->approved_plan['supplierSelections'] ?? [];
+
+        return PlanMaterials::lines($project)->map(function (array $line) use ($listings, $byId, $all, $selections) {
             // The listing the homeowner's plan was priced from (their chosen supplier) wins while it's
             // still on sale; otherwise fall back to the cheapest same-named listing.
             $chosen = $byId->get($line['supplierProductId']);
             $candidates = $listings->get($this->normalize($line['material'])) ?? collect();
             $match = $chosen ?? $candidates->first(fn (SupplierProduct $p) => $p->available_quantity > 0) ?? $candidates->first();
+            $kind = $chosen ? 'plan' : ($match ? 'exact' : null);
+
+            if (! $match) {
+                $match = $this->closestListing($line, $all, $selections);
+                $kind = $match ? 'similar' : null;
+            }
 
             return [
                 'index' => $line['index'],
@@ -473,8 +483,43 @@ class MaterialRequestService
                 'unit' => $line['unit'],
                 'estimatedUnitPrice' => $line['estimatedUnitPrice'],
                 'match' => $match ? $this->presentListing($match) : null,
+                'matchKind' => $kind,
             ];
         })->values();
+    }
+
+    /**
+     * The listing worded most like an AI material that no listing is named exactly: same sizes, enough words
+     * in common (`PlanMaterials::similarity`). Of equally close ones the cheapest wins; the same unit, the
+     * supplier the homeowner chose for its category and stock on hand each break a near tie in its favour.
+     *
+     * @param  array<string, mixed>  $line
+     * @param  Collection<int, SupplierProduct>  $listings  cheapest first
+     * @param  array<string, int|null>  $selections
+     */
+    private function closestListing(array $line, Collection $listings, array $selections): ?SupplierProduct
+    {
+        $best = null;
+        $bestScore = 0.0;
+
+        foreach ($listings as $p) {
+            $similarity = PlanMaterials::similarity($line['material'], $p->name);
+            if ($similarity === 0.0) {
+                continue;
+            }
+
+            $category = SupplierProduct::planCategoryFor($p->category);
+            $score = $similarity
+                + ($this->normalize($p->unit) === $this->normalize($line['unit']) ? 0.1 : 0)
+                + ($category && (int) ($selections[$category] ?? 0) === $p->supplier_id ? 0.1 : 0)
+                + ($p->available_quantity > 0 ? 0.05 : 0);
+
+            if ($score > $bestScore) {
+                [$best, $bestScore] = [$p, $score];
+            }
+        }
+
+        return $best;
     }
 
     /** @return Collection<int, SupplierOrder> orders that were open and are now cancelled */

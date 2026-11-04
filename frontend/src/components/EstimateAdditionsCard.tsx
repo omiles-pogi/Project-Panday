@@ -1,5 +1,6 @@
 import { Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { CountUp } from "@/components/charts";
 import { Card, MONO } from "@/components/ui";
 import type { EstimateAddition, ProjectEstimateAdjustment } from "@/types/project";
 import { peso } from "@/utils/currency";
@@ -22,9 +23,7 @@ export default function EstimateAdditionsCard({ adjustment }: { adjustment: Proj
     <Card title="Added since the plan" gap={10}>
       <View className="flex-row items-center justify-between">
         <Text className="text-xs text-muted-foreground">AI estimate at the start</Text>
-        <Text className="text-xs font-semibold text-foreground" style={{ fontFamily: MONO }}>
-          {peso(adjustment.planEstimate)}
-        </Text>
+        <CountUp text={peso(adjustment.planEstimate)} className="text-xs font-semibold text-foreground" style={{ fontFamily: MONO }} />
       </View>
 
       {adjustment.additions.map((a) => (
@@ -34,9 +33,7 @@ export default function EstimateAdditionsCard({ adjustment }: { adjustment: Proj
               <Ionicons name={KIND_ICON[a.kind]} size={16} color="#f59e0b" />
               <Text className="flex-1 text-sm font-semibold text-foreground">{a.label}</Text>
             </View>
-            <Text className="text-sm font-bold" style={{ color: "#ef4444", fontFamily: MONO }}>
-              +{peso(a.amount)}
-            </Text>
+            <CountUp text={`+${peso(a.amount)}`} className="text-sm font-bold" style={{ color: "#ef4444", fontFamily: MONO }} />
           </View>
 
           {a.lines?.slice(0, 5).map((l, i) => (
@@ -65,9 +62,7 @@ export default function EstimateAdditionsCard({ adjustment }: { adjustment: Proj
 
       <View className="flex-row items-center justify-between pt-1">
         <Text className="text-sm font-bold text-foreground">Estimate now</Text>
-        <Text className="text-sm font-bold" style={{ color: "#f59e0b", fontFamily: MONO }}>
-          {peso(adjustment.adjustedEstimate)}
-        </Text>
+        <CountUp text={peso(adjustment.adjustedEstimate)} className="text-sm font-bold" style={{ color: "#f59e0b", fontFamily: MONO }} />
       </View>
     </Card>
   );

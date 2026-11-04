@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\AddBudgetRequest;
 use App\Http\Requests\ApplyAsContractorRequest;
 use App\Http\Requests\AssignContractorRequest;
 use App\Http\Requests\AssignWorkerRequest;
@@ -61,6 +62,18 @@ class ProjectController extends Controller
         $projectId = $request->query('project_id');
 
         return response()->json($this->projects->dashboardFor($request->user(), $projectId ? (int) $projectId : null));
+    }
+
+    /** Adds to the homeowner's budget — for when the estimate has gone past it. */
+    public function addBudget(AddBudgetRequest $request, Project $project): JsonResponse
+    {
+        try {
+            $updated = $this->projects->addBudget($project, $request->user(), $request->validated('amount'));
+        } catch (ValidationException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        return response()->json($updated);
     }
 
     public function index(Request $request): JsonResponse

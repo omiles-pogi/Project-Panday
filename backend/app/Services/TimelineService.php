@@ -315,13 +315,15 @@ class TimelineService
     private function actualPctAsOf(Collection $phases, Carbon $date, Carbon $today): int
     {
         $total = $phases->sum('weight_pct');
-        if ($total <= 0) {
+        $denominator = $total > 0 ? $total : $phases->count();
+        if ($denominator === 0) {
             return 0;
         }
+        $weightOf = fn (ProjectPhase $phase) => $total > 0 ? $phase->weight_pct : 1;
 
-        $weighted = $phases->sum(function (ProjectPhase $phase) use ($date, $today) {
+        $weighted = $phases->sum(function (ProjectPhase $phase) use ($date, $today, $weightOf) {
             if ($date->gte($today)) {
-                return $phase->weight_pct * $phase->progress_pct;
+                return $weightOf($phase) * $phase->progress_pct;
             }
 
             $count = $phase->tasks->count();
@@ -334,10 +336,10 @@ class TimelineService
                 fn (ProjectPhaseTask $t) => $t->is_done && ($t->completed_at ?? $t->updated_at)->lte($cutoff)
             )->count();
 
-            return $phase->weight_pct * round($done / $count * 100);
+            return $weightOf($phase) * round($done / $count * 100);
         });
 
-        return (int) round($weighted / $total);
+        return (int) round($weighted / $denominator);
     }
 
     /** Fraction (0–1) of the phase's planned window that has elapsed by the end of $date. */

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { CountUp } from "@/components/charts";
 import { ProgressBar } from "@/components/ui";
 import { budgetCategoryMeta } from "@/utils/budgetCategories";
 import { peso } from "@/utils/currency";
@@ -56,7 +57,7 @@ export default function BudgetCategoryBreakdown({
               <ProgressBar pct={pct} color={meta.color} height={6} />
               <View className="flex-row justify-between mt-1.5">
                 <Text className="text-xs text-muted-foreground">{pct.toFixed(1)}% of estimate</Text>
-                <Text className="text-xs font-semibold" style={{ color: meta.color }}>{peso(amount)}</Text>
+                <CountUp text={peso(amount)} className="text-xs font-semibold" style={{ color: meta.color }} />
               </View>
             </Pressable>
             {open && (

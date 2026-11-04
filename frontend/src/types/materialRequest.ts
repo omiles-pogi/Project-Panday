@@ -145,6 +145,8 @@ export interface AiMaterialSuggestion {
     supplierId: number;
     supplierName: string | null;
   } | null;
+  /** How `match` was found: the plan's own listing, a same-named one, or just the closest wording (worth a look). */
+  matchKind: "plan" | "exact" | "similar" | null;
 }
 
 /** A supplier's view of their own order — no homeowner details, no other suppliers' items. */

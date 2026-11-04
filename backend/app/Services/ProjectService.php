@@ -593,6 +593,39 @@ class ProjectService
         $project->delete();
     }
 
+    /**
+     * Raises the homeowner's budget by `$amount` — for when the work has outgrown it. The estimate is the
+     * AI's and the work's, never the homeowner's to edit, so more money is the only lever. Both copies of
+     * the budget move together (the project's and the one saved with its approved plan).
+     *
+     * @return array<string, mixed> the project as the dashboard shows it
+     */
+    public function addBudget(Project $project, User $actingUser, int $amount): array
+    {
+        $this->authorizeOwner($project, $actingUser);
+        if ($project->status === 'not_started') {
+            throw ValidationException::withMessages(['project_id' => 'Finish planning this project with PandAi before setting its budget.']);
+        }
+
+        DB::transaction(function () use ($project, $amount) {
+            // Locked and re-read, so two adds at once both count instead of one overwriting the other.
+            $locked = Project::query()->whereKey($project->id)->lockForUpdate()->firstOrFail();
+            $budget = (int) $locked->budget + $amount;
+
+            $plan = $locked->approved_plan;
+            if (is_array($plan)) {
+                $plan['budget'] = $budget;
+            }
+
+            $locked->update(['budget' => $budget, 'approved_plan' => $plan]);
+        });
+
+        return $this->present(
+            $project->fresh(['phases.tasks', 'workers.workerProfile', 'contractors.contractorProfile']),
+            $actingUser
+        );
+    }
+
     private function authorizeOwner(Project $project, User $actingUser): void
     {
         if ($project->user_id !== $actingUser->id) {

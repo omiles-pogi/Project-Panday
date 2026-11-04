@@ -39,6 +39,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/projects/available-for-contractors', [ProjectController::class, 'availableForContractors']);
     Route::delete('/projects/{project}', [ProjectController::class, 'destroy']);
     Route::get('/dashboard', [ProjectController::class, 'dashboard']);
+    Route::post('/projects/{project}/budget', [ProjectController::class, 'addBudget'])->middleware('role:homeowner');
     Route::get('/projects/{project}/hiring-wages', [HiringWageController::class, 'show'])->middleware('role:homeowner');
     Route::post('/projects/{project}/workers', [ProjectController::class, 'assignWorker']);
     Route::delete('/projects/{project}/workers/{worker}', [ProjectController::class, 'unassignWorker']);

@@ -1,12 +1,13 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { Text, View, Pressable, ActivityIndicator } from "react-native";
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Card, PageHeader, Screen } from "@/components/ui";
 import MessageButton from "@/components/MessageButton";
 import { fetchMyProjects } from "@/services/api/projects";
 import type { MyProject } from "@/types/project";
 import { wageLine } from "@/utils/wage";
+import { useFocusedResource } from "@/hooks/useFocusedResource";
 
 function ProjectCard({ project, initiallyExpanded }: { project: MyProject; initiallyExpanded?: boolean }) {
   const [expanded, setExpanded] = useState(!!initiallyExpanded);
@@ -100,20 +101,15 @@ export default function Assignments() {
   // that project's phases open pre-expanded instead of landing on the flat, collapsed list.
   const { projectId } = useLocalSearchParams<{ projectId?: string }>();
   const targetId = projectId ? Number(projectId) : null;
-  const [projects, setProjects] = useState<MyProject[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    fetchMyProjects()
-      .then(setProjects)
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load assignments."));
-  }, []);
-
-  useFocusEffect(load);
+  const { data: projects, error, refresh } = useFocusedResource(fetchMyProjects);
 
   return (
     <Screen>
       <PageHeader title="My Assignments" subtitle="Projects you're assigned to and their reported progress." />
+      <Pressable accessibilityRole="button" onPress={refresh} className="self-start flex-row items-center gap-1.5">
+        <Ionicons name="refresh-outline" size={14} color="#f59e0b" />
+        <Text className="text-xs text-muted-foreground">Refresh progress · updates every 15 seconds</Text>
+      </Pressable>
 
       {error && <Text className="text-xs text-danger px-1">{error}</Text>}
 
