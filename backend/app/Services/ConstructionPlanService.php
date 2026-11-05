@@ -46,7 +46,7 @@ class ConstructionPlanService
         - All money amounts are Philippine pesos (PHP), as plain numbers (no currency symbols or commas).
         - Use realistic present-day Philippine construction market rates. Do not name specific suppliers or brands unless they appear in supplier-listed pricing provided below or the homeowner named them.
         - budgetBreakdown must contain EXACTLY these six categories, each exactly once, in this order: "Foundation and Excavation", "Construction Materials", "Labor Costs", "Contractor and Project Management Fee", "Electrical and Plumbing", "Finishing Works". Base each category's amount on the project's floor area, floors, materials, and finishing level — never a fixed or generic split.
-        - budgetBreakdown amounts must sum to totalEstimate. Every cost belongs to exactly one category — never count the same material or labor expense in more than one category.
+        - budgetBreakdown amounts must sum to totalEstimate. Every cost belongs to exactly one category — never count the same material or labor expense in more than one category. budgetBreakdown must never sum to 0 while totalEstimate is positive: for a small or single-category job (e.g. repainting one room), it is correct for most categories to be 0, but the category the work actually belongs to (matching its materials' own "category" field) must carry the full amount — never leave every category at 0.
         - materials[].qty * materials[].unitPrice line items must be consistent with the totals in budgetBreakdown.
         - Set each material's "phase" to the exact name of the phase where it is first needed.
         - SUPPLIERS — the REAL SUPPLIER LISTINGS section below is the only source of material prices. For every material that matches a listing (same or clearly equivalent item), set supplierProductId to that listing's id, use its exact name and unit, express qty in that unit, and use its price as unitPrice. Where a category's header says the homeowner chose a supplier, use ONLY that supplier's listings for the whole category; if the CURRENT PLAN's materials came from a different supplier, re-source them from the chosen one and leave the rest of the plan unchanged. Prefer picking the listings the project needs over inventing materials. A material with no matching listing gets supplierProductId 0 and a realistic estimated price. Never invent a supplier, brand, listing id or price that is not in the listings.
@@ -420,6 +420,8 @@ class ConstructionPlanService
         $reason = (string) $response->json('error.message');
         $daily = str_contains($reason, 'per day') || str_contains($reason, '(TPD)') || str_contains($reason, '(RPD)');
         $when = $wait !== null ? ' in about '.$this->humanDuration($wait) : ' in a moment';
+
+        Log::warning('Construction plan request rate-limited by Groq.', ['groq_message' => $reason, 'wait_seconds' => $wait, 'daily' => $daily]);
 
         return new ConstructionPlanGenerationException(
             $daily
