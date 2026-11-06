@@ -76,7 +76,8 @@ export default function Dashboard() {
       >
         {active.length === 0 && (
           <Text className="text-xs text-muted-foreground">
-            No active assignments yet. A homeowner needs to add you to their project from Find Your Team.
+            No active assignments yet — homeowners will find and invite you once they&apos;re hiring. Keep your
+            Profile (skills, trade, experience) complete so you show up in their search.
           </Text>
         )}
         <View style={{ gap: 10 }}>

@@ -152,7 +152,7 @@ export default function Register() {
 
           <View className="flex-row justify-center mt-6 gap-1">
             <Text className="text-muted-foreground text-sm">Already have an account?</Text>
-            <Link href="/" asChild>
+            <Link href="/login" asChild>
               <Pressable>
                 <Text className="text-primary text-sm font-semibold">Sign in</Text>
               </Pressable>

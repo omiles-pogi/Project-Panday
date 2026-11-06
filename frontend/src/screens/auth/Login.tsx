@@ -1,14 +1,17 @@
 import { useState } from "react";
 import { Text, TextInput, View, Pressable } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import KeyboardView from "@/components/KeyboardView";
 import KeyboardAwareScrollView from "@/components/KeyboardAwareScrollView";
 import { Link } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
-import Logo from "@/components/Logo";
+import Mascot from "@/components/Mascot";
+import WaveHeader from "@/components/WaveHeader";
 import { isValidLoginForm } from "@/validators/auth";
 
 export default function Login() {
   const { login, prefillEmail } = useAuth();
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState(prefillEmail);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -30,48 +33,48 @@ export default function Login() {
   };
 
   return (
-    <KeyboardView
-      className="flex-1 bg-background"
-    >
-      <KeyboardAwareScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }} keyboardShouldPersistTaps="handled">
-        <View className="px-6 py-10">
-          <View className="items-center mb-10">
-            <View className="mb-4">
-              <Logo size={160} />
+    <View className="flex-1 bg-background">
+      <View style={{ paddingTop: insets.top }}>
+        <WaveHeader height={160}>
+          <Mascot size={90} mood="happy" />
+        </WaveHeader>
+      </View>
+
+      <KeyboardView className="flex-1">
+        <KeyboardAwareScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+          <View className="px-6 pt-6 pb-10">
+            <Text className="text-2xl font-extrabold text-foreground mb-6">Sign in</Text>
+
+            <View className="gap-3">
+              <Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+              <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry />
             </View>
-            <Text className="text-2xl font-extrabold text-foreground">Project-Panday</Text>
-            <Text className="text-sm text-muted-foreground mt-1">Sign in to your account</Text>
+
+            {error && <Text className="text-danger text-sm mt-4 text-center">{error}</Text>}
+
+            <Pressable
+              onPress={handleSubmit}
+              disabled={!canSubmit}
+              className="mt-6 py-3.5 rounded-xl items-center bg-primary"
+              style={{ opacity: canSubmit ? 1 : 0.6 }}
+            >
+              <Text className="font-bold text-sm text-primary-foreground">
+                {submitting ? "Signing in…" : "Sign In"}
+              </Text>
+            </Pressable>
+
+            <View className="flex-row justify-center mt-6 gap-1">
+              <Text className="text-muted-foreground text-sm">Don’t have an account?</Text>
+              <Link href="/register" asChild>
+                <Pressable>
+                  <Text className="text-primary text-sm font-semibold">Create one</Text>
+                </Pressable>
+              </Link>
+            </View>
           </View>
-
-          <View className="gap-3">
-            <Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-            <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry />
-          </View>
-
-          {error && <Text className="text-danger text-sm mt-4 text-center">{error}</Text>}
-
-          <Pressable
-            onPress={handleSubmit}
-            disabled={!canSubmit}
-            className="mt-6 py-3.5 rounded-xl items-center bg-primary"
-            style={{ opacity: canSubmit ? 1 : 0.6 }}
-          >
-            <Text className="font-bold text-sm text-primary-foreground">
-              {submitting ? "Signing in…" : "Sign In"}
-            </Text>
-          </Pressable>
-
-          <View className="flex-row justify-center mt-6 gap-1">
-            <Text className="text-muted-foreground text-sm">Don’t have an account?</Text>
-            <Link href="/register" asChild>
-              <Pressable>
-                <Text className="text-primary text-sm font-semibold">Create one</Text>
-              </Pressable>
-            </Link>
-          </View>
-        </View>
-      </KeyboardAwareScrollView>
-    </KeyboardView>
+        </KeyboardAwareScrollView>
+      </KeyboardView>
+    </View>
   );
 }
 

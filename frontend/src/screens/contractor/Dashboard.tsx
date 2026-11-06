@@ -83,7 +83,8 @@ export default function Dashboard() {
 
         {active.length === 0 && (
           <Text className="text-xs text-muted-foreground px-1">
-            No active projects yet. A homeowner needs to add you to their project from Find Your Team.
+            No active projects yet. Homeowners can invite you from Find Your Team, or tap &quot;Browse&quot; above
+            to find projects looking for a contractor.
           </Text>
         )}
 

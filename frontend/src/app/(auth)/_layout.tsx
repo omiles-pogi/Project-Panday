@@ -8,5 +8,5 @@ export default function AuthLayout() {
   // PandAi keeps the user company while an admin reviews the new account.
   if (pending) return <WaitingApproval />;
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return <Stack screenOptions={{ headerShown: false, animation: "slide_from_right" }} />;
 }

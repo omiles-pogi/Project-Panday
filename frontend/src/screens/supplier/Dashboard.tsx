@@ -53,7 +53,9 @@ export default function Dashboard() {
         ) : productsError && products.length === 0 ? (
           <Text className="text-xs text-danger">{productsError}</Text>
         ) : products.length === 0 ? (
-          <Text className="text-xs text-muted-foreground">{"You haven't listed any materials yet."}</Text>
+          <Text className="text-xs text-muted-foreground">
+            {'You haven\'t listed any materials yet — tap "Manage all" to add your first product.'}
+          </Text>
         ) : (
           inventoryPreview.map((p) => (
             <Pressable key={p.id} onPress={goToInventory} className="px-3 py-2.5 rounded-xl bg-muted" style={{ gap: 6 }}>

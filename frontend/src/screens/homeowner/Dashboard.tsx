@@ -473,8 +473,8 @@ export default function Dashboard() {
                   NOT STARTED YET
                 </Text>
               </View>
-              <Ionicons name="hourglass-outline" size={28} color="#f59e0b" style={{ marginBottom: 8 }} />
-              <Text className="font-bold text-base mb-1 text-foreground">{project.title}</Text>
+              <Mascot size={80} mood="thinking" bob />
+              <Text className="font-bold text-base mb-1 mt-2 text-foreground">{project.title}</Text>
               <Text className="text-sm text-center mb-4 text-muted-foreground">
                 This project hasn&apos;t started yet. Describe it to PandAi and approve the plan to get its budget,
                 phases and schedule.
@@ -485,8 +485,8 @@ export default function Dashboard() {
             </View>
           ) : (
             <View className="rounded-3xl p-6 items-center bg-card border border-border">
-              <Ionicons name="sparkles-outline" size={28} color="#f59e0b" style={{ marginBottom: 8 }} />
-              <Text className="font-bold text-base mb-1 text-foreground">No active project yet</Text>
+              <Mascot size={80} mood="happy" bob />
+              <Text className="font-bold text-base mb-1 mt-2 text-foreground">No active project yet</Text>
               <Text className="text-sm text-center mb-4 text-muted-foreground">
                 Describe your project to the AI planner and approve the generated plan to see it here.
               </Text>
