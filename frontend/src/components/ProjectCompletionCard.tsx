@@ -3,6 +3,7 @@ import { Text, View } from "react-native";
 import { Button, Field, InfoBox, SubmitButton } from "@/components/ui";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import Sheet from "@/components/Sheet";
+import { colors } from "@/theme/colors";
 import { confirmProjectCompletion, requestProjectCorrections } from "@/services/api/projects";
 import type { DashboardProject } from "@/types/project";
 import { formatDateTime } from "@/utils/projectStatus";
@@ -123,7 +124,7 @@ export default function ProjectCompletionCard({ project, onChanged }: { project:
 
   if (project.status === "active" && completion.correctionsNote) {
     return (
-      <InfoBox color="#f97316" title="Corrections requested">
+      <InfoBox color={colors.warning} title="Corrections requested">
         {`You asked your contractor to fix: ${completion.correctionsNote}${
           completion.correctionsRequestedAt ? `\nSent ${formatDateTime(completion.correctionsRequestedAt)}.` : ""
         }\nThe project is back to Ongoing. You'll be asked to confirm again once they resubmit it.`}

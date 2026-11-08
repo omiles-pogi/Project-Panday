@@ -247,7 +247,7 @@ function BudgetCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: 
         <View className="flex-row gap-2">
           <Pressable onPress={onNext} className="flex-1 py-2.5 rounded-xl items-center flex-row justify-center gap-1.5 bg-primary">
             <Ionicons name="checkmark" size={15} color="#0f1117" />
-            <Text className="text-sm font-bold text-primary-foreground">Approve Budget · Next →</Text>
+            <Text className="text-sm font-bold text-primary-foreground">Approve Budget</Text>
           </Pressable>
           <Pressable onPress={onEdit} className="px-4 py-2.5 rounded-xl items-center bg-muted border border-border">
             <Text className="text-sm text-muted-foreground">Modify</Text>
@@ -355,7 +355,7 @@ function MaterialsCard({
           </Pressable>
           {allApproved && (
             <Pressable onPress={onNext} className="flex-1 py-2.5 rounded-xl items-center bg-primary">
-              <Text className="text-sm font-bold text-primary-foreground">Finalize Project Plan →</Text>
+              <Text className="text-sm font-bold text-primary-foreground">Finalize</Text>
             </Pressable>
           )}
         </View>

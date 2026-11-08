@@ -93,7 +93,10 @@ class ConstructionPlanService
     /** Longest we'll silently wait out a rate limit before telling the homeowner to retry themselves. */
     private const MAX_RATE_LIMIT_WAIT_SECONDS = 45;
 
-    private const RATE_LIMIT_RETRIES = 1;
+    // 2, not 1: a request-level TPM blip (near the per-minute edge, cleared in under a second) can
+    // land another 429 on its first retry by bad luck. A second retry costs almost nothing when the
+    // wait is this short, and saves the homeowner from a "try again" they didn't need to see.
+    private const RATE_LIMIT_RETRIES = 2;
 
     /**
      * @param  array<int, array{role: string, content: string}>  $messages  The full conversation so far.

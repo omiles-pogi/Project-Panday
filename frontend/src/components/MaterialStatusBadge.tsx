@@ -1,33 +1,37 @@
 import { Badge } from "@/components/ui";
+import { colors, roleColors } from "@/theme/colors";
 import type { MaterialItemStatus, MaterialRequestStatus, SupplierOrderStatus } from "@/types/materialRequest";
 
+const NEUTRAL = "#6b7280";
+
 export const REQUEST_STATUS: Record<MaterialRequestStatus, { label: string; color: string }> = {
-  draft: { label: "Draft", color: "#6b7280" },
-  pending_homeowner_approval: { label: "Pending Approval", color: "#f59e0b" },
-  revision_requested: { label: "Needs Revision", color: "#f97316" },
-  approved: { label: "Approved", color: "#3b82f6" },
-  completed: { label: "Completed", color: "#10b981" },
-  rejected: { label: "Rejected", color: "#ef4444" },
-  cancelled: { label: "Cancelled", color: "#6b7280" },
+  draft: { label: "Draft", color: NEUTRAL },
+  pending_homeowner_approval: { label: "Pending Approval", color: colors.primary },
+  revision_requested: { label: "Needs Revision", color: colors.warning },
+  approved: { label: "Approved", color: roleColors.homeowner },
+  completed: { label: "Completed", color: colors.success },
+  rejected: { label: "Rejected", color: colors.danger },
+  cancelled: { label: "Cancelled", color: NEUTRAL },
 };
 
 export const ORDER_STATUS: Record<SupplierOrderStatus, { label: string; color: string }> = {
-  supplier_review: { label: "Supplier Review", color: "#f59e0b" },
-  awaiting_homeowner_confirmation: { label: "Awaiting Price OK", color: "#f97316" },
-  confirmed: { label: "Confirmed", color: "#3b82f6" },
-  preparing: { label: "Preparing", color: "#8b5cf6" },
-  for_delivery: { label: "For Delivery", color: "#06b6d4" },
-  delivered: { label: "Delivered", color: "#10b981" },
+  supplier_review: { label: "Supplier Review", color: colors.primary },
+  awaiting_homeowner_confirmation: { label: "Awaiting Price OK", color: colors.warning },
+  confirmed: { label: "Confirmed", color: roleColors.homeowner },
+  preparing: { label: "Preparing", color: roleColors.supplier },
+  for_delivery: { label: "For Delivery", color: colors.info },
+  delivered: { label: "Delivered", color: colors.success },
+  // A shade darker than "delivered" — both read as "done", but distinct states worth telling apart at a glance.
   received: { label: "Received", color: "#059669" },
-  unavailable: { label: "Unavailable", color: "#ef4444" },
-  cancelled: { label: "Cancelled", color: "#6b7280" },
+  unavailable: { label: "Unavailable", color: colors.danger },
+  cancelled: { label: "Cancelled", color: NEUTRAL },
 };
 
 const ITEM_STATUS: Record<MaterialItemStatus, { label: string; color: string } | null> = {
   pending: null,
-  confirmed: { label: "Confirmed", color: "#3b82f6" },
-  insufficient: { label: "Insufficient Stock", color: "#ef4444" },
-  unavailable: { label: "Unavailable", color: "#ef4444" },
+  confirmed: { label: "Confirmed", color: roleColors.homeowner },
+  insufficient: { label: "Insufficient Stock", color: colors.danger },
+  unavailable: { label: "Unavailable", color: colors.danger },
 };
 
 /** The order a supplier fulfilment moves through, for progress display. */

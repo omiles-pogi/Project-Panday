@@ -2,6 +2,7 @@ import { Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { CountUp } from "@/components/charts";
 import { Card, MONO } from "@/components/ui";
+import { colors } from "@/theme/colors";
 import type { EstimateAddition, ProjectEstimateAdjustment } from "@/types/project";
 import { peso } from "@/utils/currency";
 
@@ -33,7 +34,7 @@ export default function EstimateAdditionsCard({ adjustment }: { adjustment: Proj
               <Ionicons name={KIND_ICON[a.kind]} size={16} color="#f59e0b" />
               <Text className="flex-1 text-sm font-semibold text-foreground">{a.label}</Text>
             </View>
-            <CountUp text={`+${peso(a.amount)}`} className="text-sm font-bold" style={{ color: "#ef4444", fontFamily: MONO }} />
+            <CountUp text={`+${peso(a.amount)}`} className="text-sm font-bold" style={{ color: colors.danger, fontFamily: MONO }} />
           </View>
 
           {a.lines?.slice(0, 5).map((l, i) => (
@@ -52,8 +53,8 @@ export default function EstimateAdditionsCard({ adjustment }: { adjustment: Proj
       ))}
 
       {adjustment.pendingMaterialsTotal > 0 && (
-        <View className="flex-row items-start gap-2 p-3 rounded-xl" style={{ backgroundColor: "#f9731615" }}>
-          <Ionicons name="time-outline" size={16} color="#f97316" style={{ marginTop: 1 }} />
+        <View className="flex-row items-start gap-2 p-3 rounded-xl" style={{ backgroundColor: `${colors.warning}15` }}>
+          <Ionicons name="time-outline" size={16} color={colors.warning} style={{ marginTop: 1 }} />
           <Text className="flex-1 text-xs text-foreground">
             {peso(adjustment.pendingMaterialsTotal)} more is waiting for your approval — it joins the estimate once you approve it.
           </Text>

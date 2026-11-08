@@ -10,6 +10,7 @@ import MessageButton from "@/components/MessageButton";
 import ExportPdfButton from "@/components/ExportPdfButton";
 import { ItemStatusBadge, OrderStatusBadge, RequestStatusBadge, statusLabel } from "@/components/MaterialStatusBadge";
 import { useTheme } from "@/context/ThemeContext";
+import { colors } from "@/theme/colors";
 import {
   approveMaterialRequest,
   cancelMaterialRequest,
@@ -199,8 +200,8 @@ function RequestDetailBody({ request: r, viewer, onChange }: { request: Material
           </View>
         )}
         {r.decisionReason && ["revision_requested", "rejected", "cancelled"].includes(r.status) && (
-          <View className="p-3 rounded-xl" style={{ backgroundColor: "#f9731615" }}>
-            <Text className="text-xs font-semibold" style={{ color: "#f97316" }}>
+          <View className="p-3 rounded-xl" style={{ backgroundColor: `${colors.warning}15` }}>
+            <Text className="text-xs font-semibold" style={{ color: colors.warning }}>
               {r.status === "revision_requested" ? "Revision needed" : r.status === "rejected" ? "Rejection reason" : "Cancellation reason"}
             </Text>
             <Text className="text-xs text-foreground mt-0.5">{r.decisionReason}</Text>
@@ -242,8 +243,8 @@ function RequestDetailBody({ request: r, viewer, onChange }: { request: Material
         <Card title="Why this needs your decision" gap={8}>
           <Text className="text-xs text-muted-foreground">Everything else in this request is inside your approved plan.</Text>
           {r.approvalFlags.map((flag) => (
-            <View key={flag} className="flex-row items-start gap-2 p-3 rounded-xl" style={{ backgroundColor: "#f9731615" }}>
-              <Ionicons name="alert-circle-outline" size={16} color="#f97316" style={{ marginTop: 1 }} />
+            <View key={flag} className="flex-row items-start gap-2 p-3 rounded-xl" style={{ backgroundColor: `${colors.warning}15` }}>
+              <Ionicons name="alert-circle-outline" size={16} color={colors.warning} style={{ marginTop: 1 }} />
               <Text className="flex-1 text-xs text-foreground">{flag}</Text>
             </View>
           ))}
@@ -272,7 +273,7 @@ function RequestDetailBody({ request: r, viewer, onChange }: { request: Material
           <SubmitButton label={busy ? "Working…" : "Approve Request"} onPress={() => run(() => approveMaterialRequest(r.id))} />
           <View className="flex-row gap-2">
             <View className="flex-1">
-              <Button label="Request Revision" variant="tint" color="#f97316" onPress={() => setReasonFor("revision")} />
+              <Button label="Request Revision" variant="tint" color={colors.warning} onPress={() => setReasonFor("revision")} />
             </View>
             <View className="flex-1">
               <Button label="Reject" variant="tint" color="#ef4444" onPress={() => setReasonFor("reject")} />
@@ -361,7 +362,7 @@ function TotalRow({ label, value }: { label: string; value: number }) {
 /** "AI estimated 54 → 66 requested (+22%, includes 10% waste)" — how a line compares with the AI's own estimate. */
 function QuantityNote({ item: i }: { item: MaterialRequest["items"][number] }) {
   if (i.aiQuantity === null) {
-    return i.planQuantity === null ? <Text className="text-xs" style={{ color: "#f97316" }}>Not in the approved plan</Text> : null;
+    return i.planQuantity === null ? <Text className="text-xs" style={{ color: colors.warning }}>Not in the approved plan</Text> : null;
   }
   if (i.quantity === i.aiQuantity) return null;
   const pct = Math.round(((i.quantity - i.aiQuantity) / i.aiQuantity) * 100);
@@ -436,7 +437,7 @@ function OrderRow({
 
       {viewer === "homeowner" && o.status === "awaiting_homeowner_confirmation" && (
         <View style={{ gap: 8 }}>
-          <Text className="text-xs" style={{ color: "#f97316" }}>
+          <Text className="text-xs" style={{ color: colors.warning }}>
             The supplier&apos;s final prices differ from the estimate. Accept them to let the supplier prepare your materials.
           </Text>
           <View className="flex-row gap-2">
@@ -627,7 +628,7 @@ function ItemEditor({ request: r, onSaved }: { request: MaterialRequest; onSaved
                     )}
                   </>
                 ) : (
-                  <Badge label="No supplier selected" color="#f97316" />
+                  <Badge label="No supplier selected" color={colors.warning} />
                 )}
                 {d.source === "ai" && <Badge label="AI suggested" color="#8b5cf6" />}
               </View>
@@ -637,7 +638,7 @@ function ItemEditor({ request: r, onSaved }: { request: MaterialRequest; onSaved
                 </Text>
               )}
               {d.planQuantity !== null && qty > d.planQuantity ? (
-                <Text className="text-xs" style={{ color: "#f97316" }}>
+                <Text className="text-xs" style={{ color: colors.warning }}>
                   Above the plan&apos;s {d.planQuantity.toLocaleString()} {d.unit} — the homeowner will be asked to approve.
                 </Text>
               ) : d.aiQuantity !== null && qty !== d.aiQuantity ? (
@@ -683,7 +684,7 @@ function ItemEditor({ request: r, onSaved }: { request: MaterialRequest; onSaved
         </View>
         <TotalRow label="Estimated total" value={total} />
         {missing.length > 0 && (
-          <Text className="text-xs" style={{ color: "#f97316" }}>
+          <Text className="text-xs" style={{ color: colors.warning }}>
             {missing.length} material{missing.length === 1 ? " has" : "s have"} no supplier listing yet. Tap Submit and you&apos;ll be taken through them one by one.
           </Text>
         )}
@@ -844,7 +845,7 @@ function AiImportSheet({ projectId, onImport, onClose }: { projectId: number; on
                     {s.matchKind === "similar" && <Text className="text-xs text-muted-foreground">{s.match.name} — check it&apos;s the right one.</Text>}
                   </>
                 ) : (
-                  <Badge label="No listing found — you'll pick one when you submit" color="#f97316" />
+                  <Badge label="No listing found — you'll pick one when you submit" color={colors.warning} />
                 )}
               </View>
             </Pressable>

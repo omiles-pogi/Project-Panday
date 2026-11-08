@@ -40,7 +40,9 @@ export const lightChrome: ChromeColors = {
   border: "#e2e5eb",
 };
 
-// Fixed brand/status colors — same value in both themes.
+// Fixed brand/status colors — same value in both themes. success/warning/info were already in
+// heavy, consistent use across status badges and cards as repeated hex literals (e.g.
+// MaterialStatusBadge, EstimateAdditionsCard) before being named here — same values, just centralized.
 export const colors = {
   primary: "#f59e0b",
   primaryForeground: "#0f1117",
@@ -48,6 +50,9 @@ export const colors = {
   accentForeground: "#0f1117",
   ring: "#f59e0b",
   danger: "#ef4444",
+  success: "#10b981",
+  warning: "#f97316",
+  info: "#06b6d4",
 } as const;
 
 

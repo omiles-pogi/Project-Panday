@@ -10,6 +10,7 @@ import type { DashboardData, ProjectStatus, ProjectSummary, Wage, WageInput } fr
 import { peso } from "@/utils/currency";
 import { compareBudget, formatBudget } from "@/utils/budget";
 import { usePlan } from "@/context/PlanContext";
+import { colors } from "@/theme/colors";
 import Mascot from "@/components/Mascot";
 import MessageButton from "@/components/MessageButton";
 import ProjectCompletionCard from "@/components/ProjectCompletionCard";
@@ -569,14 +570,14 @@ export default function Dashboard() {
               <CountUp text={value} className="font-bold text-sm" style={{ color, fontFamily: "DMMono_500Medium" }} />
               {/* The estimate went up because the work outgrew the plan — say by how much, so "Left Over" shrinking isn't a mystery. */}
               {label === "AI Estimate" && !!project.estimateAdjustment?.additionsTotal && (
-                <CountUp text={`+${peso(project.estimateAdjustment.additionsTotal)} added`} className="text-xs mt-0.5" style={{ color: "#ef4444" }} />
+                <CountUp text={`+${peso(project.estimateAdjustment.additionsTotal)} added`} className="text-xs mt-0.5" style={{ color: colors.danger }} />
               )}
             </View>
           ))}
         </View>
         {!!project.estimateAdjustment?.pendingMaterialsTotal && (
           <Pressable onPress={() => router.push("/homeowner/approvals" as never)} className="mb-4">
-            <Text className="text-xs" style={{ color: "#f97316" }}>
+            <Text className="text-xs" style={{ color: colors.warning }}>
               {peso(project.estimateAdjustment.pendingMaterialsTotal)} more in material requests is waiting for your approval →
             </Text>
           </Pressable>
