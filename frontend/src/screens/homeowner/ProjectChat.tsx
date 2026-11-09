@@ -15,8 +15,9 @@ import type { ConstructionPlan, SupplierCategory, SupplierOption, SupplierSelect
 import SupplierPicker, { selectionsOf } from "@/components/SupplierPicker";
 import BudgetCategoryBreakdown from "@/components/BudgetCategoryBreakdown";
 import { CountUp } from "@/components/charts";
-import { peso } from "@/utils/currency";
+import { peso, pesoCompact } from "@/utils/currency";
 import { compareBudget } from "@/utils/budget";
+import { monthsLabel } from "@/utils/timeline";
 import { garageLabel } from "@/utils/garage";
 import { createProject, fetchDashboard, startProjectFromPlan } from "@/services/api/projects";
 import Mascot from "@/components/Mascot";
@@ -105,7 +106,7 @@ function PlanCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: ()
   const phasesDetail =
     phaseNames.length > 2 ? `${phaseNames.slice(0, 2).join(", ")} +${phaseNames.length - 2} more` : phaseNames.join(", ");
   const items: { icon: IconName; title: string; value: string; detail: string; color: string }[] = [
-    { icon: "calendar-outline", title: "Timeline", value: `${plan.timelineMonths} months`, detail: `${plan.phases.length} phases planned`, color: "#3b82f6" },
+    { icon: "calendar-outline", title: "Timeline", value: monthsLabel(plan.timelineMonths), detail: `${plan.phases.length} phases planned`, color: "#3b82f6" },
     {
       icon: "wallet-outline",
       title: "AI Cost Estimate",
@@ -118,7 +119,15 @@ function PlanCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: ()
       color: "#f59e0b",
     },
     { icon: "layers-outline", title: "Key Materials", value: `${plan.materials.length} material types`, detail: `Est. ${peso(materialsTotal)} total`, color: "#10b981" },
-    { icon: "home-outline", title: "Design", value: plan.designStyle, detail: [`${plan.bedrooms}BR / ${plan.bathrooms}BA`, garageLabel(plan.garageCars), `${plan.areaSqm} sqm`].filter(Boolean).join(" · "), color: "#8b5cf6" },
+    {
+      icon: "home-outline",
+      title: "Design",
+      value: plan.designStyle,
+      detail: [`${plan.bedrooms}BR / ${plan.bathrooms}BA`, garageLabel(plan.garageCars), plan.areaSqm > 0 ? `${plan.areaSqm} sqm` : "No floor area added"]
+        .filter(Boolean)
+        .join(" · "),
+      color: "#8b5cf6",
+    },
     { icon: "git-branch-outline", title: "Phases", value: `${plan.phases.length} phases`, detail: phasesDetail, color: "#06b6d4" },
   ];
   const disapprovedItems = items.filter((i) => disapproved[i.title]);
@@ -211,7 +220,6 @@ function PlanCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: ()
 function BudgetCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: () => void; onEdit: () => void }) {
   const { chrome } = useTheme();
   const cmp = compareBudget(plan.budget, plan.totalEstimate);
-  const millions = (n: number) => `₱${(n / 1000000).toFixed(2)}M`;
 
   return (
     <CardShell>
@@ -221,12 +229,12 @@ function BudgetCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: 
       <View className="p-4">
         <View className="flex-row gap-2 mb-4">
           {[
-            { label: "Your Budget", value: cmp.hasBudget ? millions(plan.budget) : "Not set", color: chrome.mutedForeground },
-            { label: "AI Estimate", value: millions(plan.totalEstimate), color: "#f59e0b" },
+            { label: "Your Budget", value: cmp.hasBudget ? pesoCompact(plan.budget) : "Not set", color: chrome.mutedForeground },
+            { label: "AI Estimate", value: pesoCompact(plan.totalEstimate), color: "#f59e0b" },
             cmp.hasBudget
               ? {
                   label: cmp.difference >= 0 ? "To Spare" : "Short By",
-                  value: `₱${Math.abs(cmp.difference / 1000).toFixed(0)}K`,
+                  value: pesoCompact(Math.abs(cmp.difference)),
                   color: cmp.difference >= 0 ? "#10b981" : "#ef4444",
                 }
               : { label: "Difference", value: "—", color: chrome.mutedForeground },
@@ -397,7 +405,7 @@ function SummaryCard({ plan }: { plan: ConstructionPlan }) {
           <View className="flex-1 p-3 rounded-xl items-center bg-muted">
             <Text className="text-xs mb-1 text-muted-foreground">Project Duration</Text>
             <Text className="font-bold text-base" style={{ color: "#3b82f6" }}>
-              {plan.timelineMonths} months
+              {monthsLabel(plan.timelineMonths)}
             </Text>
           </View>
         </View>
@@ -428,11 +436,11 @@ type ResolvedStage = ApprovalStage;
 const STAGE_TEXT: Record<ResolvedStage, (p: ConstructionPlan) => string> = {
   plan: (p) => `Here's your construction plan for ${p.projectTitle}. Review each section below, or approve everything at once.`,
   budget: (p) => {
-    const estimate = `₱${(p.totalEstimate / 1000000).toFixed(2)}M`;
+    const estimate = pesoCompact(p.totalEstimate);
     if (!(p.budget > 0)) {
       return `Budget breakdown ready. My estimate for this scope is ${estimate}. Tell me your budget (e.g. "my budget is ₱2.5M") and I'll compare it.`;
     }
-    const yours = `₱${(p.budget / 1000000).toFixed(2)}M`;
+    const yours = pesoCompact(p.budget);
     return p.budget >= p.totalEstimate
       ? `Budget breakdown ready. Your budget of ${yours} covers my ${estimate} estimate.`
       : `Budget breakdown ready. Your budget of ${yours} is below my ${estimate} estimate — you may want to adjust the scope or the budget.`;

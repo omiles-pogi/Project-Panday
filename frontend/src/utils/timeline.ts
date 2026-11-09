@@ -39,6 +39,11 @@ export const TASK_STATUS_META: Record<TaskScheduleStatus, { label: string; color
   upcoming: { label: "Upcoming", color: "#6b7280", icon: "ellipse-outline" },
 };
 
+/** "1 month" vs "2 months" — never says "1 months". */
+export function monthsLabel(n: number): string {
+  return `${n} month${n === 1 ? "" : "s"}`;
+}
+
 /** Parses a backend ISO date as a local calendar date — `new Date("2027-01-05")` would be UTC
  * midnight and show as the previous day in timezones behind UTC. */
 export function parseDate(iso: string): Date {

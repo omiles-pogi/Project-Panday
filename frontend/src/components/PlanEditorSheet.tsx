@@ -110,8 +110,8 @@ function toDraft(plan: ConstructionPlan): Draft {
 
 function validate(d: Draft): string | null {
   if (!d.projectTitle.trim()) return "Give the project a title.";
-  if (num(d.areaSqm) <= 0) return "Floor area must be greater than 0.";
-  if (Math.round(num(d.floors)) < 1) return "A project needs at least 1 floor.";
+  if (num(d.areaSqm) < 0) return "Floor area can't be negative.";
+  if (Math.round(num(d.floors)) < 0) return "Floors can't be negative.";
   if (Math.round(num(d.timelineMonths)) < 1) return "Timeline must be at least 1 month.";
   if (d.phases.some((p) => !p.name.trim())) return "Every phase needs a name — or remove the empty one.";
   if (d.materials.some((m) => !m.material.trim())) return "Every material needs a name — or remove the empty one.";

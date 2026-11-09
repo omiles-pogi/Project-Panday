@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { isChatReply, isClarificationNeeded, type ConstructionPlan, type SupplierSelections } from "@/types/plan";
 import { generateConstructionPlan, type ChatHistoryMessage } from "@/services/ai/client";
 import { garageLabel } from "@/utils/garage";
+import { monthsLabel } from "@/utils/timeline";
 import { useAuth } from "@/context/AuthContext";
 
 export type SendResult =
@@ -106,7 +107,7 @@ function summarizePlan(plan: ConstructionPlan): string {
     `${plan.areaSqm} sqm, ${plan.designStyle} style. ` +
     // Labeled explicitly so the AI never confuses the homeowner's budget with its own estimate.
     `Homeowner's budget: ${plan.budget > 0 ? `₱${plan.budget.toLocaleString()}` : "not stated yet"}; ` +
-    `AI cost estimate: ₱${plan.totalEstimate.toLocaleString()}; timeline ${plan.timelineMonths} months. Phases: ${phaseNames}.`
+    `AI cost estimate: ₱${plan.totalEstimate.toLocaleString()}; timeline ${monthsLabel(plan.timelineMonths)}. Phases: ${phaseNames}.`
   );
 }
 

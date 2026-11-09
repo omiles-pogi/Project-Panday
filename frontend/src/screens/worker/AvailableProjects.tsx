@@ -7,6 +7,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { applyToProject, fetchAvailableProjects } from "@/services/api/projects";
 import type { AvailableProject } from "@/types/project";
 import { peso } from "@/utils/currency";
+import { monthsLabel } from "@/utils/timeline";
 
 const STATUS_META: Record<"pending" | "approved" | "rejected", { label: string; color: string }> = {
   pending: { label: "Pending", color: "#f59e0b" },
@@ -65,7 +66,7 @@ function ProjectCard({
         </View>
         <View className="p-3 rounded-xl bg-muted" style={{ flexGrow: 1, flexBasis: "28%" }}>
           <Text className="text-xs mb-1 text-muted-foreground">Timeline</Text>
-          <Text className="text-xs font-medium text-foreground">{project.timelineMonths} months</Text>
+          <Text className="text-xs font-medium text-foreground">{monthsLabel(project.timelineMonths)}</Text>
         </View>
         <View className="p-3 rounded-xl bg-muted" style={{ flexGrow: 1, flexBasis: "28%" }}>
           <Text className="text-xs mb-1 text-muted-foreground">Started</Text>

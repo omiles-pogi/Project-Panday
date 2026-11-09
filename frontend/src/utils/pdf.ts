@@ -3,6 +3,7 @@ import * as Sharing from "expo-sharing";
 import type { ConstructionPlan } from "@/types/plan";
 import type { MaterialRequest } from "@/types/materialRequest";
 import { peso } from "@/utils/currency";
+import { monthsLabel } from "@/utils/timeline";
 
 /** The PDFs are rendered on the phone from data the app already has, then handed to the share sheet. */
 export async function sharePdf(html: string, title: string): Promise<void> {
@@ -80,11 +81,11 @@ export function planPdfHtml(saved: Partial<ConstructionPlan>): string {
     <h1>${esc(plan.projectTitle)}</h1>
     <p class="sub">${esc(plan.location || "Location not set")} · ${esc(plan.designStyle)} style</p>
     <div class="facts">
-      ${fact("Floor area", `${plan.areaSqm} sqm`)}
+      ${fact("Floor area", plan.areaSqm > 0 ? `${plan.areaSqm} sqm` : "No floor area added")}
       ${fact("Floors", plan.floors)}
       ${fact("Bedrooms / baths", `${plan.bedrooms} / ${plan.bathrooms}`)}
       ${fact("Garage", garage)}
-      ${fact("Timeline", `${plan.timelineMonths} months`)}
+      ${fact("Timeline", monthsLabel(plan.timelineMonths))}
     </div>
     <div class="facts">
       ${fact("Your budget", plan.budget > 0 ? peso(plan.budget) : "Not set")}

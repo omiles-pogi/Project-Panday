@@ -23,8 +23,9 @@ class StoreProjectRequest extends FormRequest
             'totalEstimate' => ['required', 'numeric', 'min:0'],
             'timelineMonths' => ['required', 'integer', 'min:0'],
             // Optional for older clients; preserve the approved scope and breakdown on the server.
-            'areaSqm' => ['sometimes', 'numeric', 'gt:0'],
-            'floors' => ['sometimes', 'integer', 'min:1'],
+            // 0 is valid for both: a repair/repainting/fixture job has no floor area or storey of its own.
+            'areaSqm' => ['sometimes', 'numeric', 'min:0'],
+            'floors' => ['sometimes', 'integer', 'min:0'],
             'bedrooms' => ['sometimes', 'integer', 'min:0'],
             'bathrooms' => ['sometimes', 'integer', 'min:0'],
             'garageCars' => ['sometimes', 'integer', 'min:0', 'max:10'],

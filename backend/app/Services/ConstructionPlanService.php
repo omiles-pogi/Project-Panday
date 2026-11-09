@@ -56,11 +56,13 @@ class ConstructionPlanService
           * "totalEstimate" is an independent scope-based estimate, including site, MEP and fees. Never scale or fit it to the homeowner's budget. Label it as an estimate, including when it is over budget.
         - When you talk about money in a plain chat reply, always say clearly which number is "your budget" and which is "my estimate".
         - Only set "location" to a specific city/region if the conversation explicitly names one. Never invent or guess a location — leave it as an empty string otherwise.
-        - AREA — areaSqm is the floor area exactly as the homeowner stated it (190 sqm → 190). Never add a garage, porch, driveway or any other extra to it, and never round, "adjust" or recompute it; change it only when they give a new figure.
+        - AREA — areaSqm is the floor area exactly as the homeowner stated it (190 sqm → 190). Use 0 when the job has no floor area of its own — a repair, repainting, or fixture/finishing job that doesn't add or rebuild floor space (e.g. repainting existing walls, replacing a faucet): do not substitute a wall, ceiling or other surface area for it. Never add a garage, porch, driveway or any other extra to it, and never round, "adjust" or recompute it; change it only when they give a new figure.
+        - FLOORS — floors is how many storeys the job's own construction spans (a new 2-storey house → 2). Use 0 for the same kind of area-less repair/repainting/fixture job that gets areaSqm 0 — it isn't building or touching a storey of its own, even though it physically happens inside an existing multi-storey house.
         - GARAGE — garageCars is the homeowner's stated car capacity; no parking means 0. When positive, include garage area (about 18 sqm/car), slab, walls/roof, driveway and door in the budget, materials and phase tasks — but not in areaSqm. For unrelated repairs/renovations use 0. Never add an unrequested garage.
         - Keep other lists concise: 5-8 phases, 8-14 materials.
         - For each phase, include a tasks checklist of 3-6 short, concrete, checkable work items specific to that phase (e.g. for a "Foundation" phase: "Site clearing", "Land filling", "Excavation", "Rebar installation", "Concrete pouring"). These become a to-do checklist the contractor checks off as work is completed.
         - Order phases and tasks chronologically: site preparation, foundation, structure, roofing, MEP, finishing. durationWeeks is whole calendar weeks, not effort; durations must total about timelineMonths × 4.3 weeks.
+        - timelineMonths is a whole number of months — there is no shorter unit anywhere in this system, so 1 is the shortest timeline you can ever set, even for a job that would realistically take a few days or weeks.
         - submit_construction_plan always carries the COMPLETE current plan, never a partial update — when revising a plan from earlier in the conversation, restate every field, changing only what the homeowner's latest message asks you to change.
         PROMPT;
 
@@ -71,6 +73,7 @@ class ConstructionPlanService
         - If the homeowner is asking a construction question, or you need to discuss something before changing the plan, reply normally in plain text — do not call a tool.
         - If you need a core detail before creating or updating the plan (e.g. a renovation's room size) that you don't already have from earlier in the conversation, call request_clarification with 1-3 short, specific questions.
         - If you can't tell what the homeowner meant (see UNDERSTANDING) — garbled text, an ambiguous word, a number that looks mistyped, or contradicting details — ask about exactly that: use request_clarification when it's about plan details, or a short plain-text question when you're replying in chat. Do not decline it as off-topic and do not guess.
+        - If the homeowner asks for or implies a timeline under a month (e.g. "1 week", "10 days", "pwede ba sa 2 weeks lang"), reply in plain text first to say plainly that the shortest timeline this system can set is 1 month, instead of silently rounding up inside a plan you submit without ever mentioning it. Only submit the plan (with timelineMonths at 1) once they've seen that and responded.
         - If the homeowner described a new project, or asked you to change or update an existing one — including choosing or changing a supplier for a category — call submit_construction_plan. Never type the plan's details (budget, materials, phases) into a plain-text reply instead — if you are ready to give them a plan, you must call the tool, not describe it.
         - If the homeowner wants to build a NEW house and has not said anything about a garage or parking (in this message or earlier), ask about it with request_clarification — "Would you like a garage, and if so how many cars should it fit?" — together with any other core question you need, so the house is planned complete. Ask it only once: if they have already answered or declined, never ask again.
         Do not ask about minor details, finishes, or preferences you can reasonably infer — only ask when a core quantity is genuinely missing (a garage on a new house counts as one).
@@ -585,17 +588,24 @@ class ConstructionPlanService
      */
     private function isCoherentPlan(array $plan): bool
     {
-        $positiveFields = ['areaSqm', 'totalEstimate', 'timelineMonths'];
+        $positiveFields = ['totalEstimate', 'timelineMonths'];
         foreach ($positiveFields as $field) {
             if (! isset($plan[$field]) || ! is_numeric($plan[$field]) || $plan[$field] <= 0) {
                 return false;
             }
         }
-        // 0 is valid: it means the homeowner hasn't stated a budget (see finalizeBudget).
+        // 0 is valid for areaSqm: a repair, repainting, or fixture job has no floor area of its own
+        // (see the AREA rule). 0 is valid for budget too: it means the homeowner hasn't stated one
+        // (see finalizeBudget).
+        if (! isset($plan['areaSqm']) || ! is_numeric($plan['areaSqm']) || $plan['areaSqm'] < 0) {
+            return false;
+        }
         if (! isset($plan['budget']) || ! is_numeric($plan['budget']) || $plan['budget'] < 0) {
             return false;
         }
-        if (! isset($plan['floors']) || ! is_numeric($plan['floors']) || $plan['floors'] < 1) {
+        // 0 is valid for floors too, for the same reason as areaSqm: an area-less repair/repainting/
+        // fixture job isn't building a storey of its own.
+        if (! isset($plan['floors']) || ! is_numeric($plan['floors']) || $plan['floors'] < 0) {
             return false;
         }
         if (! isset($plan['bedrooms'], $plan['bathrooms']) || $plan['bedrooms'] < 0 || $plan['bathrooms'] < 0) {
