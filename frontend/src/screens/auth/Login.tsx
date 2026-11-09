@@ -50,6 +50,12 @@ export default function Login() {
               <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry />
             </View>
 
+            <Link href="/forgot-password" asChild>
+              <Pressable className="self-end mt-2">
+                <Text className="text-primary text-xs font-semibold">Forgot password?</Text>
+              </Pressable>
+            </Link>
+
             {error && <Text className="text-danger text-sm mt-4 text-center">{error}</Text>}
 
             <Pressable

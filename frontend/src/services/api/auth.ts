@@ -50,6 +50,26 @@ export function updateNameRequest(name: string): Promise<AuthUser> {
   }) as Promise<AuthUser>;
 }
 
+/** Always resolves the same way whether or not the email is registered — never reveals which emails have accounts. */
+export function forgotPasswordRequest(email: string): Promise<{ message: string }> {
+  return apiFetch("/api/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  }) as Promise<{ message: string }>;
+}
+
+export function resetPasswordRequest(fields: {
+  email: string;
+  code: string;
+  password: string;
+  password_confirmation: string;
+}): Promise<{ message: string }> {
+  return apiFetch("/api/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify(fields),
+  }) as Promise<{ message: string }>;
+}
+
 export type ApprovalStatus ="pending" | "approved" | "rejected";
 
 // Used by the waiting screen to poll for the admin's decision; never returns a token.

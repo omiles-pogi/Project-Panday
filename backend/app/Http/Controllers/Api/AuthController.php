@@ -3,16 +3,23 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ForgotPasswordRequest;
 use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
+use App\Http\Requests\ResetPasswordRequest;
 use App\Http\Requests\UpdateAccountRequest;
 use App\Services\AuthService;
+use App\Services\PasswordResetService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
-    public function __construct(private readonly AuthService $authService) {}
+    public function __construct(
+        private readonly AuthService $authService,
+        private readonly PasswordResetService $passwordResets,
+    ) {}
 
     public function register(RegisterRequest $request): JsonResponse
     {
@@ -63,6 +70,26 @@ class AuthController extends Controller
         }
 
         return response()->json(['approval_status' => $user->approval_status]);
+    }
+
+    /** Emails a 6-digit code if the address is registered. Same response either way, so this can't probe which emails have accounts. */
+    public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
+    {
+        $this->passwordResets->requestCode($request->validated('email'));
+
+        return response()->json(['message' => 'If that email is registered, a reset code is on its way.']);
+    }
+
+    /** Swaps the emailed code for a new password, and signs the account out everywhere else. */
+    public function resetPassword(ResetPasswordRequest $request): JsonResponse
+    {
+        try {
+            $this->passwordResets->reset($request->validated('email'), $request->validated('code'), $request->validated('password'));
+        } catch (ValidationException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Password updated. You can sign in now.']);
     }
 
     public function logout(Request $request): JsonResponse

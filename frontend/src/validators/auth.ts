@@ -16,6 +16,14 @@ export function isValidLoginForm(email: string, password: string): boolean {
   return isValidEmail(email) && password.length > 0;
 }
 
+export function isValidResetCode(code: string): boolean {
+  return /^\d{6}$/.test(code.trim());
+}
+
+export function isValidResetForm(code: string, password: string, passwordConfirmation: string): boolean {
+  return isValidResetCode(code) && isValidPassword(password) && password === passwordConfirmation;
+}
+
 // Roles an admin must verify, and what each must submit (mirrors RegisterRequest).
 export const VERIFICATION_FIELDS: Record<
   string,
