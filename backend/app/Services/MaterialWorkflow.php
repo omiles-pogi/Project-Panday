@@ -5,13 +5,13 @@ namespace App\Services;
 use App\Models\MaterialRequest;
 use App\Models\MaterialRequestItem;
 use App\Models\MaterialRequestStatusLog;
-use App\Models\SupplierOrder;
+use App\Models\SupplierFulfillment;
 use App\Models\User;
 use Illuminate\Validation\ValidationException;
 
 /**
  * Low-level steps shared by MaterialRequestService (contractor/homeowner side) and
- * SupplierOrderService (supplier side): status logging, cancelling an order with its stock
+ * SupplierFulfillmentService (supplier side): status logging, cancelling an order with its stock
  * reservation released, sending a request back for revision, and detecting completion.
  * Callers wrap these in a DB transaction.
  */
@@ -30,7 +30,7 @@ class MaterialWorkflow
         $this->log($request, null, $by, $previous, $status, $reason);
     }
 
-    public function setOrderStatus(SupplierOrder $order, string $status, ?User $by, ?string $reason = null): void
+    public function setOrderStatus(SupplierFulfillment $order, string $status, ?User $by, ?string $reason = null): void
     {
         $previous = $order->status;
         $order->status = $status;
@@ -38,7 +38,7 @@ class MaterialWorkflow
         $this->log($order->materialRequest, $order, $by, $previous, $status, $reason);
     }
 
-    public function log(MaterialRequest $request, ?SupplierOrder $order, ?User $by, ?string $previous, string $new, ?string $reason): void
+    public function log(MaterialRequest $request, ?SupplierFulfillment $order, ?User $by, ?string $previous, string $new, ?string $reason): void
     {
         MaterialRequestStatusLog::create([
             'material_request_id' => $request->id,
@@ -51,7 +51,7 @@ class MaterialWorkflow
     }
 
     /** Releases every reservation the order's items hold. Idempotent: each item's hold is zeroed. */
-    public function releaseReservations(SupplierOrder $order): void
+    public function releaseReservations(SupplierFulfillment $order): void
     {
         foreach ($order->items()->where('reserved_quantity', '>', 0)->get() as $item) {
             if ($item->supplier_product_id) {
@@ -62,7 +62,7 @@ class MaterialWorkflow
     }
 
     /** Turns every reservation the order's items hold into an actual stock decrease. */
-    public function deductReservations(SupplierOrder $order): void
+    public function deductReservations(SupplierFulfillment $order): void
     {
         foreach ($order->items()->where('reserved_quantity', '>', 0)->get() as $item) {
             if (! $this->stock->deduct($item->supplier_product_id, $item->reserved_quantity)) {
@@ -73,11 +73,11 @@ class MaterialWorkflow
     }
 
     /** Cancels an order that hasn't been delivered yet, giving back any stock it reserved. */
-    public function cancelOrder(SupplierOrder $order, ?User $by, ?string $reason): void
+    public function cancelOrder(SupplierFulfillment $order, ?User $by, ?string $reason): void
     {
         $this->releaseReservations($order);
         $order->items()->update(['status' => MaterialRequestItem::PENDING, 'confirmed_unit_price' => null]);
-        $this->setOrderStatus($order, SupplierOrder::CANCELLED, $by, $reason);
+        $this->setOrderStatus($order, SupplierFulfillment::CANCELLED, $by, $reason);
     }
 
     /**
@@ -113,8 +113,8 @@ class MaterialWorkflow
             return false;
         }
 
-        $live = $request->orders()->whereNotIn('status', SupplierOrder::DEAD)->get();
-        if ($live->isEmpty() || $live->contains(fn (SupplierOrder $o) => $o->status !== SupplierOrder::RECEIVED)) {
+        $live = $request->orders()->whereNotIn('status', SupplierFulfillment::DEAD)->get();
+        if ($live->isEmpty() || $live->contains(fn (SupplierFulfillment $o) => $o->status !== SupplierFulfillment::RECEIVED)) {
             return false;
         }
 

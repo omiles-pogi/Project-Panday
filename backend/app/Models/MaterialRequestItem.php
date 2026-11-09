@@ -38,7 +38,7 @@ class MaterialRequestItem extends Model
 
     public function order(): BelongsTo
     {
-        return $this->belongsTo(SupplierOrder::class, 'supplier_order_id');
+        return $this->belongsTo(SupplierFulfillment::class, 'supplier_order_id');
     }
 
     public function product(): BelongsTo

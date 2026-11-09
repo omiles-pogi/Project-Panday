@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * A contractor's material list for one project. `status` tracks only approval; each supplier's
- * fulfillment progress is a SupplierOrder, so the two can never contradict each other.
+ * fulfillment progress is a SupplierFulfillment, so the two can never contradict each other.
  */
 #[Fillable(['project_id', 'contractor_id', 'homeowner_id', 'status', 'notes', 'decision_reason', 'estimated_total', 'submitted_at', 'approved_at', 'phase_id', 'needed_by', 'auto_approved', 'approval_flags'])]
 class MaterialRequest extends Model
@@ -74,7 +74,7 @@ class MaterialRequest extends Model
 
     public function orders(): HasMany
     {
-        return $this->hasMany(SupplierOrder::class)->orderBy('id');
+        return $this->hasMany(SupplierFulfillment::class)->orderBy('id');
     }
 
     public function statusLogs(): HasMany

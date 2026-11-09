@@ -13,11 +13,11 @@ export function notificationRoute(n: AppNotification, role: UserRole): string | 
     return null;
   }
 
-  // Material workflow: open the request (homeowner/contractor) or the supplier's own order.
+  // Material workflow: open the request (homeowner/contractor) or the supplier's own fulfillment.
   const materialRequestId = n.data.materialRequestId;
   if (materialRequestId) {
     if (role === "supplier") {
-      return `/supplier/orders${n.data.supplierOrderId ? `?orderId=${n.data.supplierOrderId}` : ""}`;
+      return `/supplier/fulfillment${n.data.supplierFulfillmentId ? `?fulfillmentId=${n.data.supplierFulfillmentId}` : ""}`;
     }
     if (role === "homeowner") return `/homeowner/approvals/${materialRequestId}`;
     if (role === "contractor") return `/contractor/material-request/${materialRequestId}`;

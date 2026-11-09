@@ -8,7 +8,7 @@ use App\Http\Requests\StoreMaterialRequestRequest;
 use App\Http\Requests\UpdateMaterialRequestRequest;
 use App\Models\MaterialRequest;
 use App\Models\Project;
-use App\Models\SupplierOrder;
+use App\Models\SupplierFulfillment;
 use App\Services\MaterialRequestService;
 use Closure;
 use Illuminate\Http\JsonResponse;
@@ -67,17 +67,17 @@ class MaterialRequestController extends Controller
         return $this->attempt(fn () => $this->requests->cancel($materialRequest, $request->user(), $request->validated('reason')));
     }
 
-    public function confirmPrices(Request $request, SupplierOrder $supplierOrder): JsonResponse
+    public function confirmPrices(Request $request, SupplierFulfillment $supplierOrder): JsonResponse
     {
         return $this->attempt(fn () => $this->requests->confirmOrderPrices($supplierOrder, $request->user()));
     }
 
-    public function declinePrices(MaterialDecisionRequest $request, SupplierOrder $supplierOrder): JsonResponse
+    public function declinePrices(MaterialDecisionRequest $request, SupplierFulfillment $supplierOrder): JsonResponse
     {
         return $this->attempt(fn () => $this->requests->declineOrderPrices($supplierOrder, $request->user(), $request->validated('reason')));
     }
 
-    public function receive(Request $request, SupplierOrder $supplierOrder): JsonResponse
+    public function receive(Request $request, SupplierFulfillment $supplierOrder): JsonResponse
     {
         return $this->attempt(fn () => $this->requests->receive($supplierOrder, $request->user()));
     }

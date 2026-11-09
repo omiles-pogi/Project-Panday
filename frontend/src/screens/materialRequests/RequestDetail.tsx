@@ -8,24 +8,24 @@ import { CountUp } from "@/components/charts";
 import StockBadge from "@/components/StockBadge";
 import MessageButton from "@/components/MessageButton";
 import ExportPdfButton from "@/components/ExportPdfButton";
-import { ItemStatusBadge, OrderStatusBadge, RequestStatusBadge, statusLabel } from "@/components/MaterialStatusBadge";
+import { FulfillmentStatusBadge, ItemStatusBadge, RequestStatusBadge, statusLabel } from "@/components/MaterialStatusBadge";
 import { useTheme } from "@/context/ThemeContext";
 import { colors } from "@/theme/colors";
 import {
   approveMaterialRequest,
   cancelMaterialRequest,
-  confirmOrderPrices,
-  declineOrderPrices,
+  confirmFulfillmentPrices,
+  declineFulfillmentPrices,
   fetchAiMaterials,
   fetchMaterialRequest,
-  receiveSupplierOrder,
+  receiveSupplierFulfillment,
   rejectMaterialRequest,
   requestMaterialRevision,
   saveMaterialRequest,
   submitMaterialRequest,
 } from "@/services/api/materialRequests";
 import { fetchMaterialCatalog, type CatalogMaterialDto } from "@/services/api/supplierProducts";
-import type { AiMaterialSuggestion, MaterialItemInput, MaterialRequest, MaterialRequestOrder } from "@/types/materialRequest";
+import type { AiMaterialSuggestion, MaterialItemInput, MaterialRequest, MaterialRequestFulfillment } from "@/types/materialRequest";
 import { peso } from "@/utils/currency";
 import { materialRequestPdfHtml, sharePdf } from "@/utils/pdf";
 import { formatShortDate } from "@/utils/timeline";
@@ -157,7 +157,7 @@ function RequestDetailBody({ request: r, viewer, onChange }: { request: Material
 
   const total = r.confirmedTotal > 0 ? r.confirmedTotal : r.estimatedTotal;
   const closed = ["completed", "rejected", "cancelled"].includes(r.status);
-  const received = r.orders.some((o) => o.status === "received");
+  const received = r.fulfillments.some((o) => o.status === "received");
   const canCancel = !closed && !received && (viewer === "contractor" || r.status !== "draft");
   const locked = r.items.filter((i) => i.locked);
 
@@ -282,18 +282,18 @@ function RequestDetailBody({ request: r, viewer, onChange }: { request: Material
         </Card>
       )}
 
-      {r.orders.length > 0 && (
+      {r.fulfillments.length > 0 && (
         <Card title="Supplier Fulfilment" gap={10}>
-          {r.orders.map((o) => (
-            <OrderRow
+          {r.fulfillments.map((o) => (
+            <FulfillmentRow
               key={o.id}
               order={o}
               request={r}
               viewer={viewer}
               busy={busy}
-              onConfirmPrices={() => run(() => confirmOrderPrices(o.id))}
+              onConfirmPrices={() => run(() => confirmFulfillmentPrices(o.id))}
               onDeclinePrices={() => setReasonFor({ declineOrder: o.id })}
-              onReceive={() => run(() => receiveSupplierOrder(o.id))}
+              onReceive={() => run(() => receiveSupplierFulfillment(o.id))}
             />
           ))}
         </Card>
@@ -341,7 +341,7 @@ function RequestDetailBody({ request: r, viewer, onChange }: { request: Material
                   ? rejectMaterialRequest(r.id, reason)
                   : target === "cancel"
                     ? cancelMaterialRequest(r.id, reason)
-                    : declineOrderPrices(target.declineOrder, reason)
+                    : declineFulfillmentPrices(target.declineOrder, reason)
             );
           }}
         />
@@ -397,7 +397,7 @@ function ReadOnlyItem({ item: i }: { item: MaterialRequest["items"][number] }) {
   );
 }
 
-function OrderRow({
+function FulfillmentRow({
   order: o,
   request: r,
   viewer,
@@ -406,7 +406,7 @@ function OrderRow({
   onDeclinePrices,
   onReceive,
 }: {
-  order: MaterialRequestOrder;
+  order: MaterialRequestFulfillment;
   request: MaterialRequest;
   viewer: Viewer;
   busy: boolean;
@@ -420,7 +420,7 @@ function OrderRow({
     <View className="p-3 rounded-xl bg-muted" style={{ gap: 6 }}>
       <View className="flex-row justify-between items-start gap-2">
         <Text className="flex-1 text-sm font-semibold text-foreground">{o.supplierName ?? "Supplier"}</Text>
-        <OrderStatusBadge status={o.status} />
+        <FulfillmentStatusBadge status={o.status} />
       </View>
       <Text className="text-xs text-muted-foreground" numberOfLines={2}>
         {items.map((i) => `${i.materialName} × ${i.quantity.toLocaleString()}`).join(" · ") || "Items moved back for revision"}
@@ -460,7 +460,7 @@ function OrderRow({
 function History({ request: r }: { request: MaterialRequest }) {
   const { chrome } = useTheme();
   const [open, setOpen] = useState(false);
-  const supplierName = (orderId: number | null) => r.orders.find((o) => o.id === orderId)?.supplierName;
+  const supplierName = (orderId: number | null) => r.fulfillments.find((o) => o.id === orderId)?.supplierName;
   const entries = [...r.history].reverse();
   return (
     <Card>
@@ -475,7 +475,7 @@ function History({ request: r }: { request: MaterialRequest }) {
               <View className="w-2 h-2 rounded-full mt-1.5" style={{ backgroundColor: "#f59e0b" }} />
               <View className="flex-1">
                 <Text className="text-xs font-semibold text-foreground">
-                  {h.orderId ? `${supplierName(h.orderId) ?? "Supplier"}: ` : ""}
+                  {h.fulfillmentId ? `${supplierName(h.fulfillmentId) ?? "Supplier"}: ` : ""}
                   {statusLabel(h.newStatus)}
                 </Text>
                 <Text className="text-xs text-muted-foreground">

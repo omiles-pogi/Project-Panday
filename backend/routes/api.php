@@ -19,7 +19,7 @@ use App\Http\Controllers\Api\ProjectPhaseTaskController;
 use App\Http\Controllers\Api\ProjectRatingController;
 use App\Http\Controllers\Api\ProjectTimelineController;
 use App\Http\Controllers\Api\QuoteController;
-use App\Http\Controllers\Api\SupplierOrderController;
+use App\Http\Controllers\Api\SupplierFulfillmentController;
 use App\Http\Controllers\Api\SupplierProductController;
 use App\Http\Controllers\Api\SupplierProfileController;
 use App\Http\Controllers\Api\WorkerActivityController;
@@ -175,7 +175,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/material-requests', [MaterialRequestController::class, 'store']);
         Route::put('/material-requests/{materialRequest}', [MaterialRequestController::class, 'update']);
         Route::post('/material-requests/{materialRequest}/submit', [MaterialRequestController::class, 'submit']);
-        Route::post('/supplier-orders/{supplierOrder}/receive', [MaterialRequestController::class, 'receive']);
+        Route::post('/supplier-fulfillments/{supplierOrder}/receive', [MaterialRequestController::class, 'receive']);
     });
     Route::middleware('role:homeowner')->group(function () {
         // Whether routine requests that stay inside the approved plan approve themselves.
@@ -183,15 +183,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/material-requests/{materialRequest}/approve', [MaterialRequestController::class, 'approve']);
         Route::post('/material-requests/{materialRequest}/request-revision', [MaterialRequestController::class, 'requestRevision']);
         Route::post('/material-requests/{materialRequest}/reject', [MaterialRequestController::class, 'reject']);
-        Route::post('/supplier-orders/{supplierOrder}/confirm-prices', [MaterialRequestController::class, 'confirmPrices']);
-        Route::post('/supplier-orders/{supplierOrder}/decline-prices', [MaterialRequestController::class, 'declinePrices']);
+        Route::post('/supplier-fulfillments/{supplierOrder}/confirm-prices', [MaterialRequestController::class, 'confirmPrices']);
+        Route::post('/supplier-fulfillments/{supplierOrder}/decline-prices', [MaterialRequestController::class, 'declinePrices']);
     });
     Route::middleware('role:supplier')->group(function () {
-        Route::get('/supplier-orders', [SupplierOrderController::class, 'index']);
-        Route::get('/supplier-orders/{supplierOrder}', [SupplierOrderController::class, 'show']);
-        Route::post('/supplier-orders/{supplierOrder}/confirm', [SupplierOrderController::class, 'confirm']);
-        Route::post('/supplier-orders/{supplierOrder}/insufficient', [SupplierOrderController::class, 'insufficient']);
-        Route::post('/supplier-orders/{supplierOrder}/decline', [SupplierOrderController::class, 'decline']);
+        Route::get('/supplier-fulfillments', [SupplierFulfillmentController::class, 'index']);
+        Route::get('/supplier-fulfillments/{supplierOrder}', [SupplierFulfillmentController::class, 'show']);
+        Route::post('/supplier-fulfillments/{supplierOrder}/confirm', [SupplierFulfillmentController::class, 'confirm']);
+        Route::post('/supplier-fulfillments/{supplierOrder}/insufficient', [SupplierFulfillmentController::class, 'insufficient']);
+        Route::post('/supplier-fulfillments/{supplierOrder}/decline', [SupplierFulfillmentController::class, 'decline']);
     });
 });
 

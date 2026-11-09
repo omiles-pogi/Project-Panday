@@ -8,17 +8,17 @@ import {
   type SupplierProductDto,
   type SupplierProductInput,
 } from "@/services/api/supplierProducts";
-import { fetchSupplierOrders } from "@/services/api/materialRequests";
-import type { SupplierOrder } from "@/types/materialRequest";
+import { fetchSupplierFulfillments } from "@/services/api/materialRequests";
+import type { SupplierFulfillment } from "@/types/materialRequest";
 
 interface SupplierContextValue {
-  /** Real material orders routed to this supplier from homeowner-approved requests. */
-  orders: SupplierOrder[];
-  ordersLoading: boolean;
-  ordersError: string | null;
-  reloadOrders: () => void;
-  /** Swaps in the server's copy after an order action, and refreshes inventory (reservations move stock). */
-  replaceOrder: (order: SupplierOrder) => void;
+  /** Real material fulfillments routed to this supplier from homeowner-approved requests. */
+  fulfillments: SupplierFulfillment[];
+  fulfillmentsLoading: boolean;
+  fulfillmentsError: string | null;
+  reloadFulfillments: () => void;
+  /** Swaps in the server's copy after a fulfillment action, and refreshes inventory (reservations move stock). */
+  replaceFulfillment: (order: SupplierFulfillment) => void;
   products: Product[];
   productsLoading: boolean;
   productsError: string | null;
@@ -63,9 +63,9 @@ function toInput(patch: Partial<ProductInput>): Partial<SupplierProductInput> {
 }
 
 export function SupplierProvider({ children }: { children: ReactNode }) {
-  const [orders, setOrders] = useState<SupplierOrder[]>([]);
-  const [ordersLoading, setOrdersLoading] = useState(true);
-  const [ordersError, setOrdersError] = useState<string | null>(null);
+  const [fulfillments, setFulfillments] = useState<SupplierFulfillment[]>([]);
+  const [fulfillmentsLoading, setFulfillmentsLoading] = useState(true);
+  const [fulfillmentsError, setFulfillmentsError] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [productsError, setProductsError] = useState<string | null>(null);
@@ -80,34 +80,34 @@ export function SupplierProvider({ children }: { children: ReactNode }) {
       .finally(() => setProductsLoading(false));
   }, []);
 
-  const fetchOrders = useCallback(() => {
-    fetchSupplierOrders()
+  const fetchFulfillments = useCallback(() => {
+    fetchSupplierFulfillments()
       .then((list) => {
-        setOrders(list);
-        setOrdersError(null);
+        setFulfillments(list);
+        setFulfillmentsError(null);
       })
-      .catch((err) => setOrdersError(err instanceof Error ? err.message : "Failed to load orders."))
-      .finally(() => setOrdersLoading(false));
+      .catch((err) => setFulfillmentsError(err instanceof Error ? err.message : "Failed to load fulfillments."))
+      .finally(() => setFulfillmentsLoading(false));
   }, []);
 
   useEffect(() => {
     fetchProducts();
-    fetchOrders();
-  }, [fetchProducts, fetchOrders]);
+    fetchFulfillments();
+  }, [fetchProducts, fetchFulfillments]);
 
   const reloadProducts = useCallback(() => {
     setProductsLoading(true);
     fetchProducts();
   }, [fetchProducts]);
 
-  const reloadOrders = useCallback(() => {
-    setOrdersLoading(true);
-    fetchOrders();
-  }, [fetchOrders]);
+  const reloadFulfillments = useCallback(() => {
+    setFulfillmentsLoading(true);
+    fetchFulfillments();
+  }, [fetchFulfillments]);
 
-  const replaceOrder = useCallback(
-    (order: SupplierOrder) => {
-      setOrders((list) => list.map((o) => (o.id === order.id ? order : o)));
+  const replaceFulfillment = useCallback(
+    (order: SupplierFulfillment) => {
+      setFulfillments((list) => list.map((o) => (o.id === order.id ? order : o)));
       fetchProducts();
     },
     [fetchProducts]
@@ -130,11 +130,11 @@ export function SupplierProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
-      orders,
-      ordersLoading,
-      ordersError,
-      reloadOrders,
-      replaceOrder,
+      fulfillments,
+      fulfillmentsLoading,
+      fulfillmentsError,
+      reloadFulfillments,
+      replaceFulfillment,
       products,
       productsLoading,
       productsError,
@@ -144,11 +144,11 @@ export function SupplierProvider({ children }: { children: ReactNode }) {
       removeProduct,
     }),
     [
-      orders,
-      ordersLoading,
-      ordersError,
-      reloadOrders,
-      replaceOrder,
+      fulfillments,
+      fulfillmentsLoading,
+      fulfillmentsError,
+      reloadFulfillments,
+      replaceFulfillment,
       products,
       productsLoading,
       productsError,

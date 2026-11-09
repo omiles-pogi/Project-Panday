@@ -11,18 +11,18 @@ import InventoryStats from "./InventoryStats";
 
 const QUICK_ACTIONS = [
   { label: "Inventory", icon: "layers-outline", href: "/supplier/pricing" },
-  { label: "Fulfillment", icon: "cube-outline", href: "/supplier/orders" },
+  { label: "Fulfillment", icon: "cube-outline", href: "/supplier/fulfillment" },
   { label: "More", icon: "ellipsis-horizontal", href: "/supplier/more" },
 ] as const;
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const { orders, products, productsLoading, productsError } = useSupplier();
+  const { fulfillments, products, productsLoading, productsError } = useSupplier();
 
-  const goToOrders = () => router.push("/supplier/orders" as never);
-  const pendingRequests = orders.filter((o) => o.status === "supplier_review").length;
-  const acceptedRequests = orders.filter((o) => ["awaiting_homeowner_confirmation", "confirmed"].includes(o.status)).length;
-  const completedRequests = orders.filter((o) => o.status === "received").length;
+  const goToFulfillment = () => router.push("/supplier/fulfillment" as never);
+  const pendingRequests = fulfillments.filter((o) => o.status === "supplier_review").length;
+  const acceptedRequests = fulfillments.filter((o) => ["awaiting_homeowner_confirmation", "confirmed"].includes(o.status)).length;
+  const completedRequests = fulfillments.filter((o) => o.status === "received").length;
 
   // Out-of-stock items first — they're the ones that need the supplier's attention.
   const inventoryPreview = [...products]
@@ -93,9 +93,9 @@ export default function Dashboard() {
       </View>
 
       <StatGrid>
-        <StatTile label="Pending Requests" value={pendingRequests} color="#f59e0b" icon="mail-unread-outline" onPress={goToOrders} />
-        <StatTile label="Accepted Requests" value={acceptedRequests} color="#3b82f6" icon="cube-outline" onPress={goToOrders} />
-        <StatTile label="Completed Requests" value={completedRequests} color="#10b981" icon="checkmark-circle-outline" onPress={goToOrders} />
+        <StatTile label="Pending Requests" value={pendingRequests} color="#f59e0b" icon="mail-unread-outline" onPress={goToFulfillment} />
+        <StatTile label="Accepted Requests" value={acceptedRequests} color="#3b82f6" icon="cube-outline" onPress={goToFulfillment} />
+        <StatTile label="Completed Requests" value={completedRequests} color="#10b981" icon="checkmark-circle-outline" onPress={goToFulfillment} />
       </StatGrid>
     </Screen>
   );

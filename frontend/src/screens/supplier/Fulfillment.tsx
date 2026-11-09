@@ -5,14 +5,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { Badge, Button, Card, ChipPicker, Field, MONO, PageHeader, Screen, SubmitButton } from "@/components/ui";
 import Sheet from "@/components/Sheet";
 import StockBadge from "@/components/StockBadge";
-import { ItemStatusBadge, ORDER_FLOW, ORDER_STATUS, OrderStatusBadge } from "@/components/MaterialStatusBadge";
+import { FULFILLMENT_FLOW, FULFILLMENT_STATUS, FulfillmentStatusBadge, ItemStatusBadge } from "@/components/MaterialStatusBadge";
 import { useSupplier } from "@/context/SupplierContext";
 import { useTheme } from "@/context/ThemeContext";
-import { confirmSupplierOrder, declineSupplierOrder, reportInsufficientStock } from "@/services/api/materialRequests";
-import type { SupplierOrder, SupplierOrderStatus } from "@/types/materialRequest";
+import { confirmSupplierFulfillment, declineSupplierFulfillment, reportInsufficientStock } from "@/services/api/materialRequests";
+import type { SupplierFulfillment, SupplierFulfillmentStatus } from "@/types/materialRequest";
 import { peso } from "@/utils/currency";
 
-const FILTERS: Record<string, SupplierOrderStatus[] | null> = {
+const FILTERS: Record<string, SupplierFulfillmentStatus[] | null> = {
   Incoming: ["supplier_review"],
   Active: ["awaiting_homeowner_confirmation", "confirmed"],
   Completed: ["received"],
@@ -25,21 +25,21 @@ const WHOLE = /^\d+$/;
 const errorMessage = (err: unknown, fallback: string) => (err instanceof Error ? err.message : fallback);
 const formatDate = (iso: string) => new Date(iso).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 
-/** Material orders from homeowner-approved requests — this supplier's items only. */
-export default function Orders() {
-  const { orders, ordersLoading, ordersError, reloadOrders } = useSupplier();
-  // A notification tap lands here with ?orderId=… to open that order directly.
-  const { orderId } = useLocalSearchParams<{ orderId?: string }>();
+/** Material fulfillments from homeowner-approved requests — this supplier's items only. */
+export default function Fulfillment() {
+  const { fulfillments, fulfillmentsLoading, fulfillmentsError, reloadFulfillments } = useSupplier();
+  // A notification tap lands here with ?fulfillmentId=… to open that fulfillment directly.
+  const { fulfillmentId } = useLocalSearchParams<{ fulfillmentId?: string }>();
   const [filter, setFilter] = useState("Incoming");
   const [openId, setOpenId] = useState<number | null>(null);
 
-  useFocusEffect(reloadOrders);
+  useFocusEffect(reloadFulfillments);
 
-  const targetId = openId ?? (orderId ? Number(orderId) : null);
-  const open = orders.find((o) => o.id === targetId) ?? null;
+  const targetId = openId ?? (fulfillmentId ? Number(fulfillmentId) : null);
+  const open = fulfillments.find((o) => o.id === targetId) ?? null;
   const statuses = FILTERS[filter];
-  const shown = statuses ? orders.filter((o) => statuses.includes(o.status)) : orders;
-  const counts = Object.fromEntries(Object.entries(FILTERS).map(([k, v]) => [k, v ? orders.filter((o) => v.includes(o.status)).length : orders.length]));
+  const shown = statuses ? fulfillments.filter((o) => statuses.includes(o.status)) : fulfillments;
+  const counts = Object.fromEntries(Object.entries(FILTERS).map(([k, v]) => [k, v ? fulfillments.filter((o) => v.includes(o.status)).length : fulfillments.length]));
 
   return (
     <Screen>
@@ -52,36 +52,36 @@ export default function Orders() {
         onChange={(v) => setFilter(v.replace(/ \(\d+\)$/, ""))}
       />
 
-      {ordersLoading && orders.length === 0 ? (
+      {fulfillmentsLoading && fulfillments.length === 0 ? (
         <View className="items-center py-10">
           <ActivityIndicator color="#f59e0b" />
         </View>
-      ) : ordersError && orders.length === 0 ? (
+      ) : fulfillmentsError && fulfillments.length === 0 ? (
         <Card gap={10}>
-          <Text className="text-xs text-danger">{ordersError}</Text>
+          <Text className="text-xs text-danger">{fulfillmentsError}</Text>
           <View className="flex-row">
-            <Button label="Try Again" variant="muted" onPress={reloadOrders} />
+            <Button label="Try Again" variant="muted" onPress={reloadFulfillments} />
           </View>
         </Card>
       ) : shown.length === 0 ? (
         <Card>
           <Text className="text-sm text-center text-muted-foreground py-6">
-            {orders.length === 0
+            {fulfillments.length === 0
               ? "Nothing to fulfill yet. Requests appear here once a homeowner approves a contractor's material request."
               : "Nothing in this view."}
           </Text>
         </Card>
       ) : (
-        shown.map((o) => <OrderCard key={o.id} order={o} onPress={() => setOpenId(o.id)} />)
+        shown.map((o) => <FulfillmentCard key={o.id} order={o} onPress={() => setOpenId(o.id)} />)
       )}
 
       {open && (
-        <OrderSheet
+        <FulfillmentSheet
           key={`${open.id}-${open.status}`}
           order={open}
           onClose={() => {
             setOpenId(null);
-            if (orderId) router.setParams({ orderId: undefined });
+            if (fulfillmentId) router.setParams({ fulfillmentId: undefined });
           }}
         />
       )}
@@ -89,7 +89,7 @@ export default function Orders() {
   );
 }
 
-function OrderCard({ order: o, onPress }: { order: SupplierOrder; onPress: () => void }) {
+function FulfillmentCard({ order: o, onPress }: { order: SupplierFulfillment; onPress: () => void }) {
   const short = o.items.some((i) => i.insufficientStock);
   const total = o.confirmedTotal > 0 ? o.confirmedTotal : o.estimatedTotal;
   return (
@@ -105,7 +105,7 @@ function OrderCard({ order: o, onPress }: { order: SupplierOrder; onPress: () =>
             <Text className="text-xs text-muted-foreground">Contractor: {o.contractorName ?? "—"}</Text>
           </View>
           <View className="items-end gap-1">
-            <OrderStatusBadge status={o.status} />
+            <FulfillmentStatusBadge status={o.status} />
             <Text className="text-sm font-bold text-primary" style={{ fontFamily: MONO }}>
               {peso(total)}
             </Text>
@@ -122,8 +122,8 @@ function OrderCard({ order: o, onPress }: { order: SupplierOrder; onPress: () =>
   );
 }
 
-function OrderSheet({ order: o, onClose }: { order: SupplierOrder; onClose: () => void }) {
-  const { replaceOrder } = useSupplier();
+function FulfillmentSheet({ order: o, onClose }: { order: SupplierFulfillment; onClose: () => void }) {
+  const { replaceFulfillment } = useSupplier();
   const { chrome } = useTheme();
   const reviewing = o.status === "supplier_review";
   const [prices, setPrices] = useState<Record<number, string>>(() =>
@@ -138,14 +138,14 @@ function OrderSheet({ order: o, onClose }: { order: SupplierOrder; onClose: () =
 
   const short = o.items.filter((i) => i.insufficientStock);
   const finalTotal = o.items.reduce((sum, i) => sum + i.quantity * (Number(prices[i.id]) || 0), 0);
-  const reached = ORDER_FLOW.indexOf(o.status === "awaiting_homeowner_confirmation" ? "supplier_review" : o.status);
+  const reached = FULFILLMENT_FLOW.indexOf(o.status === "awaiting_homeowner_confirmation" ? "supplier_review" : o.status);
 
-  const run = async (action: () => Promise<SupplierOrder>) => {
+  const run = async (action: () => Promise<SupplierFulfillment>) => {
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      replaceOrder(await action());
+      replaceFulfillment(await action());
       onClose();
     } catch (err) {
       setError(errorMessage(err, "Something went wrong. Please try again."));
@@ -159,7 +159,7 @@ function OrderSheet({ order: o, onClose }: { order: SupplierOrder; onClose: () =
     }
     if (deliveryDate && !DATE.test(deliveryDate)) return setError("Use YYYY-MM-DD for the delivery date.");
     run(() =>
-      confirmSupplierOrder(
+      confirmSupplierFulfillment(
         o.id,
         o.items.map((i) => ({ id: i.id, unit_price: Number(prices[i.id]) })),
         deliveryDate || null,
@@ -171,21 +171,21 @@ function OrderSheet({ order: o, onClose }: { order: SupplierOrder; onClose: () =
   return (
     <Sheet visible title={o.project?.title ?? `Fulfillment #${o.id}`} subtitle={`Request #${o.materialRequestId} · Contractor ${o.contractorName ?? "—"}`} onClose={onClose}>
       <View className="flex-row flex-wrap items-center gap-2">
-        <OrderStatusBadge status={o.status} />
+        <FulfillmentStatusBadge status={o.status} />
         {o.project?.location ? <Text className="text-xs text-muted-foreground">Deliver to {o.project.location}</Text> : null}
       </View>
 
       {/* Progress through the fulfilment steps */}
       {!["unavailable", "cancelled"].includes(o.status) && (
         <View className="flex-row items-center">
-          {ORDER_FLOW.map((step, idx) => (
+          {FULFILLMENT_FLOW.map((step, idx) => (
             <View key={step} className="flex-1 items-center" style={{ gap: 4 }}>
               <View
                 className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: idx <= reached ? ORDER_STATUS[step].color : chrome.muted }}
+                style={{ backgroundColor: idx <= reached ? FULFILLMENT_STATUS[step].color : chrome.muted }}
               />
               <Text className="text-center text-muted-foreground" style={{ fontSize: 9 }} numberOfLines={2}>
-                {ORDER_STATUS[step].label}
+                {FULFILLMENT_STATUS[step].label}
               </Text>
             </View>
           ))}
@@ -285,7 +285,7 @@ function OrderSheet({ order: o, onClose }: { order: SupplierOrder; onClose: () =
               <Pressable
                 onPress={() => {
                   if (mode === "decline" && !reason.trim()) return setError("Give a reason for declining.");
-                  run(() => (mode === "decline" ? declineSupplierOrder(o.id, reason.trim()) : reportInsufficientStock(o.id, reason)));
+                  run(() => (mode === "decline" ? declineSupplierFulfillment(o.id, reason.trim()) : reportInsufficientStock(o.id, reason)));
                 }}
                 className="py-4 rounded-2xl items-center"
                 style={{ backgroundColor: "#ef444420" }}

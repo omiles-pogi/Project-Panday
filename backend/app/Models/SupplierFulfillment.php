@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /** One supplier's share of an approved material request, and its fulfillment status. */
 #[Fillable(['material_request_id', 'supplier_id', 'status', 'expected_delivery_date', 'supplier_note', 'decline_reason', 'confirmed_at', 'received_at'])]
-class SupplierOrder extends Model
+class SupplierFulfillment extends Model
 {
     public const SUPPLIER_REVIEW = 'supplier_review';
 
@@ -23,7 +23,7 @@ class SupplierOrder extends Model
 
     public const CANCELLED = 'cancelled';
 
-    /** Statuses in which this order's items hold reserved stock. */
+    /** Statuses in which this fulfillment's items hold reserved stock. */
     public const HOLDS_RESERVATION = [self::AWAITING_HOMEOWNER, self::CONFIRMED];
 
     /** Ended without fulfilment — its items return to the contractor for revision. */
@@ -50,7 +50,9 @@ class SupplierOrder extends Model
 
     public function items(): HasMany
     {
-        return $this->hasMany(MaterialRequestItem::class)->orderBy('id');
+        // Explicit FK: the column is still named supplier_order_id (unchanged by this rename), so
+        // Eloquent's own inference from this class's name (supplier_fulfillment_id) would be wrong.
+        return $this->hasMany(MaterialRequestItem::class, 'supplier_order_id')->orderBy('id');
     }
 
     public function isDead(): bool

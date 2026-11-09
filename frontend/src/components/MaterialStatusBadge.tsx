@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui";
 import { colors, roleColors } from "@/theme/colors";
-import type { MaterialItemStatus, MaterialRequestStatus, SupplierOrderStatus } from "@/types/materialRequest";
+import type { MaterialItemStatus, MaterialRequestStatus, SupplierFulfillmentStatus } from "@/types/materialRequest";
 
 const NEUTRAL = "#6b7280";
 
@@ -14,7 +14,7 @@ export const REQUEST_STATUS: Record<MaterialRequestStatus, { label: string; colo
   cancelled: { label: "Cancelled", color: NEUTRAL },
 };
 
-export const ORDER_STATUS: Record<SupplierOrderStatus, { label: string; color: string }> = {
+export const FULFILLMENT_STATUS: Record<SupplierFulfillmentStatus, { label: string; color: string }> = {
   supplier_review: { label: "Supplier Review", color: colors.primary },
   awaiting_homeowner_confirmation: { label: "Awaiting Price OK", color: colors.warning },
   confirmed: { label: "Confirmed", color: roleColors.homeowner },
@@ -32,15 +32,15 @@ const ITEM_STATUS: Record<MaterialItemStatus, { label: string; color: string } |
 
 /** The order a supplier fulfilment moves through, for progress display. There is no delivery-progress
  *  tracking — once confirmed, the only further state is the contractor marking it received. */
-export const ORDER_FLOW: SupplierOrderStatus[] = ["supplier_review", "confirmed", "received"];
+export const FULFILLMENT_FLOW: SupplierFulfillmentStatus[] = ["supplier_review", "confirmed", "received"];
 
 export function RequestStatusBadge({ status }: { status: MaterialRequestStatus }) {
   const s = REQUEST_STATUS[status];
   return <Badge label={s.label} color={s.color} />;
 }
 
-export function OrderStatusBadge({ status }: { status: SupplierOrderStatus }) {
-  const s = ORDER_STATUS[status];
+export function FulfillmentStatusBadge({ status }: { status: SupplierFulfillmentStatus }) {
+  const s = FULFILLMENT_STATUS[status];
   return <Badge label={s.label} color={s.color} />;
 }
 
@@ -53,7 +53,7 @@ export function ItemStatusBadge({ status }: { status: MaterialItemStatus }) {
 export function statusLabel(status: string): string {
   return (
     REQUEST_STATUS[status as MaterialRequestStatus]?.label ??
-    ORDER_STATUS[status as SupplierOrderStatus]?.label ??
+    FULFILLMENT_STATUS[status as SupplierFulfillmentStatus]?.label ??
     status.replace(/_/g, " ")
   );
 }

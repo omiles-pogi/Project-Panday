@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         // A contractor's list of materials for one project, approved by the project's homeowner.
-        // `status` is only the approval lifecycle; per-supplier fulfillment lives on supplier_orders.
+        // `status` is only the approval lifecycle; per-supplier fulfillment lives on supplier_fulfillments.
         Schema::create('material_requests', function (Blueprint $table) {
             $table->id();
             $table->foreignId('project_id')->constrained()->cascadeOnDelete();

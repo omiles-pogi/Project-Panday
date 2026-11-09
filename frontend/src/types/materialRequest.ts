@@ -11,7 +11,7 @@ export type MaterialRequestStatus =
   | "cancelled";
 
 /** Fulfillment status of one supplier's share of an approved request. */
-export type SupplierOrderStatus =
+export type SupplierFulfillmentStatus =
   | "supplier_review"
   | "awaiting_homeowner_confirmation"
   | "confirmed"
@@ -39,8 +39,8 @@ export interface MaterialRequestItem {
   aiQuantity: number | null;
   planQuantity: number | null;
   wastePct: number;
-  orderId: number | null;
-  /** Already with a live supplier order — the contractor can't change it. */
+  fulfillmentId: number | null;
+  /** Already with a live supplier fulfillment — the contractor can't change it. */
   locked: boolean;
   availableQuantity: number | null;
   stockStatus: StockStatus | null;
@@ -48,11 +48,11 @@ export interface MaterialRequestItem {
   insufficientStock: boolean;
 }
 
-export interface MaterialRequestOrder {
+export interface MaterialRequestFulfillment {
   id: number;
   supplierId: number;
   supplierName: string | null;
-  status: SupplierOrderStatus;
+  status: SupplierFulfillmentStatus;
   expectedDeliveryDate: string | null;
   supplierNote: string | null;
   declineReason: string | null;
@@ -65,7 +65,7 @@ export interface MaterialRequestOrder {
 
 export interface MaterialRequestHistoryEntry {
   id: number;
-  orderId: number | null;
+  fulfillmentId: number | null;
   previousStatus: string | null;
   newStatus: string;
   reason: string | null;
@@ -106,7 +106,7 @@ export interface MaterialRequest {
     leftOverAfter: number | null;
   } | null;
   items: MaterialRequestItem[];
-  orders: MaterialRequestOrder[];
+  fulfillments: MaterialRequestFulfillment[];
   history: MaterialRequestHistoryEntry[];
 }
 
@@ -145,11 +145,11 @@ export interface AiMaterialSuggestion {
   matchKind: "plan" | "exact" | "similar" | null;
 }
 
-/** A supplier's view of their own order — no homeowner details, no other suppliers' items. */
-export interface SupplierOrder {
+/** A supplier's view of their own fulfillment — no homeowner details, no other suppliers' items. */
+export interface SupplierFulfillment {
   id: number;
   materialRequestId: number;
-  status: SupplierOrderStatus;
+  status: SupplierFulfillmentStatus;
   project: { id: number; title: string; location: string | null } | null;
   contractorName: string | null;
   requestNotes: string | null;

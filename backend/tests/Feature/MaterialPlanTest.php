@@ -5,7 +5,7 @@ namespace Tests\Feature;
 use App\Models\MaterialRequest;
 use App\Models\Project;
 use App\Models\ProjectPhase;
-use App\Models\SupplierOrder;
+use App\Models\SupplierFulfillment;
 use App\Models\SupplierProduct;
 use App\Models\User;
 use App\Services\ConstructionPlanService;
@@ -337,8 +337,8 @@ class MaterialPlanTest extends TestCase
         $response = $this->submit($id)->assertOk();
 
         $response->assertJsonPath('status', 'approved')->assertJsonPath('autoApproved', true)->assertJsonPath('approvalFlags', []);
-        $this->assertSame(1, SupplierOrder::where('material_request_id', $id)->count());
-        $this->assertSame('supplier_review', SupplierOrder::where('material_request_id', $id)->first()->status);
+        $this->assertSame(1, SupplierFulfillment::where('material_request_id', $id)->count());
+        $this->assertSame('supplier_review', SupplierFulfillment::where('material_request_id', $id)->first()->status);
 
         // The history says the system did it, and why — not the homeowner.
         $approval = collect($response->json('history'))->firstWhere('newStatus', 'approved');
@@ -354,7 +354,7 @@ class MaterialPlanTest extends TestCase
 
         $this->assertNotNull($this->homeowner->appNotifications()->where('type', 'material_request_auto_approved')->first());
         $this->assertNotNull($this->contractor->appNotifications()->where('type', 'material_request_approved')->first());
-        $this->assertNotNull($this->supplierA->appNotifications()->where('type', 'supplier_order_received')->first());
+        $this->assertNotNull($this->supplierA->appNotifications()->where('type', 'supplier_fulfillment_received')->first());
         // No "needs your approval" prompt for something that didn't need it.
         $this->assertNull($this->homeowner->appNotifications()->where('type', 'material_request_submitted')->first());
     }
@@ -369,7 +369,7 @@ class MaterialPlanTest extends TestCase
 
         $response->assertJsonPath('status', 'pending_homeowner_approval')->assertJsonPath('autoApproved', false);
         $this->assertStringContainsString('Construction Materials would be ₱12,480 over the plan budget of ₱20,000', $response->json('approvalFlags.0'));
-        $this->assertSame(0, SupplierOrder::where('material_request_id', $id)->count());
+        $this->assertSame(0, SupplierFulfillment::where('material_request_id', $id)->count());
         // The homeowner's prompt carries the reason.
         $note = $this->homeowner->appNotifications()->where('type', 'material_request_submitted')->first();
         $this->assertStringContainsString('over the plan budget', $note->body);

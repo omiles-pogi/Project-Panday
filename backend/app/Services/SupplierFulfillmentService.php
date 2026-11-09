@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Models\MaterialRequestItem;
-use App\Models\SupplierOrder;
+use App\Models\SupplierFulfillment;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -11,7 +11,7 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * Supplier side of the material workflow. A supplier only ever sees and acts on their own
- * SupplierOrders — never another supplier's items on the same request, nor the homeowner chat.
+ * SupplierFulfillments — never another supplier's items on the same request, nor the homeowner chat.
  *
  *   supplier_review → (confirm) confirmed | awaiting_homeowner_confirmation (price changed)
  *                   → (insufficient / decline) unavailable → request returns for revision
@@ -21,7 +21,7 @@ use Illuminate\Validation\ValidationException;
  * contractor marking it received. Stock is reserved at confirm and deducted at receipt — exactly
  * once each (see StockService and MaterialRequestService::receive).
  */
-class SupplierOrderService
+class SupplierFulfillmentService
 {
     private const PRESENT_WITH = [
         'materialRequest:id,project_id,contractor_id,approved_at,notes',
@@ -38,17 +38,17 @@ class SupplierOrderService
     /** @return Collection<int, array<string, mixed>> */
     public function listFor(User $supplier): Collection
     {
-        return SupplierOrder::query()
+        return SupplierFulfillment::query()
             ->where('supplier_id', $supplier->id)
             ->with(self::PRESENT_WITH)
             ->latest('updated_at')
             ->latest('id')
             ->get()
-            ->map(fn (SupplierOrder $o) => $this->present($o));
+            ->map(fn (SupplierFulfillment $o) => $this->present($o));
     }
 
     /** @return array<string, mixed> */
-    public function show(SupplierOrder $order, User $supplier): array
+    public function show(SupplierFulfillment $order, User $supplier): array
     {
         $this->authorizeSupplier($order, $supplier);
 
@@ -62,17 +62,17 @@ class SupplierOrderService
      * @param  array<int, int>  $prices  item id => final unit price (missing → current estimate)
      * @return array<string, mixed>
      */
-    public function confirm(SupplierOrder $order, User $supplier, array $prices, ?string $expectedDate, ?string $note): array
+    public function confirm(SupplierFulfillment $order, User $supplier, array $prices, ?string $expectedDate, ?string $note): array
     {
         $this->authorizeSupplier($order, $supplier);
 
         $priceChanged = DB::transaction(function () use ($order, $supplier, $prices, $expectedDate, $note) {
-            $order = $this->lockInStatus($order, SupplierOrder::SUPPLIER_REVIEW, 'This order has already been reviewed.');
+            $order = $this->lockInStatus($order, SupplierFulfillment::SUPPLIER_REVIEW, 'This has already been reviewed.');
             $items = $order->items()->with('product')->get();
 
             $unknown = array_diff(array_keys($prices), $items->pluck('id')->all());
             if ($unknown) {
-                throw ValidationException::withMessages(['items' => 'Some prices refer to materials that are not part of this order.']);
+                throw ValidationException::withMessages(['items' => 'Some prices refer to materials that are not part of this request.']);
             }
 
             $changed = false;
@@ -99,7 +99,7 @@ class SupplierOrderService
             $order->confirmed_at = now();
             $this->workflow->setOrderStatus(
                 $order,
-                $changed ? SupplierOrder::AWAITING_HOMEOWNER : SupplierOrder::CONFIRMED,
+                $changed ? SupplierFulfillment::AWAITING_HOMEOWNER : SupplierFulfillment::CONFIRMED,
                 $supplier,
                 $changed ? 'Final prices differ from the estimate — homeowner confirmation required.' : null,
             );
@@ -112,20 +112,20 @@ class SupplierOrderService
         $body = $priceChanged
             ? "{$who} confirmed availability for {$request->project->title} with updated prices. Please review the final cost."
             : "{$who} confirmed availability and pricing for {$request->project->title}.";
-        $this->workflow->notify($request->homeowner, $priceChanged ? 'supplier_price_confirmation' : 'supplier_order_confirmed',
+        $this->workflow->notify($request->homeowner, $priceChanged ? 'supplier_price_confirmation' : 'supplier_fulfillment_confirmed',
             $priceChanged ? 'Confirm final material prices' : 'Supplier confirmed materials', $body, $request);
-        $this->workflow->notify($request->contractor, 'supplier_order_confirmed', 'Supplier confirmed materials', $body, $request);
+        $this->workflow->notify($request->contractor, 'supplier_fulfillment_confirmed', 'Supplier confirmed materials', $body, $request);
 
         return $this->present($order->fresh()->load(self::PRESENT_WITH));
     }
 
     /**
-     * Supplier can't cover the order (some item exceeds available stock) or declines it outright.
+     * Supplier can't cover the request (some item exceeds available stock) or declines it outright.
      * Nothing is reserved; the items go back to the contractor to revise or re-source.
      *
      * @return array<string, mixed>
      */
-    public function reportUnavailable(SupplierOrder $order, User $supplier, bool $decline, ?string $reason): array
+    public function reportUnavailable(SupplierFulfillment $order, User $supplier, bool $decline, ?string $reason): array
     {
         $this->authorizeSupplier($order, $supplier);
         if ($decline && ! $reason) {
@@ -133,7 +133,7 @@ class SupplierOrderService
         }
 
         $summary = DB::transaction(function () use ($order, $supplier, $decline, $reason) {
-            $order = $this->lockInStatus($order, SupplierOrder::SUPPLIER_REVIEW, 'This order has already been reviewed.');
+            $order = $this->lockInStatus($order, SupplierFulfillment::SUPPLIER_REVIEW, 'This has already been reviewed.');
             $short = [];
 
             foreach ($order->items()->with('product')->get() as $item) {
@@ -148,16 +148,16 @@ class SupplierOrderService
             }
 
             if (! $decline && ! $short) {
-                throw ValidationException::withMessages(['items' => 'You have enough stock for every item — confirm the order instead.']);
+                throw ValidationException::withMessages(['items' => 'You have enough stock for every item — confirm the request instead.']);
             }
 
             $who = $supplier->business_name ?: $supplier->name;
             $summary = $decline
-                ? "{$who} declined the order: {$reason}"
+                ? "{$who} declined the request: {$reason}"
                 : "{$who} has insufficient stock for ".implode(', ', $short).($reason ? ". Note: {$reason}" : '.');
 
             $order->decline_reason = $reason ?? implode('; ', $short);
-            $this->workflow->setOrderStatus($order, SupplierOrder::UNAVAILABLE, $supplier, $summary);
+            $this->workflow->setOrderStatus($order, SupplierFulfillment::UNAVAILABLE, $supplier, $summary);
             $this->workflow->returnForRevision($order->materialRequest, $supplier, $summary);
 
             return $summary;
@@ -165,15 +165,15 @@ class SupplierOrderService
 
         $request = $order->materialRequest()->with('project', 'contractor', 'homeowner')->first();
         $title = $decline ? 'Supplier declined materials' : 'Insufficient supplier stock';
-        $this->workflow->notify($request->contractor, 'supplier_order_unavailable', $title, "{$summary} Please revise the request or choose another supplier.", $request);
-        $this->workflow->notify($request->homeowner, 'supplier_order_unavailable', $title, $summary, $request);
+        $this->workflow->notify($request->contractor, 'supplier_fulfillment_unavailable', $title, "{$summary} Please revise the request or choose another supplier.", $request);
+        $this->workflow->notify($request->homeowner, 'supplier_fulfillment_unavailable', $title, $summary, $request);
 
         return $this->present($order->fresh()->load(self::PRESENT_WITH));
     }
 
-    private function lockInStatus(SupplierOrder $order, string $status, string $message): SupplierOrder
+    private function lockInStatus(SupplierFulfillment $order, string $status, string $message): SupplierFulfillment
     {
-        $locked = SupplierOrder::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
+        $locked = SupplierFulfillment::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
         if ($locked->status !== $status) {
             throw ValidationException::withMessages(['status' => $message]);
         }
@@ -181,10 +181,10 @@ class SupplierOrderService
         return $locked;
     }
 
-    private function authorizeSupplier(SupplierOrder $order, User $supplier): void
+    private function authorizeSupplier(SupplierFulfillment $order, User $supplier): void
     {
         if ($order->supplier_id !== $supplier->id) {
-            throw ValidationException::withMessages(['supplier_order_id' => 'This order is not yours.']);
+            throw ValidationException::withMessages(['supplier_order_id' => 'This is not yours.']);
         }
     }
 
@@ -194,7 +194,7 @@ class SupplierOrderService
      *
      * @return array<string, mixed>
      */
-    public function present(SupplierOrder $o): array
+    public function present(SupplierFulfillment $o): array
     {
         $request = $o->materialRequest;
         $items = $o->items->map(fn (MaterialRequestItem $i) => [
@@ -211,7 +211,7 @@ class SupplierOrderService
             'availableQuantity' => $i->product?->available_quantity,
             'stockStatus' => $i->product?->stock_status,
             // Before confirming, can the supplier cover this line from available-to-promise stock?
-            'insufficientStock' => $o->status === SupplierOrder::SUPPLIER_REVIEW && $i->quantity > ($i->product?->available_quantity ?? 0),
+            'insufficientStock' => $o->status === SupplierFulfillment::SUPPLIER_REVIEW && $i->quantity > ($i->product?->available_quantity ?? 0),
             'status' => $i->status,
         ])->values();
 

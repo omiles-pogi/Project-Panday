@@ -4,25 +4,25 @@ namespace App\Services;
 
 use App\Models\MaterialRequestItem;
 use App\Models\Project;
-use App\Models\SupplierOrder;
+use App\Models\SupplierFulfillment;
 use App\Models\SupplierProduct;
 use App\Support\Wage;
 
 class ProjectBudgetService
 {
-    /** Recorded order commitments, never inferred payments or progress-based spending. */
+    /** Recorded fulfillment commitments, never inferred payments or progress-based spending. */
     public function recordsFor(Project $project): array
     {
-        $orders = SupplierOrder::query()
+        $orders = SupplierFulfillment::query()
             ->whereHas('materialRequest', fn ($query) => $query->where('project_id', $project->id))
             ->with(['supplier:id,name,business_name', 'items.product:id,category'])
             ->orderBy('id')->get();
 
-        $confirmedStatuses = [SupplierOrder::CONFIRMED, SupplierOrder::RECEIVED];
-        $lines = $orders->flatMap(function (SupplierOrder $order) use ($confirmedStatuses) {
+        $confirmedStatuses = [SupplierFulfillment::CONFIRMED, SupplierFulfillment::RECEIVED];
+        $lines = $orders->flatMap(function (SupplierFulfillment $order) use ($confirmedStatuses) {
             return $order->items->map(fn (MaterialRequestItem $item) => [
                 'id' => $item->id,
-                'orderId' => $order->id,
+                'fulfillmentId' => $order->id,
                 'material' => $item->material_name,
                 // A deleted listing has no known category; never guess one from its name.
                 'category' => $item->product ? SupplierProduct::planCategoryFor($item->product->category) : null,
@@ -44,7 +44,7 @@ class ProjectBudgetService
             'agreedWageTotal' => $wages->where('auto', false)->sum('total'),
             'automaticWageTotal' => $wages->where('auto', true)->sum('total'),
             'confirmedMaterialTotal' => $lines->where('isCommitment', true)->sum('total'),
-            'orderLines' => $lines->all(),
+            'fulfillmentLines' => $lines->all(),
             // There is no payment ledger. Unknown must stay unknown, even at 100% progress.
             'paidTotal' => null,
         ];

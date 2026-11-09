@@ -5,7 +5,7 @@ import type {
   MaterialPlan,
   MaterialRequest,
   MaterialReviewLine,
-  SupplierOrder,
+  SupplierFulfillment,
 } from "@/types/materialRequest";
 
 const post = (path: string, body?: unknown) =>
@@ -52,16 +52,16 @@ export async function rejectMaterialRequest(id: number, reason: string): Promise
   return (await post(`/api/material-requests/${id}/reject`, { reason })) as MaterialRequest;
 }
 
-export async function confirmOrderPrices(orderId: number): Promise<MaterialRequest> {
-  return (await post(`/api/supplier-orders/${orderId}/confirm-prices`)) as MaterialRequest;
+export async function confirmFulfillmentPrices(orderId: number): Promise<MaterialRequest> {
+  return (await post(`/api/supplier-fulfillments/${orderId}/confirm-prices`)) as MaterialRequest;
 }
 
-export async function declineOrderPrices(orderId: number, reason: string): Promise<MaterialRequest> {
-  return (await post(`/api/supplier-orders/${orderId}/decline-prices`, { reason })) as MaterialRequest;
+export async function declineFulfillmentPrices(orderId: number, reason: string): Promise<MaterialRequest> {
+  return (await post(`/api/supplier-fulfillments/${orderId}/decline-prices`, { reason })) as MaterialRequest;
 }
 
-export async function receiveSupplierOrder(orderId: number): Promise<MaterialRequest> {
-  return (await post(`/api/supplier-orders/${orderId}/receive`)) as MaterialRequest;
+export async function receiveSupplierFulfillment(orderId: number): Promise<MaterialRequest> {
+  return (await post(`/api/supplier-fulfillments/${orderId}/receive`)) as MaterialRequest;
 }
 
 export async function fetchAiMaterials(projectId: number): Promise<AiMaterialSuggestion[]> {
@@ -70,29 +70,29 @@ export async function fetchAiMaterials(projectId: number): Promise<AiMaterialSug
 
 // ---- Supplier ----
 
-export async function fetchSupplierOrders(): Promise<SupplierOrder[]> {
-  return (await apiFetch("/api/supplier-orders")) as SupplierOrder[];
+export async function fetchSupplierFulfillments(): Promise<SupplierFulfillment[]> {
+  return (await apiFetch("/api/supplier-fulfillments")) as SupplierFulfillment[];
 }
 
-export async function confirmSupplierOrder(
+export async function confirmSupplierFulfillment(
   orderId: number,
   prices: { id: number; unit_price: number }[],
   expectedDeliveryDate: string | null,
   note: string
-): Promise<SupplierOrder> {
-  return (await post(`/api/supplier-orders/${orderId}/confirm`, {
+): Promise<SupplierFulfillment> {
+  return (await post(`/api/supplier-fulfillments/${orderId}/confirm`, {
     items: prices,
     expected_delivery_date: expectedDeliveryDate,
     note: note.trim() || null,
-  })) as SupplierOrder;
+  })) as SupplierFulfillment;
 }
 
-export async function reportInsufficientStock(orderId: number, reason: string): Promise<SupplierOrder> {
-  return (await post(`/api/supplier-orders/${orderId}/insufficient`, { reason: reason.trim() || null })) as SupplierOrder;
+export async function reportInsufficientStock(orderId: number, reason: string): Promise<SupplierFulfillment> {
+  return (await post(`/api/supplier-fulfillments/${orderId}/insufficient`, { reason: reason.trim() || null })) as SupplierFulfillment;
 }
 
-export async function declineSupplierOrder(orderId: number, reason: string): Promise<SupplierOrder> {
-  return (await post(`/api/supplier-orders/${orderId}/decline`, { reason })) as SupplierOrder;
+export async function declineSupplierFulfillment(orderId: number, reason: string): Promise<SupplierFulfillment> {
+  return (await post(`/api/supplier-fulfillments/${orderId}/decline`, { reason })) as SupplierFulfillment;
 }
 
 // ---- Planning materials by phase ----

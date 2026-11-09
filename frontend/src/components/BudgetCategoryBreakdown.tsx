@@ -38,7 +38,7 @@ export default function BudgetCategoryBreakdown({
         const pct = total > 0 ? (amount / total) * 100 : 0;
         const items = materials.filter((item) => item.category === category || MATERIAL_CATEGORIES[category]?.includes(item.category));
         const members = category === "Labor Costs" ? project?.workers : category === "Contractor and Project Management Fee" ? project?.contractors : undefined;
-        const orders = project?.budgetRecords?.orderLines.filter((line) => line.category === category) ?? [];
+        const orders = project?.budgetRecords?.fulfillmentLines.filter((line) => line.category === category) ?? [];
 
         return (
           <View key={key}>
@@ -102,7 +102,7 @@ export default function BudgetCategoryBreakdown({
                     <Text className="text-xs font-bold text-foreground">Material fulfillment records</Text>
                     {orders.length === 0 ? <Text className="text-xs text-muted-foreground">No material fulfillments are recorded under this category.</Text> : orders.map((line) => (
                       <View key={line.id} style={{ gap: 2 }}>
-                        <Text className="text-xs font-semibold text-foreground">Fulfillment #{line.orderId} · {line.material}</Text>
+                        <Text className="text-xs font-semibold text-foreground">Fulfillment #{line.fulfillmentId} · {line.material}</Text>
                         <Text className="text-xs text-muted-foreground">{line.qty} {line.unit} × {peso(line.unitPrice)} = {peso(line.total)}</Text>
                         <Text className="text-xs text-muted-foreground">{line.supplierName ?? "Supplier unavailable"} · {line.status.replaceAll("_", " ")}</Text>
                         <Text className="text-xs text-muted-foreground">{line.priceConfirmed ? "Supplier confirmed price" : "Request estimate"}{line.isCommitment ? " · committed fulfillment" : " · excluded from confirmed total"}</Text>

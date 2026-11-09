@@ -1,5 +1,5 @@
 // Inventory types and display constants. Inventory is real and persisted through /api/supplier-products;
-// orders come from /api/supplier-orders.
+// fulfillments come from /api/supplier-fulfillments.
 
 // ---- Inventory (real, persisted via /api/supplier-products) ----
 

@@ -5,7 +5,7 @@ namespace App\Services;
 use App\Models\MaterialRequest;
 use App\Models\MaterialRequestItem;
 use App\Models\Project;
-use App\Models\SupplierOrder;
+use App\Models\SupplierFulfillment;
 use App\Models\SupplierProduct;
 use App\Models\User;
 use App\Support\PlanMaterials;
@@ -20,9 +20,10 @@ use Illuminate\Validation\ValidationException;
  *                 ↘ revision_requested ↗ (contractor edits + resubmits)
  *                 ↘ rejected            cancelled (either party, before any materials are received)
  *
- * Approval splits the request into one SupplierOrder per supplier (see SupplierOrderService for
- * what suppliers do next). Every check here is against the real project relationship: only an
- * assigned contractor can build/submit, only the project's owner can decide.
+ * Approval splits the request into one SupplierFulfillment per supplier (see
+ * SupplierFulfillmentService for what suppliers do next). Every check here is against the real
+ * project relationship: only an assigned contractor can build/submit, only the project's owner
+ * can decide.
  */
 class MaterialRequestService
 {
@@ -213,7 +214,7 @@ class MaterialRequestService
         return $this->present($request->fresh()->load(self::PRESENT_WITH), $contractor);
     }
 
-    /** Approves and routes each supplier's items to a new SupplierOrder for that supplier. */
+    /** Approves and routes each supplier's items to a new SupplierFulfillment for that supplier. */
     public function approve(MaterialRequest $request, User $homeowner): array
     {
         $this->assertHomeownerDecides($request, $homeowner);
@@ -233,7 +234,7 @@ class MaterialRequestService
      * homeowner's own approval and the automatic one, which passes no approver (the history shows
      * "system" and the reason).
      *
-     * @return Collection<int, SupplierOrder>
+     * @return Collection<int, SupplierFulfillment>
      */
     private function performApproval(MaterialRequest $request, ?User $by, ?string $reason): Collection
     {
@@ -250,17 +251,17 @@ class MaterialRequestService
 
             $orders = collect();
             foreach ($routable->groupBy('supplier_id') as $supplierId => $items) {
-                $order = SupplierOrder::create([
+                $order = SupplierFulfillment::create([
                     'material_request_id' => $request->id,
                     'supplier_id' => $supplierId,
-                    'status' => SupplierOrder::SUPPLIER_REVIEW,
+                    'status' => SupplierFulfillment::SUPPLIER_REVIEW,
                 ]);
                 MaterialRequestItem::query()->whereKey($items->pluck('id'))->update([
                     'supplier_order_id' => $order->id,
                     'status' => MaterialRequestItem::PENDING,
                     'confirmed_unit_price' => null,
                 ]);
-                $this->workflow->log($request, $order, $by, null, SupplierOrder::SUPPLIER_REVIEW, null);
+                $this->workflow->log($request, $order, $by, null, SupplierFulfillment::SUPPLIER_REVIEW, null);
                 $orders->push($order);
             }
 
@@ -268,13 +269,13 @@ class MaterialRequestService
         });
     }
 
-    /** @param  Collection<int, SupplierOrder>  $orders */
+    /** @param  Collection<int, SupplierFulfillment>  $orders */
     private function notifySuppliersOfNewOrders(Collection $orders, MaterialRequest $request): void
     {
         foreach ($orders as $order) {
             $order->load('supplier');
-            $this->workflow->notify($order->supplier, 'supplier_order_received', 'New material order',
-                "A contractor's approved request for {$request->project->title} needs your availability check.", $request, ['supplierOrderId' => $order->id]);
+            $this->workflow->notify($order->supplier, 'supplier_fulfillment_received', 'New material request',
+                "A contractor's approved request for {$request->project->title} needs your availability check.", $request, ['supplierFulfillmentId' => $order->id]);
         }
     }
 
@@ -342,7 +343,7 @@ class MaterialRequestService
         if (in_array($request->status, MaterialRequest::CLOSED, true)) {
             throw ValidationException::withMessages(['status' => 'This request is already closed.']);
         }
-        if ($request->orders()->where('status', SupplierOrder::RECEIVED)->exists()) {
+        if ($request->orders()->where('status', SupplierFulfillment::RECEIVED)->exists()) {
             throw ValidationException::withMessages(['status' => 'Some materials were already received, so this request can no longer be cancelled.']);
         }
 
@@ -365,37 +366,37 @@ class MaterialRequestService
     }
 
     /** Homeowner accepts a supplier's changed final prices. */
-    public function confirmOrderPrices(SupplierOrder $order, User $homeowner): array
+    public function confirmOrderPrices(SupplierFulfillment $order, User $homeowner): array
     {
         $request = $order->materialRequest;
         $this->assertHomeownerOwns($request, $homeowner);
 
         DB::transaction(function () use ($order, $homeowner) {
-            $order = SupplierOrder::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
-            if ($order->status !== SupplierOrder::AWAITING_HOMEOWNER) {
-                throw ValidationException::withMessages(['status' => 'This order is not waiting for your price confirmation.']);
+            $order = SupplierFulfillment::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
+            if ($order->status !== SupplierFulfillment::AWAITING_HOMEOWNER) {
+                throw ValidationException::withMessages(['status' => 'This is not waiting for your price confirmation.']);
             }
-            $this->workflow->setOrderStatus($order, SupplierOrder::CONFIRMED, $homeowner, 'Final prices accepted by the homeowner.');
+            $this->workflow->setOrderStatus($order, SupplierFulfillment::CONFIRMED, $homeowner, 'Final prices accepted by the homeowner.');
         });
 
         $order->load('supplier');
         $request->load('project', 'contractor');
-        $this->workflow->notify($order->supplier, 'supplier_order_confirmed', 'Order confirmed', "The homeowner accepted your final prices for {$request->project->title}.", $request, ['supplierOrderId' => $order->id]);
-        $this->workflow->notify($request->contractor, 'supplier_order_confirmed', 'Supplier prices accepted', "{$homeowner->name} accepted the supplier's final prices for request #{$request->id}.", $request);
+        $this->workflow->notify($order->supplier, 'supplier_fulfillment_confirmed', 'Fulfillment confirmed', "The homeowner accepted your final prices for {$request->project->title}.", $request, ['supplierFulfillmentId' => $order->id]);
+        $this->workflow->notify($request->contractor, 'supplier_fulfillment_confirmed', 'Supplier prices accepted', "{$homeowner->name} accepted the supplier's final prices for request #{$request->id}.", $request);
 
         return $this->present($request->fresh()->load(self::PRESENT_WITH), $homeowner);
     }
 
-    /** Homeowner refuses changed prices: the order is cancelled (stock released) and returns to the contractor. */
-    public function declineOrderPrices(SupplierOrder $order, User $homeowner, string $reason): array
+    /** Homeowner refuses changed prices: the fulfillment is cancelled (stock released) and returns to the contractor. */
+    public function declineOrderPrices(SupplierFulfillment $order, User $homeowner, string $reason): array
     {
         $request = $order->materialRequest;
         $this->assertHomeownerOwns($request, $homeowner);
 
         DB::transaction(function () use ($order, $request, $homeowner, $reason) {
-            $order = SupplierOrder::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
-            if ($order->status !== SupplierOrder::AWAITING_HOMEOWNER) {
-                throw ValidationException::withMessages(['status' => 'This order is not waiting for your price confirmation.']);
+            $order = SupplierFulfillment::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
+            if ($order->status !== SupplierFulfillment::AWAITING_HOMEOWNER) {
+                throw ValidationException::withMessages(['status' => 'This is not waiting for your price confirmation.']);
             }
             $this->workflow->cancelOrder($order, $homeowner, "Final prices declined: {$reason}");
             $this->workflow->returnForRevision($request, $homeowner, "Homeowner declined a supplier's final prices: {$reason}");
@@ -403,18 +404,18 @@ class MaterialRequestService
 
         $order->load('supplier');
         $request->load('project', 'contractor');
-        $this->workflow->notify($order->supplier, 'supplier_order_cancelled', 'Order cancelled', "The homeowner declined your final prices for {$request->project->title}.", $request, ['supplierOrderId' => $order->id]);
+        $this->workflow->notify($order->supplier, 'supplier_fulfillment_cancelled', 'Fulfillment cancelled', "The homeowner declined your final prices for {$request->project->title}.", $request, ['supplierFulfillmentId' => $order->id]);
         $this->workflow->notify($request->contractor, 'material_request_revision', 'Choose another supplier', "{$homeowner->name} declined a supplier's final prices: {$reason}", $request);
 
         return $this->present($request->fresh()->load(self::PRESENT_WITH), $homeowner);
     }
 
     /**
-     * Contractor confirms a confirmed order's materials actually arrived. This is what turns the
-     * supplier's stock reservation into an actual deduction — there is no delivery-progress status
-     * in between; it's on the supplier to get the materials there once they've confirmed.
+     * Contractor confirms a confirmed fulfillment's materials actually arrived. This is what turns
+     * the supplier's stock reservation into an actual deduction — there is no delivery-progress
+     * status in between; it's on the supplier to get the materials there once they've confirmed.
      */
-    public function receive(SupplierOrder $order, User $contractor): array
+    public function receive(SupplierFulfillment $order, User $contractor): array
     {
         $request = $order->materialRequest;
         if ($request->contractor_id !== $contractor->id) {
@@ -422,20 +423,20 @@ class MaterialRequestService
         }
 
         DB::transaction(function () use ($order, $request, $contractor) {
-            $order = SupplierOrder::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
-            if ($order->status !== SupplierOrder::CONFIRMED) {
-                throw ValidationException::withMessages(['status' => 'Only confirmed orders can be marked as received.']);
+            $order = SupplierFulfillment::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
+            if ($order->status !== SupplierFulfillment::CONFIRMED) {
+                throw ValidationException::withMessages(['status' => 'Only confirmed fulfillments can be marked as received.']);
             }
             $this->workflow->deductReservations($order);
             $order->received_at = now();
-            $this->workflow->setOrderStatus($order, SupplierOrder::RECEIVED, $contractor);
+            $this->workflow->setOrderStatus($order, SupplierFulfillment::RECEIVED, $contractor);
             $this->workflow->completeIfFulfilled($request->fresh(), $contractor);
         });
 
         $order->load('supplier');
         $request->load('project', 'homeowner');
-        $this->workflow->notify($request->homeowner, 'supplier_order_received_by_contractor', 'Materials received', "{$contractor->name} confirmed receipt of materials from ".($order->supplier->business_name ?: $order->supplier->name).'.', $request);
-        $this->workflow->notify($order->supplier, 'supplier_order_received_by_contractor', 'Materials received', "The contractor confirmed receipt of your materials for {$request->project->title}.", $request, ['supplierOrderId' => $order->id]);
+        $this->workflow->notify($request->homeowner, 'supplier_fulfillment_received_by_contractor', 'Materials received', "{$contractor->name} confirmed receipt of materials from ".($order->supplier->business_name ?: $order->supplier->name).'.', $request);
+        $this->workflow->notify($order->supplier, 'supplier_fulfillment_received_by_contractor', 'Materials received', "The contractor confirmed receipt of your materials for {$request->project->title}.", $request, ['supplierFulfillmentId' => $order->id]);
 
         return $this->present($request->fresh()->load(self::PRESENT_WITH), $contractor);
     }
@@ -527,11 +528,11 @@ class MaterialRequestService
         return $best;
     }
 
-    /** @return Collection<int, SupplierOrder> orders that were open and are now cancelled */
+    /** @return Collection<int, SupplierFulfillment> fulfillments that were open and are now cancelled */
     private function cancelOpenOrders(MaterialRequest $request, User $by, string $reason): Collection
     {
         $open = $request->orders()
-            ->whereNotIn('status', [...SupplierOrder::DEAD, SupplierOrder::RECEIVED])
+            ->whereNotIn('status', [...SupplierFulfillment::DEAD, SupplierFulfillment::RECEIVED])
             ->lockForUpdate()
             ->get();
         foreach ($open as $order) {
@@ -541,13 +542,13 @@ class MaterialRequestService
         return $open;
     }
 
-    /** @param  Collection<int, SupplierOrder>  $orders */
+    /** @param  Collection<int, SupplierFulfillment>  $orders */
     private function notifySuppliersOfCancellation(Collection $orders, MaterialRequest $request): void
     {
         foreach ($orders as $order) {
             $order->load('supplier');
-            $this->workflow->notify($order->supplier, 'supplier_order_cancelled', 'Order cancelled',
-                "The material order for {$request->project->title} was cancelled. Any stock you reserved has been released.", $request, ['supplierOrderId' => $order->id]);
+            $this->workflow->notify($order->supplier, 'supplier_fulfillment_cancelled', 'Fulfillment cancelled',
+                "The material request for {$request->project->title} was cancelled. Any stock you reserved has been released.", $request, ['supplierFulfillmentId' => $order->id]);
         }
     }
 
@@ -706,7 +707,7 @@ class MaterialRequestService
                 'aiQuantity' => $i->ai_quantity,
                 'planQuantity' => $i->plan_quantity,
                 'wastePct' => $i->waste_pct,
-                'orderId' => $i->supplier_order_id,
+                'fulfillmentId' => $i->supplier_order_id,
                 'locked' => ! $i->isEditable(),
                 'availableQuantity' => $available,
                 'stockStatus' => $i->product?->stock_status,
@@ -716,7 +717,7 @@ class MaterialRequestService
             ];
         })->values();
 
-        $orders = $r->orders->map(function (SupplierOrder $o) use ($r) {
+        $orders = $r->orders->map(function (SupplierFulfillment $o) use ($r) {
             $orderItems = $r->items->where('supplier_order_id', $o->id);
 
             return [
@@ -761,10 +762,10 @@ class MaterialRequestService
             // What approving this adds to the project estimate (and takes off what's left of the budget).
             'estimateImpact' => $viewer->id === $r->homeowner_id && $r->status === MaterialRequest::PENDING ? $this->estimateImpact($r) : null,
             'items' => $items,
-            'orders' => $orders,
+            'fulfillments' => $orders,
             'history' => $r->statusLogs->map(fn ($log) => [
                 'id' => $log->id,
-                'orderId' => $log->supplier_order_id,
+                'fulfillmentId' => $log->supplier_order_id,
                 'previousStatus' => $log->previous_status,
                 'newStatus' => $log->new_status,
                 'reason' => $log->reason,

@@ -5,7 +5,7 @@ namespace Tests\Feature;
 use App\Models\AppNotification;
 use App\Models\MaterialRequest;
 use App\Models\Project;
-use App\Models\SupplierOrder;
+use App\Models\SupplierFulfillment;
 use App\Models\SupplierProduct;
 use App\Models\User;
 use App\Services\ProjectService;
@@ -88,9 +88,9 @@ class MaterialWorkflowTest extends TestCase
         $this->postJson("/api/material-requests/{$id}/approve")->assertStatus(200)->assertJsonPath('status', 'approved');
     }
 
-    private function orderFor(int $requestId, User $supplier): SupplierOrder
+    private function orderFor(int $requestId, User $supplier): SupplierFulfillment
     {
-        return SupplierOrder::where('material_request_id', $requestId)->where('supplier_id', $supplier->id)->latest('id')->firstOrFail();
+        return SupplierFulfillment::where('material_request_id', $requestId)->where('supplier_id', $supplier->id)->latest('id')->firstOrFail();
     }
 
     public function test_full_workflow_from_draft_to_completed(): void
@@ -107,21 +107,21 @@ class MaterialWorkflowTest extends TestCase
         // Drafts touch no stock; neither does approval.
         $this->submitAndApprove($id);
         $this->assertSame(0, $this->cement->fresh()->reserved);
-        $this->assertSame(2, SupplierOrder::where('material_request_id', $id)->count());
+        $this->assertSame(2, SupplierFulfillment::where('material_request_id', $id)->count());
 
         foreach ([[$this->supplierA, $this->cement, 40], [$this->supplierB, $this->rebar, 200]] as [$supplier, $product, $qty]) {
             $order = $this->orderFor($id, $supplier);
             Sanctum::actingAs($supplier);
-            $this->postJson("/api/supplier-orders/{$order->id}/confirm", ['expected_delivery_date' => now()->addDays(3)->toDateString()])
+            $this->postJson("/api/supplier-fulfillments/{$order->id}/confirm", ['expected_delivery_date' => now()->addDays(3)->toDateString()])
                 ->assertStatus(200)
                 ->assertJsonPath('status', 'confirmed');
             $this->assertSame($qty, $product->fresh()->reserved);
 
             Sanctum::actingAs($this->contractor);
-            $this->postJson("/api/supplier-orders/{$order->id}/receive")->assertStatus(200);
+            $this->postJson("/api/supplier-fulfillments/{$order->id}/receive")->assertStatus(200);
             // Receiving deducts on-hand stock and clears the reservation; a repeat tap is refused.
             $this->assertSame(0, $product->fresh()->reserved);
-            $this->postJson("/api/supplier-orders/{$order->id}/receive")->assertStatus(422);
+            $this->postJson("/api/supplier-fulfillments/{$order->id}/receive")->assertStatus(422);
         }
 
         $this->assertSame(60, $this->cement->fresh()->stock);
@@ -130,7 +130,7 @@ class MaterialWorkflowTest extends TestCase
         $this->getJson("/api/material-requests/{$id}")
             ->assertJsonPath('status', 'completed')
             ->assertJsonPath('confirmedTotal', 25200)
-            ->assertJsonPath('orders.0.status', 'received');
+            ->assertJsonPath('fulfillments.0.status', 'received');
         $this->assertTrue(AppNotification::where('user_id', $this->homeowner->id)->where('type', 'material_request_completed')->exists());
     }
 
@@ -216,15 +216,15 @@ class MaterialWorkflowTest extends TestCase
         $orderB = $this->orderFor($id, $this->supplierB);
 
         Sanctum::actingAs($this->supplierA);
-        $this->getJson('/api/supplier-orders')
+        $this->getJson('/api/supplier-fulfillments')
             ->assertJsonCount(1)
             ->assertJsonPath('0.id', $orderA->id)
             ->assertJsonCount(1, '0.items')
             ->assertJsonPath('0.items.0.materialName', 'Portland Cement')
             ->assertJsonMissingPath('0.homeowner');
-        $this->getJson("/api/supplier-orders/{$orderB->id}")->assertStatus(422);
-        $this->postJson("/api/supplier-orders/{$orderB->id}/confirm")->assertStatus(422);
-        $this->postJson("/api/supplier-orders/{$orderB->id}/decline", ['reason' => 'x'])->assertStatus(422);
+        $this->getJson("/api/supplier-fulfillments/{$orderB->id}")->assertStatus(422);
+        $this->postJson("/api/supplier-fulfillments/{$orderB->id}/confirm")->assertStatus(422);
+        $this->postJson("/api/supplier-fulfillments/{$orderB->id}/decline", ['reason' => 'x'])->assertStatus(422);
         $this->assertSame('supplier_review', $orderB->fresh()->status);
 
         // Suppliers can't reach the homeowner/contractor request endpoints at all.
@@ -232,7 +232,7 @@ class MaterialWorkflowTest extends TestCase
 
         // An unrelated supplier sees nothing.
         Sanctum::actingAs($this->user('supplier'));
-        $this->getJson('/api/supplier-orders')->assertJsonCount(0);
+        $this->getJson('/api/supplier-fulfillments')->assertJsonCount(0);
     }
 
     public function test_a_supplier_cannot_confirm_more_than_available_and_reports_insufficient_stock(): void
@@ -242,11 +242,11 @@ class MaterialWorkflowTest extends TestCase
         $order = $this->orderFor($id, $this->supplierA);
 
         Sanctum::actingAs($this->supplierA);
-        $this->getJson("/api/supplier-orders/{$order->id}")->assertJsonPath('items.0.insufficientStock', true);
-        $this->postJson("/api/supplier-orders/{$order->id}/confirm")->assertStatus(422);
+        $this->getJson("/api/supplier-fulfillments/{$order->id}")->assertJsonPath('items.0.insufficientStock', true);
+        $this->postJson("/api/supplier-fulfillments/{$order->id}/confirm")->assertStatus(422);
         $this->assertSame(0, $this->cement->fresh()->reserved);
 
-        $this->postJson("/api/supplier-orders/{$order->id}/insufficient", ['reason' => 'Next shipment Friday'])
+        $this->postJson("/api/supplier-fulfillments/{$order->id}/insufficient", ['reason' => 'Next shipment Friday'])
             ->assertStatus(200)
             ->assertJsonPath('status', 'unavailable')
             ->assertJsonPath('items.0.status', 'insufficient');
@@ -258,7 +258,7 @@ class MaterialWorkflowTest extends TestCase
             ->assertJsonPath('canEdit', true)
             ->json();
         $this->assertSame('supplier_review', $this->orderFor($id, $this->supplierB)->status);
-        $this->assertTrue(AppNotification::where('user_id', $this->homeowner->id)->where('type', 'supplier_order_unavailable')->exists());
+        $this->assertTrue(AppNotification::where('user_id', $this->homeowner->id)->where('type', 'supplier_fulfillment_unavailable')->exists());
 
         // Contractor revises the failed line only (the rebar line is locked to B's live order).
         $cementItem = collect($request['items'])->firstWhere('materialName', 'Portland Cement');
@@ -269,11 +269,11 @@ class MaterialWorkflowTest extends TestCase
         $this->submitAndApprove($id);
 
         // A fresh order goes to supplier A only for the revised line; B still has exactly one order.
-        $this->assertSame(2, SupplierOrder::where('material_request_id', $id)->where('supplier_id', $this->supplierA->id)->count());
-        $this->assertSame(1, SupplierOrder::where('material_request_id', $id)->where('supplier_id', $this->supplierB->id)->count());
+        $this->assertSame(2, SupplierFulfillment::where('material_request_id', $id)->where('supplier_id', $this->supplierA->id)->count());
+        $this->assertSame(1, SupplierFulfillment::where('material_request_id', $id)->where('supplier_id', $this->supplierB->id)->count());
         $newOrder = $this->orderFor($id, $this->supplierA);
         Sanctum::actingAs($this->supplierA);
-        $this->postJson("/api/supplier-orders/{$newOrder->id}/confirm")->assertStatus(200)->assertJsonPath('status', 'confirmed');
+        $this->postJson("/api/supplier-fulfillments/{$newOrder->id}/confirm")->assertStatus(200)->assertJsonPath('status', 'confirmed');
         $this->assertSame(80, $this->cement->fresh()->reserved);
     }
 
@@ -285,9 +285,9 @@ class MaterialWorkflowTest extends TestCase
         $this->submitAndApprove($second);
 
         Sanctum::actingAs($this->supplierA);
-        $this->postJson('/api/supplier-orders/'.$this->orderFor($first, $this->supplierA)->id.'/confirm')->assertStatus(200);
+        $this->postJson('/api/supplier-fulfillments/'.$this->orderFor($first, $this->supplierA)->id.'/confirm')->assertStatus(200);
         // Only 30 of 100 remain available to promise now.
-        $this->postJson('/api/supplier-orders/'.$this->orderFor($second, $this->supplierA)->id.'/confirm')->assertStatus(422);
+        $this->postJson('/api/supplier-fulfillments/'.$this->orderFor($second, $this->supplierA)->id.'/confirm')->assertStatus(422);
 
         $fresh = $this->cement->fresh();
         $this->assertSame([100, 70, 30, 'in_stock'], [$fresh->stock, $fresh->reserved, $fresh->available_quantity, $fresh->stock_status]);
@@ -304,26 +304,26 @@ class MaterialWorkflowTest extends TestCase
         $orderA = $this->orderFor($id, $this->supplierA);
 
         Sanctum::actingAs($this->supplierA);
-        $this->postJson("/api/supplier-orders/{$orderA->id}/confirm")->assertStatus(200);
+        $this->postJson("/api/supplier-fulfillments/{$orderA->id}/confirm")->assertStatus(200);
         $this->assertSame(40, $this->cement->fresh()->reserved);
 
         Sanctum::actingAs($this->contractor);
         $this->postJson("/api/material-requests/{$id}/cancel", ['reason' => 'Design changed'])->assertStatus(200)->assertJsonPath('status', 'cancelled');
         $this->assertSame([100, 0], [$this->cement->fresh()->stock, $this->cement->fresh()->reserved]);
         $this->assertSame('cancelled', $orderA->fresh()->status);
-        $this->assertTrue(AppNotification::where('user_id', $this->supplierA->id)->where('type', 'supplier_order_cancelled')->exists());
+        $this->assertTrue(AppNotification::where('user_id', $this->supplierA->id)->where('type', 'supplier_fulfillment_cancelled')->exists());
 
         // A cancelled order can no longer be marked received.
-        $this->postJson("/api/supplier-orders/{$orderA->id}/receive")->assertStatus(422);
+        $this->postJson("/api/supplier-fulfillments/{$orderA->id}/receive")->assertStatus(422);
 
         // After receipt, cancelling is refused.
         $id2 = $this->draft();
         $this->submitAndApprove($id2);
         $o = $this->orderFor($id2, $this->supplierA);
         Sanctum::actingAs($this->supplierA);
-        $this->postJson("/api/supplier-orders/{$o->id}/confirm");
+        $this->postJson("/api/supplier-fulfillments/{$o->id}/confirm");
         Sanctum::actingAs($this->contractor);
-        $this->postJson("/api/supplier-orders/{$o->id}/receive");
+        $this->postJson("/api/supplier-fulfillments/{$o->id}/receive");
         Sanctum::actingAs($this->homeowner);
         $this->postJson("/api/material-requests/{$id2}/cancel")->assertStatus(422);
     }
@@ -336,18 +336,18 @@ class MaterialWorkflowTest extends TestCase
         $itemId = $order->items()->first()->id;
 
         Sanctum::actingAs($this->supplierA);
-        $this->postJson("/api/supplier-orders/{$order->id}/confirm", ['items' => [['id' => $itemId, 'unit_price' => 300]]])
+        $this->postJson("/api/supplier-fulfillments/{$order->id}/confirm", ['items' => [['id' => $itemId, 'unit_price' => 300]]])
             ->assertStatus(200)
             ->assertJsonPath('status', 'awaiting_homeowner_confirmation');
 
         Sanctum::actingAs($this->contractor);
         // Can't be marked received until the homeowner accepts the final prices.
-        $this->postJson("/api/supplier-orders/{$order->id}/receive")->assertStatus(422);
-        $this->postJson("/api/supplier-orders/{$order->id}/confirm-prices")->assertStatus(403);
+        $this->postJson("/api/supplier-fulfillments/{$order->id}/receive")->assertStatus(422);
+        $this->postJson("/api/supplier-fulfillments/{$order->id}/confirm-prices")->assertStatus(403);
 
         Sanctum::actingAs($this->homeowner);
-        $this->getJson("/api/material-requests/{$id}")->assertJsonPath('orders.0.priceChanged', true)->assertJsonPath('orders.0.confirmedTotal', 12000);
-        $this->postJson("/api/supplier-orders/{$order->id}/confirm-prices")->assertStatus(200);
+        $this->getJson("/api/material-requests/{$id}")->assertJsonPath('fulfillments.0.priceChanged', true)->assertJsonPath('fulfillments.0.confirmedTotal', 12000);
+        $this->postJson("/api/supplier-fulfillments/{$order->id}/confirm-prices")->assertStatus(200);
         $this->assertSame('confirmed', $order->fresh()->status);
     }
 
@@ -358,11 +358,11 @@ class MaterialWorkflowTest extends TestCase
         $order = $this->orderFor($id, $this->supplierA);
 
         Sanctum::actingAs($this->supplierA);
-        $this->postJson("/api/supplier-orders/{$order->id}/confirm", ['items' => [['id' => $order->items()->first()->id, 'unit_price' => 400]]]);
+        $this->postJson("/api/supplier-fulfillments/{$order->id}/confirm", ['items' => [['id' => $order->items()->first()->id, 'unit_price' => 400]]]);
         $this->assertSame(40, $this->cement->fresh()->reserved);
 
         Sanctum::actingAs($this->homeowner);
-        $this->postJson("/api/supplier-orders/{$order->id}/decline-prices", ['reason' => 'Too expensive'])
+        $this->postJson("/api/supplier-fulfillments/{$order->id}/decline-prices", ['reason' => 'Too expensive'])
             ->assertStatus(200)
             ->assertJsonPath('status', 'revision_requested');
         $this->assertSame(0, $this->cement->fresh()->reserved);
@@ -376,8 +376,8 @@ class MaterialWorkflowTest extends TestCase
         $order = $this->orderFor($id, $this->supplierB);
 
         Sanctum::actingAs($this->supplierB);
-        $this->postJson("/api/supplier-orders/{$order->id}/decline")->assertStatus(422);
-        $this->postJson("/api/supplier-orders/{$order->id}/decline", ['reason' => 'Discontinued'])
+        $this->postJson("/api/supplier-fulfillments/{$order->id}/decline")->assertStatus(422);
+        $this->postJson("/api/supplier-fulfillments/{$order->id}/decline", ['reason' => 'Discontinued'])
             ->assertStatus(200)
             ->assertJsonPath('status', 'unavailable')
             ->assertJsonPath('items.0.status', 'unavailable');
@@ -390,10 +390,10 @@ class MaterialWorkflowTest extends TestCase
         $order = $this->orderFor($id, $this->supplierA);
 
         Sanctum::actingAs($this->contractor);
-        $this->postJson("/api/supplier-orders/{$order->id}/receive")->assertStatus(422);
+        $this->postJson("/api/supplier-fulfillments/{$order->id}/receive")->assertStatus(422);
 
         Sanctum::actingAs($this->user('contractor'));
-        $this->postJson("/api/supplier-orders/{$order->id}/receive")->assertStatus(422);
+        $this->postJson("/api/supplier-fulfillments/{$order->id}/receive")->assertStatus(422);
     }
 
     public function test_outsiders_cannot_view_or_modify_requests(): void
@@ -444,7 +444,7 @@ class MaterialWorkflowTest extends TestCase
         $id = $this->draft(cementQty: 100);
         $this->submitAndApprove($id);
         Sanctum::actingAs($this->supplierA);
-        $this->postJson('/api/supplier-orders/'.$this->orderFor($id, $this->supplierA)->id.'/confirm')->assertStatus(200);
+        $this->postJson('/api/supplier-fulfillments/'.$this->orderFor($id, $this->supplierA)->id.'/confirm')->assertStatus(200);
 
         Sanctum::actingAs($this->homeowner);
         $this->getJson("/api/materials/{$this->cement->id}")

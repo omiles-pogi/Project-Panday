@@ -1,8 +1,8 @@
 import type { ConstructionPlan } from "@/types/plan";
 
-export interface BudgetOrderLine {
+export interface BudgetFulfillmentLine {
   id: number;
-  orderId: number;
+  fulfillmentId: number;
   material: string;
   category: string | null;
   supplierName: string | null;
@@ -41,7 +41,7 @@ export interface ProjectBudgetRecords {
   agreedWageTotal: number;
   automaticWageTotal: number;
   confirmedMaterialTotal: number;
-  orderLines: BudgetOrderLine[];
+  fulfillmentLines: BudgetFulfillmentLine[];
   paidTotal: number | null;
 }
 

@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\MaterialRequest;
 use App\Models\Project;
-use App\Models\SupplierOrder;
+use App\Models\SupplierFulfillment;
 use App\Models\User;
 use App\Services\ConstructionPlanService;
 use App\Services\ProjectBudgetService;
@@ -88,7 +88,7 @@ class PlannerAppDataTest extends TestCase
             ->assertJsonPath('project.approvedPlan', null)
             ->assertJsonPath('project.overallProgressPct', 100)
             ->assertJsonPath('project.budgetRecords.confirmedMaterialTotal', 0)
-            ->assertJsonPath('project.budgetRecords.orderLines', [])
+            ->assertJsonPath('project.budgetRecords.fulfillmentLines', [])
             ->assertJsonPath('project.budgetRecords.paidTotal', null);
     }
 
@@ -101,24 +101,24 @@ class PlannerAppDataTest extends TestCase
         $product = $supplier->supplierProducts()->create(['name' => 'Cement', 'category' => 'Cement', 'unit' => 'bag', 'price' => 999, 'stock' => 100]);
         $request = MaterialRequest::create(['project_id' => $project->id, 'contractor_id' => $contractor->id, 'homeowner_id' => $owner->id, 'status' => MaterialRequest::APPROVED]);
 
-        foreach ([SupplierOrder::CONFIRMED, SupplierOrder::RECEIVED, SupplierOrder::AWAITING_HOMEOWNER, SupplierOrder::CANCELLED, SupplierOrder::SUPPLIER_REVIEW] as $status) {
+        foreach ([SupplierFulfillment::CONFIRMED, SupplierFulfillment::RECEIVED, SupplierFulfillment::AWAITING_HOMEOWNER, SupplierFulfillment::CANCELLED, SupplierFulfillment::SUPPLIER_REVIEW] as $status) {
             $order = $request->orders()->create(['supplier_id' => $supplier->id, 'status' => $status]);
             $request->items()->create([
                 'supplier_order_id' => $order->id, 'supplier_product_id' => $product->id, 'supplier_id' => $supplier->id,
                 'material_name' => 'Cement snapshot', 'unit' => 'bag', 'quantity' => 10,
-                'estimated_unit_price' => 200, 'confirmed_unit_price' => $status === SupplierOrder::SUPPLIER_REVIEW ? null : 250,
+                'estimated_unit_price' => 200, 'confirmed_unit_price' => $status === SupplierFulfillment::SUPPLIER_REVIEW ? null : 250,
             ]);
         }
 
         $records = app(ProjectBudgetService::class)->recordsFor($project);
         $this->assertSame(5000, $records['confirmedMaterialTotal']);
-        $this->assertCount(5, $records['orderLines']);
-        $this->assertSame('Construction Materials', $records['orderLines'][0]['category']);
-        $this->assertSame(250, $records['orderLines'][0]['unitPrice']);
+        $this->assertCount(5, $records['fulfillmentLines']);
+        $this->assertSame('Construction Materials', $records['fulfillmentLines'][0]['category']);
+        $this->assertSame(250, $records['fulfillmentLines'][0]['unitPrice']);
         $this->assertNull($records['paidTotal']);
 
         $other = app(ProjectService::class)->createFromPlan($this->user(), $this->plan());
-        $this->assertSame([], app(ProjectBudgetService::class)->recordsFor($other)['orderLines']);
+        $this->assertSame([], app(ProjectBudgetService::class)->recordsFor($other)['fulfillmentLines']);
     }
 
     public function test_supplier_links_are_verified_again_when_the_plan_is_approved(): void

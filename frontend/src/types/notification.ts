@@ -17,13 +17,12 @@ export type NotificationType =
   | "material_request_rejected"
   | "material_request_cancelled"
   | "material_request_completed"
-  | "supplier_order_received"
-  | "supplier_order_confirmed"
+  | "supplier_fulfillment_received"
+  | "supplier_fulfillment_confirmed"
   | "supplier_price_confirmation"
-  | "supplier_order_unavailable"
-  | "supplier_order_status"
-  | "supplier_order_cancelled"
-  | "supplier_order_received_by_contractor"
+  | "supplier_fulfillment_unavailable"
+  | "supplier_fulfillment_cancelled"
+  | "supplier_fulfillment_received_by_contractor"
   | "rating_received"
   | "schedule_delay"
   | "project_completion_submitted"
@@ -48,9 +47,9 @@ export interface NotificationData {
   workerName?: string;
   contractorId?: number;
   contractorName?: string;
-  /** Material workflow notifications point at the request, and (for suppliers) their order. */
+  /** Material workflow notifications point at the request, and (for suppliers) their fulfillment. */
   materialRequestId?: number;
-  supplierOrderId?: number;
+  supplierFulfillmentId?: number;
   /** Supplier bidding: the quote request a notification is about. */
   quoteRequestId?: number;
   /** The underlying request's CURRENT status, live-checked on every fetch (not frozen at the
