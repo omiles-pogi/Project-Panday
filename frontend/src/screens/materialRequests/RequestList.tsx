@@ -70,7 +70,7 @@ export default function RequestList({
         title={viewer === "homeowner" ? "Material Approvals" : "Material Requests"}
         subtitle={
           viewer === "homeowner"
-            ? "Review your contractor's material requests and track deliveries."
+            ? "Review your contractor's material requests and approve the ones you're good with."
             : "Prepare material lists, send them for approval and track supplier fulfilment."
         }
       />

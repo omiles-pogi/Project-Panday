@@ -43,7 +43,7 @@ export default function Fulfillment() {
 
   return (
     <Screen>
-      <PageHeader title="Material Fulfillment" subtitle="Approved material requests for your inventory." badge="Supplier" />
+      <PageHeader title="Material Fulfillment" subtitle="Confirm what you can supply, at what price." badge="Supplier" />
 
       <ChipPicker
         label="Show"

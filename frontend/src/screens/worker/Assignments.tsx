@@ -106,7 +106,7 @@ export default function Assignments() {
 
   return (
     <Screen>
-      <PageHeader title="My Assignments" subtitle="Projects you're assigned to and their reported progress." />
+      <PageHeader title="My Assignments" subtitle="Projects you're on, and how they're coming along." />
       <Pressable accessibilityRole="button" onPress={refresh} className="self-start flex-row items-center gap-1.5">
         <Ionicons name="refresh-outline" size={14} color="#f59e0b" />
         <Text className="text-xs text-muted-foreground">Refresh progress · updates every 15 seconds</Text>

@@ -102,7 +102,7 @@ export default function Profile() {
 
   return (
     <Screen topInset={false}>
-      <PageHeader title="My Profile" subtitle="Your account and how you can be reached." />
+      <PageHeader title="My Profile" subtitle="Your account details and how people can reach you." />
 
       <Card>
         <View className="flex-row gap-4 items-center">

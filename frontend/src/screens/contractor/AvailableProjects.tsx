@@ -193,7 +193,7 @@ export default function AvailableProjects() {
 
   return (
     <Screen>
-      <PageHeader title="Available Projects" subtitle="Homeowner-posted projects open for contractor proposals." />
+      <PageHeader title="Available Projects" subtitle="Homeowner-posted projects you can apply to." />
 
       {error && <Text className="text-xs text-danger px-1">{error}</Text>}
 

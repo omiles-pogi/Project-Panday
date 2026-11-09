@@ -67,7 +67,7 @@ export default function MaterialCatalog({ topInset = true }: { topInset?: boolea
 
   return (
     <Screen topInset={topInset}>
-      <PageHeader title="Material Catalog" subtitle="Browse supplier materials, prices and stock availability." />
+      <PageHeader title="Material Catalog" subtitle="See what suppliers are selling, with prices and stock on hand." />
 
       <Field label="Search" value={search} onChangeText={setSearch} placeholder="Search materials by name" maxLength={100} />
       <ChipPicker label="Category" options={["All", ...CATEGORIES]} value={category} onChange={setCategory} />

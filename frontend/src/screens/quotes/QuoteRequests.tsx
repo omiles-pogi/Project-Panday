@@ -275,7 +275,7 @@ export default function QuoteRequests({ viewer }: { viewer: Viewer }) {
 
   return (
     <Screen topInset={false}>
-      <PageHeader title="Supplier Quotes" subtitle="Ask suppliers to bid on your materials, compare their prices and award the best one." />
+      <PageHeader title="Supplier Quotes" subtitle="Ask suppliers for their best price, then pick a winner." />
 
       <SubmitButton label="Request quotes" onPress={() => setCreating(true)} />
 

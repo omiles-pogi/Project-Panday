@@ -530,8 +530,8 @@ export default function FindWorkers() {
         title="Find Your Team"
         subtitle={
           recommendedSkills.length > 0
-            ? "AI-suggested workers and contractors for your approved plan, ranked by skill match, rating, and experience. Filter to narrow it down."
-            : "Browse workers and contractors who signed up on Project-Panday, ranked by rating and experience. Filter to narrow it down."
+            ? "People who fit your plan best are listed first. Use the filters to narrow it down."
+            : "Browse workers and contractors, best-rated first. Use the filters to narrow it down."
         }
       />
       <Text className="text-xs leading-5 text-muted-foreground">Wages are filled in automatically when team members join your project. Estimates are marked below; you do not need to enter amounts manually.</Text>
