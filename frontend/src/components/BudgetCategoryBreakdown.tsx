@@ -99,13 +99,13 @@ export default function BudgetCategoryBreakdown({
                 )}
                 {project && !members && (
                   <View style={{ gap: 8 }}>
-                    <Text className="text-xs font-bold text-foreground">Material order records</Text>
-                    {orders.length === 0 ? <Text className="text-xs text-muted-foreground">No material orders are recorded under this category.</Text> : orders.map((line) => (
+                    <Text className="text-xs font-bold text-foreground">Material fulfillment records</Text>
+                    {orders.length === 0 ? <Text className="text-xs text-muted-foreground">No material fulfillments are recorded under this category.</Text> : orders.map((line) => (
                       <View key={line.id} style={{ gap: 2 }}>
-                        <Text className="text-xs font-semibold text-foreground">Order #{line.orderId} · {line.material}</Text>
+                        <Text className="text-xs font-semibold text-foreground">Fulfillment #{line.orderId} · {line.material}</Text>
                         <Text className="text-xs text-muted-foreground">{line.qty} {line.unit} × {peso(line.unitPrice)} = {peso(line.total)}</Text>
                         <Text className="text-xs text-muted-foreground">{line.supplierName ?? "Supplier unavailable"} · {line.status.replaceAll("_", " ")}</Text>
-                        <Text className="text-xs text-muted-foreground">{line.priceConfirmed ? "Supplier confirmed price" : "Request estimate"}{line.isCommitment ? " · committed order" : " · excluded from confirmed total"}</Text>
+                        <Text className="text-xs text-muted-foreground">{line.priceConfirmed ? "Supplier confirmed price" : "Request estimate"}{line.isCommitment ? " · committed fulfillment" : " · excluded from confirmed total"}</Text>
                       </View>
                     ))}
                   </View>

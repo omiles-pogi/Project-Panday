@@ -18,7 +18,7 @@ function needsAction(r: MaterialRequest, viewer: Viewer): boolean {
   if (viewer === "homeowner") {
     return r.status === "pending_homeowner_approval" || r.orders.some((o) => o.status === "awaiting_homeowner_confirmation");
   }
-  return r.status === "draft" || r.status === "revision_requested" || r.orders.some((o) => o.status === "delivered");
+  return r.status === "draft" || r.status === "revision_requested" || r.orders.some((o) => o.status === "confirmed");
 }
 
 const FILTERS: Record<string, (r: MaterialRequest, v: Viewer) => boolean> = {

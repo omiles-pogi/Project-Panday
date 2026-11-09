@@ -22,7 +22,6 @@ return new class extends Migration
             $table->text('supplier_note')->nullable();
             $table->text('decline_reason')->nullable();
             $table->timestamp('confirmed_at')->nullable();
-            $table->timestamp('delivered_at')->nullable();
             $table->timestamp('received_at')->nullable();
             $table->timestamps();
 

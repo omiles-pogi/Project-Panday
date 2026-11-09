@@ -157,8 +157,8 @@ function RequestDetailBody({ request: r, viewer, onChange }: { request: Material
 
   const total = r.confirmedTotal > 0 ? r.confirmedTotal : r.estimatedTotal;
   const closed = ["completed", "rejected", "cancelled"].includes(r.status);
-  const delivered = r.orders.some((o) => o.status === "delivered" || o.status === "received");
-  const canCancel = !closed && !delivered && (viewer === "contractor" || r.status !== "draft");
+  const received = r.orders.some((o) => o.status === "received");
+  const canCancel = !closed && !received && (viewer === "contractor" || r.status !== "draft");
   const locked = r.items.filter((i) => i.locked);
 
   return (
@@ -327,7 +327,7 @@ function RequestDetailBody({ request: r, viewer, onChange }: { request: Material
               : reasonFor === "cancel"
                 ? "Any stock suppliers reserved for this request will be released."
                 : typeof reasonFor === "object"
-                  ? "That supplier's order is cancelled and the contractor can choose another supplier."
+                  ? "That supplier's fulfillment is cancelled and the contractor can choose another supplier."
                   : "The contractor will see this reason."
           }
           onClose={() => setReasonFor(null)}
@@ -438,7 +438,7 @@ function OrderRow({
       {viewer === "homeowner" && o.status === "awaiting_homeowner_confirmation" && (
         <View style={{ gap: 8 }}>
           <Text className="text-xs" style={{ color: colors.warning }}>
-            The supplier&apos;s final prices differ from the estimate. Accept them to let the supplier prepare your materials.
+            The supplier&apos;s final prices differ from the estimate. Accept them to confirm the order with the supplier.
           </Text>
           <View className="flex-row gap-2">
             <View className="flex-1">
@@ -450,7 +450,7 @@ function OrderRow({
           </View>
         </View>
       )}
-      {viewer === "contractor" && o.status === "delivered" && (
+      {viewer === "contractor" && o.status === "confirmed" && (
         <Button label={busy ? "…" : "Confirm Receipt"} onPress={onReceive} />
       )}
     </View>

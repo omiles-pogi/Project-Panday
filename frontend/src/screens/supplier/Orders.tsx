@@ -8,27 +8,16 @@ import StockBadge from "@/components/StockBadge";
 import { ItemStatusBadge, ORDER_FLOW, ORDER_STATUS, OrderStatusBadge } from "@/components/MaterialStatusBadge";
 import { useSupplier } from "@/context/SupplierContext";
 import { useTheme } from "@/context/ThemeContext";
-import {
-  advanceSupplierOrder,
-  confirmSupplierOrder,
-  declineSupplierOrder,
-  reportInsufficientStock,
-} from "@/services/api/materialRequests";
+import { confirmSupplierOrder, declineSupplierOrder, reportInsufficientStock } from "@/services/api/materialRequests";
 import type { SupplierOrder, SupplierOrderStatus } from "@/types/materialRequest";
 import { peso } from "@/utils/currency";
 
 const FILTERS: Record<string, SupplierOrderStatus[] | null> = {
   Incoming: ["supplier_review"],
-  Active: ["awaiting_homeowner_confirmation", "confirmed", "preparing", "for_delivery"],
-  Completed: ["delivered", "received"],
+  Active: ["awaiting_homeowner_confirmation", "confirmed"],
+  Completed: ["received"],
   Closed: ["unavailable", "cancelled"],
   All: null,
-};
-
-const NEXT_STEP: Partial<Record<SupplierOrderStatus, { status: SupplierOrderStatus; label: string }>> = {
-  confirmed: { status: "preparing", label: "Start Preparing" },
-  preparing: { status: "for_delivery", label: "Mark Ready for Delivery" },
-  for_delivery: { status: "delivered", label: "Mark as Delivered" },
 };
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -54,7 +43,7 @@ export default function Orders() {
 
   return (
     <Screen>
-      <PageHeader title="Material Orders" subtitle="Approved material requests for your inventory." badge="Supplier" />
+      <PageHeader title="Material Fulfillment" subtitle="Approved material requests for your inventory." badge="Supplier" />
 
       <ChipPicker
         label="Show"
@@ -78,8 +67,8 @@ export default function Orders() {
         <Card>
           <Text className="text-sm text-center text-muted-foreground py-6">
             {orders.length === 0
-              ? "No material orders yet. They appear here once a homeowner approves a contractor's request for your materials."
-              : "No orders in this view."}
+              ? "Nothing to fulfill yet. Requests appear here once a homeowner approves a contractor's material request."
+              : "Nothing in this view."}
           </Text>
         </Card>
       ) : (
@@ -149,7 +138,6 @@ function OrderSheet({ order: o, onClose }: { order: SupplierOrder; onClose: () =
 
   const short = o.items.filter((i) => i.insufficientStock);
   const finalTotal = o.items.reduce((sum, i) => sum + i.quantity * (Number(prices[i.id]) || 0), 0);
-  const next = NEXT_STEP[o.status];
   const reached = ORDER_FLOW.indexOf(o.status === "awaiting_homeowner_confirmation" ? "supplier_review" : o.status);
 
   const run = async (action: () => Promise<SupplierOrder>) => {
@@ -181,7 +169,7 @@ function OrderSheet({ order: o, onClose }: { order: SupplierOrder; onClose: () =
   };
 
   return (
-    <Sheet visible title={o.project?.title ?? `Order #${o.id}`} subtitle={`Request #${o.materialRequestId} · Contractor ${o.contractorName ?? "—"}`} onClose={onClose}>
+    <Sheet visible title={o.project?.title ?? `Fulfillment #${o.id}`} subtitle={`Request #${o.materialRequestId} · Contractor ${o.contractorName ?? "—"}`} onClose={onClose}>
       <View className="flex-row flex-wrap items-center gap-2">
         <OrderStatusBadge status={o.status} />
         {o.project?.location ? <Text className="text-xs text-muted-foreground">Deliver to {o.project.location}</Text> : null}
@@ -277,7 +265,7 @@ function OrderSheet({ order: o, onClose }: { order: SupplierOrder; onClose: () =
               )}
               <Text className="text-xs text-muted-foreground">Confirming reserves the full requested quantities from your stock.</Text>
               {error && <Text className="text-xs text-danger">{error}</Text>}
-              <SubmitButton label={busy ? "Confirming…" : "Confirm & Accept Order"} onPress={confirm} />
+              <SubmitButton label={busy ? "Confirming…" : "Confirm & Accept Request"} onPress={confirm} />
             </>
           )}
 
@@ -303,7 +291,7 @@ function OrderSheet({ order: o, onClose }: { order: SupplierOrder; onClose: () =
                 style={{ backgroundColor: "#ef444420" }}
               >
                 <Text className="font-bold text-sm text-danger">
-                  {busy ? "Sending…" : mode === "decline" ? "Decline Order" : "Report Insufficient Stock"}
+                  {busy ? "Sending…" : mode === "decline" ? "Decline Request" : "Report Insufficient Stock"}
                 </Text>
               </Pressable>
             </>
@@ -328,17 +316,12 @@ function OrderSheet({ order: o, onClose }: { order: SupplierOrder; onClose: () =
               </Text>
             </View>
           )}
-          {o.status === "delivered" && <Text className="text-xs text-muted-foreground">Waiting for the contractor to confirm receipt.</Text>}
+          {o.status === "confirmed" && (
+            <Text className="text-xs text-muted-foreground">
+              Waiting for the contractor to confirm receipt. Get the materials to them — there&apos;s no further status to set here.
+            </Text>
+          )}
           {error && <Text className="text-xs text-danger">{error}</Text>}
-          {next && (
-            <SubmitButton
-              label={busy ? "Updating…" : next.label}
-              onPress={() => run(() => advanceSupplierOrder(o.id, next.status))}
-            />
-          )}
-          {next?.status === "delivered" && (
-            <Text className="text-xs text-center text-muted-foreground">Marking delivered deducts the reserved units from your on-hand stock.</Text>
-          )}
         </>
       )}
     </Sheet>

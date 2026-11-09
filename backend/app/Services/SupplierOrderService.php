@@ -15,9 +15,11 @@ use Illuminate\Validation\ValidationException;
  *
  *   supplier_review → (confirm) confirmed | awaiting_homeowner_confirmation (price changed)
  *                   → (insufficient / decline) unavailable → request returns for revision
- *   confirmed → preparing → for_delivery → delivered → (contractor) received
+ *   confirmed → (contractor marks received)
  *
- * Stock is reserved at confirm and deducted at delivered — exactly once each (see StockService).
+ * There is no delivery-progress tracking — once confirmed, the next and only state change is the
+ * contractor marking it received. Stock is reserved at confirm and deducted at receipt — exactly
+ * once each (see StockService and MaterialRequestService::receive).
  */
 class SupplierOrderService
 {
@@ -169,47 +171,6 @@ class SupplierOrderService
         return $this->present($order->fresh()->load(self::PRESENT_WITH));
     }
 
-    /**
-     * Moves a confirmed order forward one step. Delivery deducts the reserved units from on-hand
-     * stock; the status check under row lock means a repeated tap can never deduct twice.
-     *
-     * @return array<string, mixed>
-     */
-    public function advance(SupplierOrder $order, User $supplier, string $status): array
-    {
-        $this->authorizeSupplier($order, $supplier);
-
-        DB::transaction(function () use ($order, $supplier, $status) {
-            $order = SupplierOrder::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
-            if ((SupplierOrder::SUPPLIER_TRANSITIONS[$order->status] ?? null) !== $status) {
-                throw ValidationException::withMessages(['status' => $order->status === SupplierOrder::AWAITING_HOMEOWNER
-                    ? 'Wait for the homeowner to accept your final prices first.'
-                    : "An order that is {$order->status} cannot move to {$status}."]);
-            }
-
-            if ($status === SupplierOrder::DELIVERED) {
-                foreach ($order->items as $item) {
-                    if ($item->reserved_quantity > 0 && ! $this->stock->deduct($item->supplier_product_id, $item->reserved_quantity)) {
-                        throw ValidationException::withMessages(['items' => "Stock for “{$item->material_name}” no longer matches its reservation — check that listing's quantity."]);
-                    }
-                    $item->update(['reserved_quantity' => 0]);
-                }
-                $order->delivered_at = now();
-            }
-
-            $this->workflow->setOrderStatus($order, $status, $supplier);
-        });
-
-        $request = $order->materialRequest()->with('project', 'contractor', 'homeowner')->first();
-        $label = ['preparing' => 'is preparing', 'for_delivery' => 'is out for delivery with', 'delivered' => 'has delivered'][$status];
-        $who = $supplier->business_name ?: $supplier->name;
-        $body = "{$who} {$label} your materials for {$request->project->title}.".($status === SupplierOrder::DELIVERED ? ' Please confirm receipt.' : '');
-        $this->workflow->notify($request->contractor, 'supplier_order_status', 'Material delivery update', $body, $request);
-        $this->workflow->notify($request->homeowner, 'supplier_order_status', 'Material delivery update', $body, $request);
-
-        return $this->present($order->fresh()->load(self::PRESENT_WITH));
-    }
-
     private function lockInStatus(SupplierOrder $order, string $status, string $message): SupplierOrder
     {
         $locked = SupplierOrder::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
@@ -268,7 +229,6 @@ class SupplierOrderService
             'estimatedTotal' => $items->sum(fn ($i) => $i['quantity'] * $i['estimatedUnitPrice']),
             'confirmedTotal' => $items->sum(fn ($i) => $i['quantity'] * ($i['confirmedUnitPrice'] ?? 0)),
             'confirmedAt' => $o->confirmed_at?->toIso8601String(),
-            'deliveredAt' => $o->delivered_at?->toIso8601String(),
             'receivedAt' => $o->received_at?->toIso8601String(),
             'items' => $items,
         ];

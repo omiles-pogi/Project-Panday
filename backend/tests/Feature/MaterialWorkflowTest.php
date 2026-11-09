@@ -117,15 +117,11 @@ class MaterialWorkflowTest extends TestCase
                 ->assertJsonPath('status', 'confirmed');
             $this->assertSame($qty, $product->fresh()->reserved);
 
-            foreach (['preparing', 'for_delivery', 'delivered'] as $status) {
-                $this->postJson("/api/supplier-orders/{$order->id}/status", ['status' => $status])->assertStatus(200)->assertJsonPath('status', $status);
-            }
-            // Delivery deducts on-hand stock and clears the reservation; a repeat tap is refused.
-            $this->assertSame(0, $product->fresh()->reserved);
-            $this->postJson("/api/supplier-orders/{$order->id}/status", ['status' => 'delivered'])->assertStatus(422);
-
             Sanctum::actingAs($this->contractor);
             $this->postJson("/api/supplier-orders/{$order->id}/receive")->assertStatus(200);
+            // Receiving deducts on-hand stock and clears the reservation; a repeat tap is refused.
+            $this->assertSame(0, $product->fresh()->reserved);
+            $this->postJson("/api/supplier-orders/{$order->id}/receive")->assertStatus(422);
         }
 
         $this->assertSame(60, $this->cement->fresh()->stock);
@@ -301,7 +297,7 @@ class MaterialWorkflowTest extends TestCase
         $this->deleteJson("/api/supplier-products/{$this->cement->id}")->assertStatus(422);
     }
 
-    public function test_cancelling_releases_reservations_but_not_after_delivery(): void
+    public function test_cancelling_releases_reservations_but_not_after_receipt(): void
     {
         $id = $this->draft();
         $this->submitAndApprove($id);
@@ -317,19 +313,17 @@ class MaterialWorkflowTest extends TestCase
         $this->assertSame('cancelled', $orderA->fresh()->status);
         $this->assertTrue(AppNotification::where('user_id', $this->supplierA->id)->where('type', 'supplier_order_cancelled')->exists());
 
-        // A cancelled order can't be advanced any more.
-        Sanctum::actingAs($this->supplierA);
-        $this->postJson("/api/supplier-orders/{$orderA->id}/status", ['status' => 'preparing'])->assertStatus(422);
+        // A cancelled order can no longer be marked received.
+        $this->postJson("/api/supplier-orders/{$orderA->id}/receive")->assertStatus(422);
 
-        // After a delivery, cancelling is refused.
+        // After receipt, cancelling is refused.
         $id2 = $this->draft();
         $this->submitAndApprove($id2);
         $o = $this->orderFor($id2, $this->supplierA);
         Sanctum::actingAs($this->supplierA);
         $this->postJson("/api/supplier-orders/{$o->id}/confirm");
-        foreach (['preparing', 'for_delivery', 'delivered'] as $s) {
-            $this->postJson("/api/supplier-orders/{$o->id}/status", ['status' => $s]);
-        }
+        Sanctum::actingAs($this->contractor);
+        $this->postJson("/api/supplier-orders/{$o->id}/receive");
         Sanctum::actingAs($this->homeowner);
         $this->postJson("/api/material-requests/{$id2}/cancel")->assertStatus(422);
     }
@@ -345,10 +339,10 @@ class MaterialWorkflowTest extends TestCase
         $this->postJson("/api/supplier-orders/{$order->id}/confirm", ['items' => [['id' => $itemId, 'unit_price' => 300]]])
             ->assertStatus(200)
             ->assertJsonPath('status', 'awaiting_homeowner_confirmation');
-        // Can't start preparing until the homeowner accepts.
-        $this->postJson("/api/supplier-orders/{$order->id}/status", ['status' => 'preparing'])->assertStatus(422);
 
         Sanctum::actingAs($this->contractor);
+        // Can't be marked received until the homeowner accepts the final prices.
+        $this->postJson("/api/supplier-orders/{$order->id}/receive")->assertStatus(422);
         $this->postJson("/api/supplier-orders/{$order->id}/confirm-prices")->assertStatus(403);
 
         Sanctum::actingAs($this->homeowner);
@@ -389,7 +383,7 @@ class MaterialWorkflowTest extends TestCase
             ->assertJsonPath('items.0.status', 'unavailable');
     }
 
-    public function test_only_the_contractor_confirms_receipt_and_only_after_delivery(): void
+    public function test_only_the_contractor_confirms_receipt_and_only_after_confirmation(): void
     {
         $id = $this->draft();
         $this->submitAndApprove($id);

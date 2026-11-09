@@ -11,7 +11,7 @@ import InventoryStats from "./InventoryStats";
 
 const QUICK_ACTIONS = [
   { label: "Inventory", icon: "layers-outline", href: "/supplier/pricing" },
-  { label: "Orders", icon: "cube-outline", href: "/supplier/orders" },
+  { label: "Fulfillment", icon: "cube-outline", href: "/supplier/orders" },
   { label: "More", icon: "ellipsis-horizontal", href: "/supplier/more" },
 ] as const;
 
@@ -21,10 +21,8 @@ export default function Dashboard() {
 
   const goToOrders = () => router.push("/supplier/orders" as never);
   const pendingRequests = orders.filter((o) => o.status === "supplier_review").length;
-  const acceptedRequests = orders.filter((o) =>
-    ["awaiting_homeowner_confirmation", "confirmed", "preparing", "for_delivery"].includes(o.status)
-  ).length;
-  const completedRequests = orders.filter((o) => o.status === "delivered" || o.status === "received").length;
+  const acceptedRequests = orders.filter((o) => ["awaiting_homeowner_confirmation", "confirmed"].includes(o.status)).length;
+  const completedRequests = orders.filter((o) => o.status === "received").length;
 
   // Out-of-stock items first — they're the ones that need the supplier's attention.
   const inventoryPreview = [...products]

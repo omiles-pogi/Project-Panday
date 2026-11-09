@@ -18,7 +18,7 @@ use Illuminate\Validation\ValidationException;
  *
  *   draft → pending_homeowner_approval → approved → completed
  *                 ↘ revision_requested ↗ (contractor edits + resubmits)
- *                 ↘ rejected            cancelled (either party, before any delivery)
+ *                 ↘ rejected            cancelled (either party, before any materials are received)
  *
  * Approval splits the request into one SupplierOrder per supplier (see SupplierOrderService for
  * what suppliers do next). Every check here is against the real project relationship: only an
@@ -332,7 +332,7 @@ class MaterialRequestService
         return $this->present($request->fresh()->load(self::PRESENT_WITH), $homeowner);
     }
 
-    /** Either party may cancel until any supplier has delivered; open reservations are released. */
+    /** Either party may cancel until any supplier's materials are received; open reservations are released. */
     public function cancel(MaterialRequest $request, User $user, ?string $reason): array
     {
         $this->authorizeViewer($request, $user);
@@ -342,8 +342,8 @@ class MaterialRequestService
         if (in_array($request->status, MaterialRequest::CLOSED, true)) {
             throw ValidationException::withMessages(['status' => 'This request is already closed.']);
         }
-        if ($request->orders()->whereIn('status', [SupplierOrder::DELIVERED, SupplierOrder::RECEIVED])->exists()) {
-            throw ValidationException::withMessages(['status' => 'Some materials were already delivered, so this request can no longer be cancelled.']);
+        if ($request->orders()->where('status', SupplierOrder::RECEIVED)->exists()) {
+            throw ValidationException::withMessages(['status' => 'Some materials were already received, so this request can no longer be cancelled.']);
         }
 
         $cancelled = DB::transaction(function () use ($request, $user, $reason) {
@@ -380,7 +380,7 @@ class MaterialRequestService
 
         $order->load('supplier');
         $request->load('project', 'contractor');
-        $this->workflow->notify($order->supplier, 'supplier_order_confirmed', 'Order confirmed', "The homeowner accepted your final prices for {$request->project->title}. You can start preparing.", $request, ['supplierOrderId' => $order->id]);
+        $this->workflow->notify($order->supplier, 'supplier_order_confirmed', 'Order confirmed', "The homeowner accepted your final prices for {$request->project->title}.", $request, ['supplierOrderId' => $order->id]);
         $this->workflow->notify($request->contractor, 'supplier_order_confirmed', 'Supplier prices accepted', "{$homeowner->name} accepted the supplier's final prices for request #{$request->id}.", $request);
 
         return $this->present($request->fresh()->load(self::PRESENT_WITH), $homeowner);
@@ -409,7 +409,11 @@ class MaterialRequestService
         return $this->present($request->fresh()->load(self::PRESENT_WITH), $homeowner);
     }
 
-    /** Contractor confirms a delivered order actually arrived. */
+    /**
+     * Contractor confirms a confirmed order's materials actually arrived. This is what turns the
+     * supplier's stock reservation into an actual deduction — there is no delivery-progress status
+     * in between; it's on the supplier to get the materials there once they've confirmed.
+     */
     public function receive(SupplierOrder $order, User $contractor): array
     {
         $request = $order->materialRequest;
@@ -419,9 +423,10 @@ class MaterialRequestService
 
         DB::transaction(function () use ($order, $request, $contractor) {
             $order = SupplierOrder::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
-            if ($order->status !== SupplierOrder::DELIVERED) {
-                throw ValidationException::withMessages(['status' => 'Only delivered orders can be marked as received.']);
+            if ($order->status !== SupplierOrder::CONFIRMED) {
+                throw ValidationException::withMessages(['status' => 'Only confirmed orders can be marked as received.']);
             }
+            $this->workflow->deductReservations($order);
             $order->received_at = now();
             $this->workflow->setOrderStatus($order, SupplierOrder::RECEIVED, $contractor);
             $this->workflow->completeIfFulfilled($request->fresh(), $contractor);
@@ -430,7 +435,7 @@ class MaterialRequestService
         $order->load('supplier');
         $request->load('project', 'homeowner');
         $this->workflow->notify($request->homeowner, 'supplier_order_received_by_contractor', 'Materials received', "{$contractor->name} confirmed receipt of materials from ".($order->supplier->business_name ?: $order->supplier->name).'.', $request);
-        $this->workflow->notify($order->supplier, 'supplier_order_received_by_contractor', 'Delivery received', "The contractor confirmed receipt of your delivery for {$request->project->title}.", $request, ['supplierOrderId' => $order->id]);
+        $this->workflow->notify($order->supplier, 'supplier_order_received_by_contractor', 'Materials received', "The contractor confirmed receipt of your materials for {$request->project->title}.", $request, ['supplierOrderId' => $order->id]);
 
         return $this->present($request->fresh()->load(self::PRESENT_WITH), $contractor);
     }
@@ -526,7 +531,7 @@ class MaterialRequestService
     private function cancelOpenOrders(MaterialRequest $request, User $by, string $reason): Collection
     {
         $open = $request->orders()
-            ->whereNotIn('status', [...SupplierOrder::DEAD, SupplierOrder::DELIVERED, SupplierOrder::RECEIVED])
+            ->whereNotIn('status', [...SupplierOrder::DEAD, SupplierOrder::RECEIVED])
             ->lockForUpdate()
             ->get();
         foreach ($open as $order) {
@@ -726,7 +731,6 @@ class MaterialRequestService
                 'confirmedTotal' => $orderItems->sum(fn (MaterialRequestItem $i) => $i->quantity * ($i->confirmed_unit_price ?? 0)),
                 'itemIds' => $orderItems->pluck('id')->values(),
                 'confirmedAt' => $o->confirmed_at?->toIso8601String(),
-                'deliveredAt' => $o->delivered_at?->toIso8601String(),
                 'receivedAt' => $o->received_at?->toIso8601String(),
             ];
         })->values();

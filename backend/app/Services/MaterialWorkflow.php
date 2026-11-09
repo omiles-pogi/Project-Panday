@@ -7,6 +7,7 @@ use App\Models\MaterialRequestItem;
 use App\Models\MaterialRequestStatusLog;
 use App\Models\SupplierOrder;
 use App\Models\User;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Low-level steps shared by MaterialRequestService (contractor/homeowner side) and
@@ -55,6 +56,17 @@ class MaterialWorkflow
         foreach ($order->items()->where('reserved_quantity', '>', 0)->get() as $item) {
             if ($item->supplier_product_id) {
                 $this->stock->release($item->supplier_product_id, $item->reserved_quantity);
+            }
+            $item->update(['reserved_quantity' => 0]);
+        }
+    }
+
+    /** Turns every reservation the order's items hold into an actual stock decrease. */
+    public function deductReservations(SupplierOrder $order): void
+    {
+        foreach ($order->items()->where('reserved_quantity', '>', 0)->get() as $item) {
+            if (! $this->stock->deduct($item->supplier_product_id, $item->reserved_quantity)) {
+                throw ValidationException::withMessages(['items' => "Stock for “{$item->material_name}” no longer matches its reservation — check that listing's quantity."]);
             }
             $item->update(['reserved_quantity' => 0]);
         }

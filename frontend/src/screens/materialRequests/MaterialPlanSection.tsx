@@ -259,14 +259,14 @@ function CategoryBudgets({ budgets }: { budgets: MaterialPlan["categoryBudgets"]
   );
 }
 
-/** When to order, in words: the date, how soon it is, and whether it has been handled. */
+/** When to request materials, in words: the date, how soon it is, and whether it has been handled. */
 function orderBy(phase: MaterialPlanPhase): { label: string; color: string } {
   const ordered = phase.requests.some((r) => r.status === "approved" || r.status === "completed");
-  if (ordered) return { label: "Ordered", color: "#10b981" };
+  if (ordered) return { label: "Requested", color: "#10b981" };
   const date = formatShortDate(phase.neededBy);
-  if (phase.daysUntilNeeded < 0) return { label: `Order date passed (${date})`, color: "#ef4444" };
-  if (phase.daysUntilNeeded <= 7) return { label: `Order this week (by ${date})`, color: "#f59e0b" };
-  return { label: `Order by ${date}`, color: "#9ca3af" };
+  if (phase.daysUntilNeeded < 0) return { label: `Request date passed (${date})`, color: "#ef4444" };
+  if (phase.daysUntilNeeded <= 7) return { label: `Request this week (by ${date})`, color: "#f59e0b" };
+  return { label: `Request by ${date}`, color: "#9ca3af" };
 }
 
 function PhaseRow({

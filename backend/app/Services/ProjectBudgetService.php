@@ -18,7 +18,7 @@ class ProjectBudgetService
             ->with(['supplier:id,name,business_name', 'items.product:id,category'])
             ->orderBy('id')->get();
 
-        $confirmedStatuses = [SupplierOrder::CONFIRMED, SupplierOrder::PREPARING, SupplierOrder::FOR_DELIVERY, SupplierOrder::DELIVERED, SupplierOrder::RECEIVED];
+        $confirmedStatuses = [SupplierOrder::CONFIRMED, SupplierOrder::RECEIVED];
         $lines = $orders->flatMap(function (SupplierOrder $order) use ($confirmedStatuses) {
             return $order->items->map(fn (MaterialRequestItem $item) => [
                 'id' => $item->id,

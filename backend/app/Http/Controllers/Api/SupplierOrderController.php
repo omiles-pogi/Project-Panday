@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\AdvanceSupplierOrderRequest;
 use App\Http\Requests\ConfirmSupplierOrderRequest;
 use App\Http\Requests\MaterialDecisionRequest;
 use App\Models\SupplierOrder;
@@ -49,11 +48,6 @@ class SupplierOrderController extends Controller
     public function decline(MaterialDecisionRequest $request, SupplierOrder $supplierOrder): JsonResponse
     {
         return $this->attempt(fn () => $this->orders->reportUnavailable($supplierOrder, $request->user(), true, $request->validated('reason')));
-    }
-
-    public function advance(AdvanceSupplierOrderRequest $request, SupplierOrder $supplierOrder): JsonResponse
-    {
-        return $this->attempt(fn () => $this->orders->advance($supplierOrder, $request->user(), $request->validated('status')));
     }
 
     private function attempt(Closure $action): JsonResponse

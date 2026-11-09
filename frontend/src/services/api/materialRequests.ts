@@ -6,7 +6,6 @@ import type {
   MaterialRequest,
   MaterialReviewLine,
   SupplierOrder,
-  SupplierOrderStatus,
 } from "@/types/materialRequest";
 
 const post = (path: string, body?: unknown) =>
@@ -94,10 +93,6 @@ export async function reportInsufficientStock(orderId: number, reason: string): 
 
 export async function declineSupplierOrder(orderId: number, reason: string): Promise<SupplierOrder> {
   return (await post(`/api/supplier-orders/${orderId}/decline`, { reason })) as SupplierOrder;
-}
-
-export async function advanceSupplierOrder(orderId: number, status: SupplierOrderStatus): Promise<SupplierOrder> {
-  return (await post(`/api/supplier-orders/${orderId}/status`, { status })) as SupplierOrder;
 }
 
 // ---- Planning materials by phase ----

@@ -15,9 +15,6 @@ export type SupplierOrderStatus =
   | "supplier_review"
   | "awaiting_homeowner_confirmation"
   | "confirmed"
-  | "preparing"
-  | "for_delivery"
-  | "delivered"
   | "received"
   | "unavailable"
   | "cancelled";
@@ -63,7 +60,6 @@ export interface MaterialRequestOrder {
   confirmedTotal: number;
   itemIds: number[];
   confirmedAt: string | null;
-  deliveredAt: string | null;
   receivedAt: string | null;
 }
 
@@ -164,7 +160,6 @@ export interface SupplierOrder {
   estimatedTotal: number;
   confirmedTotal: number;
   confirmedAt: string | null;
-  deliveredAt: string | null;
   receivedAt: string | null;
   items: {
     id: number;

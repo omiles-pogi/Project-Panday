@@ -158,9 +158,9 @@ export default function BudgetMonitor() {
       {/* Why the estimate is above the AI's plan: sudden material requests and hiring beyond the plan's lines. */}
       {project.estimateAdjustment && <EstimateAdditionsCard adjustment={project.estimateAdjustment} />}
 
-      <Card title="Team Costs and Material Orders">
+      <Card title="Team Costs and Material Fulfillment">
         <Text className="text-xs mb-3 text-muted-foreground">
-          Agreed wages and supplier-confirmed orders are commitments. Automatic wage estimates are shown separately. Payments are not tracked.
+          Agreed wages and supplier-confirmed fulfillments are commitments. Automatic wage estimates are shown separately. Payments are not tracked.
         </Text>
         <StatGrid>
           <StatTile label="Agreed Team Wages" value={project.budgetRecords ? peso(project.budgetRecords.agreedWageTotal) : "Unavailable"} color="#3b82f6" icon="people-outline" />
@@ -186,7 +186,7 @@ export default function BudgetMonitor() {
             />
           </StatGrid>
           <View className="mt-3">
-            <Button label="Order Materials" variant="muted" onPress={() => router.push("/homeowner/approvals" as never)} />
+            <Button label="Request Materials" variant="muted" onPress={() => router.push("/homeowner/approvals" as never)} />
           </View>
         </Card>
       )}

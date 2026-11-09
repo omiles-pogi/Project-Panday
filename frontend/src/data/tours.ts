@@ -32,7 +32,7 @@ export const TOURS: Record<Role, TourStep[]> = {
   ],
   supplier: [
     { icon: "hand-left-outline", title: "Hi, I'm PandAi!", text: "Welcome, supplier! Let me show you how to win jobs and keep your stock moving." },
-    { icon: "cube-outline", title: "Orders", text: "Confirm or decline material orders, then move each one from preparing to delivered." },
+    { icon: "cube-outline", title: "Fulfillment", text: "Confirm or decline material requests — the contractor confirms receipt once the materials arrive." },
     { icon: "cash-outline", title: "Inventory", text: "Update prices and stock, hide items, or add new products. Homeowners price their plans from your listings." },
     { icon: "ellipsis-horizontal", title: "More", text: "Replay this tour or sign out from here anytime." },
   ],

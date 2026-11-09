@@ -18,11 +18,7 @@ export const ORDER_STATUS: Record<SupplierOrderStatus, { label: string; color: s
   supplier_review: { label: "Supplier Review", color: colors.primary },
   awaiting_homeowner_confirmation: { label: "Awaiting Price OK", color: colors.warning },
   confirmed: { label: "Confirmed", color: roleColors.homeowner },
-  preparing: { label: "Preparing", color: roleColors.supplier },
-  for_delivery: { label: "For Delivery", color: colors.info },
-  delivered: { label: "Delivered", color: colors.success },
-  // A shade darker than "delivered" — both read as "done", but distinct states worth telling apart at a glance.
-  received: { label: "Received", color: "#059669" },
+  received: { label: "Received", color: colors.success },
   unavailable: { label: "Unavailable", color: colors.danger },
   cancelled: { label: "Cancelled", color: NEUTRAL },
 };
@@ -34,8 +30,9 @@ const ITEM_STATUS: Record<MaterialItemStatus, { label: string; color: string } |
   unavailable: { label: "Unavailable", color: colors.danger },
 };
 
-/** The order a supplier fulfilment moves through, for progress display. */
-export const ORDER_FLOW: SupplierOrderStatus[] = ["supplier_review", "confirmed", "preparing", "for_delivery", "delivered", "received"];
+/** The order a supplier fulfilment moves through, for progress display. There is no delivery-progress
+ *  tracking — once confirmed, the only further state is the contractor marking it received. */
+export const ORDER_FLOW: SupplierOrderStatus[] = ["supplier_review", "confirmed", "received"];
 
 export function RequestStatusBadge({ status }: { status: MaterialRequestStatus }) {
   const s = REQUEST_STATUS[status];
