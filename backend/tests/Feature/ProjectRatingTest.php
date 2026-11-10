@@ -34,7 +34,7 @@ class ProjectRatingTest extends TestCase
             'location' => 'Quezon City',
             'budget' => 2500000,
             'totalEstimate' => 2420000,
-            'timelineMonths' => 7,
+            'timelineValue' => 7, 'timelineUnit' => 'months',
             'phases' => [
                 ['name' => 'Foundation', 'percentComplete' => 50, 'tasks' => ['Excavation']],
                 ['name' => 'Finishing', 'percentComplete' => 50, 'tasks' => ['Painting']],

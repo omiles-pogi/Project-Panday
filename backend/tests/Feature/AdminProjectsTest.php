@@ -35,7 +35,7 @@ class AdminProjectsTest extends TestCase
             'location' => 'Quezon City',
             'budget' => 1000000,
             'totalEstimate' => 950000,
-            'timelineMonths' => 6,
+            'timelineValue' => 6, 'timelineUnit' => 'months',
             'phases' => [
                 ['name' => 'Foundation', 'percentComplete' => 50],
                 ['name' => 'Finishing', 'percentComplete' => 50],

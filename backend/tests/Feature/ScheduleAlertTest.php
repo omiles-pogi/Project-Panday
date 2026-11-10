@@ -37,7 +37,7 @@ class ScheduleAlertTest extends TestCase
             'location' => 'Quezon City',
             'budget' => 2500000,
             'totalEstimate' => 2420000,
-            'timelineMonths' => 6,
+            'timelineValue' => 6, 'timelineUnit' => 'months',
             'phases' => [
                 ['name' => 'Site preparation', 'percentComplete' => 20, 'durationWeeks' => 6, 'tasks' => ['Clearing', 'Excavation']],
                 ['name' => 'Structure', 'percentComplete' => 40, 'durationWeeks' => 10, 'tasks' => ['Columns', 'Beams', 'Slab', 'Walls']],

@@ -40,7 +40,7 @@ class ProjectCompletionTest extends TestCase
         $contractor = $this->user('contractor');
         $worker = $this->user('worker');
         $project = app(ProjectService::class)->createFromPlan($owner, [
-            'projectTitle' => 'Two-Storey House', 'location' => 'Quezon City', 'budget' => 2500000, 'totalEstimate' => 2420000, 'timelineMonths' => 6,
+            'projectTitle' => 'Two-Storey House', 'location' => 'Quezon City', 'budget' => 2500000, 'totalEstimate' => 2420000, 'timelineValue' => 6, 'timelineUnit' => 'months',
             'phases' => [
                 ['name' => 'Foundation', 'percentComplete' => 40, 'durationWeeks' => 10, 'tasks' => ['Excavation', 'Rebar', 'Pour concrete']],
                 ['name' => 'Finishing', 'percentComplete' => 60, 'durationWeeks' => 10, 'tasks' => ['Painting', 'Final inspection']],
@@ -220,12 +220,35 @@ class ProjectCompletionTest extends TestCase
 
         $this->checkAll($stranger, $project)->assertStatus(422)->assertJsonPath('error', 'You are not assigned as a contractor on this project.');
         $this->postJson($this->phaseUrl($project, $phase, 'uncheck-all'))->assertStatus(422);
-        foreach ([$owner, $worker] as $wrongRole) {
-            $this->checkAll($wrongRole, $project)->assertForbidden();
-            $this->postJson($this->phaseUrl($project, $phase, 'uncheck-all'))->assertForbidden();
-        }
+        // A contractor is already assigned to this project, so even its own homeowner can't manage
+        // the checklist directly — that fallback only kicks in when no contractor is assigned at all.
+        $this->checkAll($owner, $project)->assertStatus(422)->assertJsonPath('error', 'You are not assigned as a contractor on this project.');
+        $this->postJson($this->phaseUrl($project, $phase, 'uncheck-all'))->assertStatus(422);
+        $this->checkAll($worker, $project)->assertForbidden();
+        $this->postJson($this->phaseUrl($project, $phase, 'uncheck-all'))->assertForbidden();
 
         $this->assertSame(0, ProjectPhaseTask::where('is_done', true)->count());
+    }
+
+    public function test_the_homeowner_can_manage_the_checklist_when_no_contractor_is_assigned(): void
+    {
+        $owner = $this->user('homeowner');
+        $project = app(ProjectService::class)->createFromPlan($owner, [
+            'projectTitle' => 'Small Repair', 'location' => 'Manila', 'budget' => 50000, 'totalEstimate' => 40000, 'timelineValue' => 1, 'timelineUnit' => 'months',
+            'phases' => [['name' => 'Patch Up', 'percentComplete' => 100, 'durationWeeks' => 2, 'tasks' => ['Buy paint', 'Repaint wall']]],
+        ]);
+        $phase = $project->phases->first();
+
+        $this->checkAll($owner, $project)->assertOk();
+        $this->assertSame(2, ProjectPhaseTask::where('project_phase_id', $phase->id)->where('is_done', true)->count());
+
+        $this->submit($owner, $project)->assertOk()
+            ->assertJsonPath('status', 'completed')
+            ->assertJsonPath('completion.submittedBy', $owner->name);
+        $this->assertSame('completed', $project->fresh()->status);
+        $this->assertNotNull($project->fresh()->completion_confirmed_at);
+        // Nobody else needs to review a project the homeowner finished themselves.
+        $this->assertSame(0, $this->notificationsFor($owner, 'project_completion_submitted')->count());
     }
 
     // ---- marking the project as finished -------------------------------------------------------
@@ -271,7 +294,7 @@ class ProjectCompletionTest extends TestCase
         $owner = $this->user('homeowner');
         $contractor = $this->user('contractor');
         $project = app(ProjectService::class)->createFromPlan($owner, [
-            'projectTitle' => 'Empty', 'location' => 'Manila', 'budget' => 1000000, 'totalEstimate' => 900000, 'timelineMonths' => 3,
+            'projectTitle' => 'Empty', 'location' => 'Manila', 'budget' => 1000000, 'totalEstimate' => 900000, 'timelineValue' => 3, 'timelineUnit' => 'months',
             'phases' => [['name' => 'Build', 'percentComplete' => 100, 'durationWeeks' => 12, 'tasks' => []]],
         ]);
         $project->contractors()->attach($contractor->id);
@@ -300,8 +323,10 @@ class ProjectCompletionTest extends TestCase
         $this->checkAll($contractor, $project)->assertOk();
 
         $this->submit($this->user('contractor'), $project)->assertStatus(422)
-            ->assertJsonPath('error', 'Only a contractor assigned to this project can mark it as finished.');
-        $this->submit($owner, $project)->assertForbidden();
+            ->assertJsonPath('error', 'Only a contractor assigned to this project, or the homeowner managing it directly, can mark it as finished.');
+        // A contractor is already assigned, so the homeowner's own-checklist fallback doesn't apply here.
+        $this->submit($owner, $project)->assertStatus(422)
+            ->assertJsonPath('error', 'Only a contractor assigned to this project, or the homeowner managing it directly, can mark it as finished.');
         $this->submit($worker, $project)->assertForbidden();
         $this->assertSame('active', $project->fresh()->status);
 

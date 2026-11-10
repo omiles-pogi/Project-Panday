@@ -45,7 +45,7 @@ class MaterialWorkflowTest extends TestCase
             'location' => 'Quezon City',
             'budget' => 2500000,
             'totalEstimate' => 2400000,
-            'timelineMonths' => 6,
+            'timelineValue' => 6, 'timelineUnit' => 'months',
             'phases' => [['name' => 'Foundation', 'percentComplete' => 100]],
             'materials' => [
                 ['material' => 'Portland Cement', 'category' => 'Cement', 'qty' => 99.5, 'unit' => 'bag', 'unitPrice' => 250],

@@ -28,7 +28,7 @@ class PlannerAppDataTest extends TestCase
     {
         return [
             'projectTitle' => 'Saved House', 'location' => 'Cebu', 'budget' => 2000000,
-            'totalEstimate' => 9999999, 'timelineMonths' => 6,
+            'totalEstimate' => 9999999, 'timelineValue' => 6, 'timelineUnit' => 'months',
             'areaSqm' => 80, 'floors' => 1, 'bedrooms' => 2, 'bathrooms' => 1, 'garageCars' => 0,
             'designStyle' => 'Modern', 'exteriorConcept' => 'Simple facade', 'interiorConcept' => 'Open kitchen',
             'phases' => [['name' => 'Foundation', 'percentComplete' => 100, 'tasks' => ['Pour slab']]],

@@ -15,7 +15,7 @@ class SavePlanBlankTextTest extends TestCase
     private function plan(array $overrides = []): array
     {
         return array_merge([
-            'projectTitle' => 'My House', 'location' => '', 'budget' => 0, 'totalEstimate' => 600000, 'timelineMonths' => 6,
+            'projectTitle' => 'My House', 'location' => '', 'budget' => 0, 'totalEstimate' => 600000, 'timelineValue' => 6, 'timelineUnit' => 'months',
             'areaSqm' => 80, 'floors' => 1, 'bedrooms' => 2, 'bathrooms' => 1, 'garageCars' => 0,
             'designStyle' => 'Modern', 'exteriorConcept' => 'Simple facade', 'interiorConcept' => 'Open kitchen',
             'phases' => [['name' => 'Foundation', 'percentComplete' => 100, 'tasks' => ['Pour slab']]],

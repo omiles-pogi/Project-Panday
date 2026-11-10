@@ -54,7 +54,7 @@ class MaterialPlanTest extends TestCase
         $this->roofSheet = $this->supplierA->supplierProducts()->create(['name' => 'GI Roofing Sheet', 'category' => 'Roofing', 'unit' => 'pc', 'price' => 400, 'stock' => 500]);
 
         $this->project = app(ProjectService::class)->createFromPlan($this->homeowner, [
-            'projectTitle' => 'Dela Cruz Residence', 'budget' => 0, 'totalEstimate' => 600000, 'timelineMonths' => 6,
+            'projectTitle' => 'Dela Cruz Residence', 'budget' => 0, 'totalEstimate' => 600000, 'timelineValue' => 6, 'timelineUnit' => 'months',
             'phases' => [
                 ['name' => 'Foundation', 'percentComplete' => 40, 'durationWeeks' => 8],
                 ['name' => 'Roofing', 'percentComplete' => 60, 'durationWeeks' => 18],
@@ -309,7 +309,7 @@ class MaterialPlanTest extends TestCase
     {
         $this->review()->assertOk();
         $other = app(ProjectService::class)->createFromPlan($this->homeowner, [
-            'projectTitle' => 'Other', 'budget' => 0, 'totalEstimate' => 1000, 'timelineMonths' => 1,
+            'projectTitle' => 'Other', 'budget' => 0, 'totalEstimate' => 1000, 'timelineValue' => 1, 'timelineUnit' => 'months',
             'phases' => [['name' => 'Foundation', 'percentComplete' => 100]],
         ]);
 

@@ -26,7 +26,7 @@ class ProjectDraftTest extends TestCase
             'location' => 'Quezon City',
             'budget' => 2500000,
             'totalEstimate' => 2420000,
-            'timelineMonths' => 6,
+            'timelineValue' => 6, 'timelineUnit' => 'months',
             'phases' => [
                 ['name' => 'Site preparation', 'percentComplete' => 40, 'durationWeeks' => 10, 'tasks' => ['Clearing', 'Excavation']],
                 ['name' => 'Finishing', 'percentComplete' => 60, 'durationWeeks' => 16, 'tasks' => ['Painting']],

@@ -11,6 +11,16 @@ class ProjectWorkerRequest extends Model
 {
     public const STATUSES = ['pending', 'approved', 'rejected'];
 
+    protected static function booted(): void
+    {
+        // pending_worker_id mirrors worker_id only while status is 'pending', and is null
+        // otherwise — the unique index on (project_id, pending_worker_id) that enforces "at most
+        // one pending request per project+worker" relies on this staying in sync on every save.
+        static::saving(function (self $request) {
+            $request->pending_worker_id = $request->status === 'pending' ? $request->worker_id : null;
+        });
+    }
+
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);

@@ -49,7 +49,7 @@ class EstimateAdjustmentTest extends TestCase
     private function makeProject(bool $withMaterials = true, array $extraLines = []): Project
     {
         return app(ProjectService::class)->createFromPlan($this->homeowner, [
-            'projectTitle' => 'Dela Cruz Residence', 'budget' => 700000, 'totalEstimate' => 600000, 'timelineMonths' => 6,
+            'projectTitle' => 'Dela Cruz Residence', 'budget' => 700000, 'totalEstimate' => 600000, 'timelineValue' => 6, 'timelineUnit' => 'months',
             'phases' => [['name' => 'Foundation', 'percentComplete' => 100, 'durationWeeks' => 26]],
             'budgetBreakdown' => array_merge([
                 ['category' => 'Construction Materials', 'amount' => 200000],
@@ -253,7 +253,7 @@ class EstimateAdjustmentTest extends TestCase
     public function test_a_plan_with_no_labor_line_gives_nothing_to_compare_hiring_against(): void
     {
         $project = app(ProjectService::class)->createFromPlan($this->homeowner, [
-            'projectTitle' => 'Older plan', 'budget' => 700000, 'totalEstimate' => 600000, 'timelineMonths' => 6,
+            'projectTitle' => 'Older plan', 'budget' => 700000, 'totalEstimate' => 600000, 'timelineValue' => 6, 'timelineUnit' => 'months',
             'phases' => [['name' => 'Foundation', 'percentComplete' => 100]],
         ]);
         $project->workers()->attach($this->user('worker')->id, ['wage_amount' => 900000, 'wage_unit' => 'fixed', 'wage_auto' => false]);

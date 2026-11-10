@@ -39,7 +39,7 @@ class WorkerActivityTest extends TestCase
         $contractor = $this->user('contractor');
         $worker = $this->user('worker');
         $project = app(ProjectService::class)->createFromPlan($owner, [
-            'projectTitle' => 'My House', 'location' => 'Quezon City', 'budget' => 2500000, 'totalEstimate' => 2420000, 'timelineMonths' => 6,
+            'projectTitle' => 'My House', 'location' => 'Quezon City', 'budget' => 2500000, 'totalEstimate' => 2420000, 'timelineValue' => 6, 'timelineUnit' => 'months',
             'phases' => [['name' => 'Build', 'percentComplete' => 100, 'durationWeeks' => 26, 'tasks' => ['Pour slab']]],
         ]);
         $project->contractors()->attach($contractor->id);

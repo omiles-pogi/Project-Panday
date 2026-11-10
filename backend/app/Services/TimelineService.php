@@ -44,7 +44,7 @@ class TimelineService
     }
 
     /**
-     * Splits the project's [started_at, started_at + timeline_months) window across its phases, in
+     * Splits the project's [started_at, started_at + timeline) window across its phases, in
      * order, proportionally to the AI's per-phase duration — or, when any phase lacks one (older
      * plans, hand-added phases), proportionally to each phase's share of the project.
      */
@@ -57,7 +57,7 @@ class TimelineService
         }
 
         $start = $project->started_at->copy()->startOfDay();
-        $end = $start->copy()->addMonthsNoOverflow(max(1, (int) $project->timeline_months))->subDay();
+        $end = $project->timelineEndDate($start);
         $totalDays = (int) $start->diffInDays($end) + 1;
 
         $useDurations = $phases->every(fn (ProjectPhase $p) => $p->duration_weeks > 0);
@@ -118,7 +118,8 @@ class TimelineService
             'title' => $project->title,
             'startDate' => $projectStart->toDateString(),
             'endDate' => $projectEnd->toDateString(),
-            'timelineMonths' => $project->timeline_months,
+            'timelineValue' => $project->timeline_value,
+            'timelineUnit' => $project->timeline_unit,
             'today' => $today->toDateString(),
             'overall' => $this->presentOverall($project, $phases, $tasks, $projectStart, $projectEnd, $today),
             'phases' => $phaseItems->values(),
@@ -184,7 +185,8 @@ class TimelineService
             'title' => $project->title,
             'startDate' => $project->started_at->toDateString(),
             'endDate' => $project->started_at->toDateString(),
-            'timelineMonths' => $project->timeline_months,
+            'timelineValue' => $project->timeline_value,
+            'timelineUnit' => $project->timeline_unit,
             'today' => $today->toDateString(),
             'overall' => [
                 'plannedPct' => 0,

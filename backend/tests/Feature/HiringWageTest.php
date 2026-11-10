@@ -34,7 +34,7 @@ class HiringWageTest extends TestCase
     private function projectFor(User $owner): Project
     {
         return app(ProjectService::class)->createFromPlan($owner, [
-            'projectTitle' => 'House', 'budget' => 2000000, 'totalEstimate' => 2000000, 'timelineMonths' => 2,
+            'projectTitle' => 'House', 'budget' => 2000000, 'totalEstimate' => 2000000, 'timelineValue' => 2, 'timelineUnit' => 'months',
             'phases' => [['name' => 'Build', 'percentComplete' => 100]],
             'budgetBreakdown' => [
                 ['category' => 'Construction Materials', 'amount' => 1700000],

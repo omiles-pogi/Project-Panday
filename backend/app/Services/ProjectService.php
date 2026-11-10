@@ -10,6 +10,8 @@ use App\Models\ProjectPhaseTask;
 use App\Models\ProjectWorkerRequest;
 use App\Models\User;
 use App\Support\Wage;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -56,7 +58,8 @@ class ProjectService
                 'status' => 'not_started',
                 'budget' => 0,
                 'total_estimate' => 0,
-                'timeline_months' => 0,
+                'timeline_value' => 0,
+                'timeline_unit' => 'months',
                 'started_at' => Carbon::today(),
             ]);
     }
@@ -104,7 +107,8 @@ class ProjectService
             'location' => $plan['location'] ?? null,
             'budget' => (int) round($plan['budget']),
             'total_estimate' => $total,
-            'timeline_months' => (int) $plan['timelineMonths'],
+            'timeline_value' => (int) $plan['timelineValue'],
+            'timeline_unit' => $plan['timelineUnit'],
             'ai_materials' => $materials,
             'approved_plan' => array_replace($plan, [
                 'budget' => (int) round($plan['budget']),
@@ -199,12 +203,16 @@ class ProjectService
             throw ValidationException::withMessages(['worker_id' => 'There is already a pending request for this worker.']);
         }
 
-        $request = $project->workerRequests()->create([
-            'worker_id' => $worker->id,
-            'initiated_by' => 'homeowner',
-            'invited_by_user_id' => $actingUser->id,
-            'status' => 'pending',
-        ]);
+        $request = $this->creatingRequest(
+            fn () => $project->workerRequests()->create([
+                'worker_id' => $worker->id,
+                'initiated_by' => 'homeowner',
+                'invited_by_user_id' => $actingUser->id,
+                'status' => 'pending',
+            ]),
+            'worker_id',
+            'There is already a pending request for this worker.'
+        );
 
         $this->notifications->send(
             $worker,
@@ -241,11 +249,15 @@ class ProjectService
             throw ValidationException::withMessages(['worker_id' => 'You already have a pending request for this project.']);
         }
 
-        $request = $project->workerRequests()->create([
-            'worker_id' => $worker->id,
-            'initiated_by' => 'worker',
-            'status' => 'pending',
-        ]);
+        $request = $this->creatingRequest(
+            fn () => $project->workerRequests()->create([
+                'worker_id' => $worker->id,
+                'initiated_by' => 'worker',
+                'status' => 'pending',
+            ]),
+            'worker_id',
+            'You already have a pending request for this project.'
+        );
 
         $this->notifications->send(
             $project->user,
@@ -288,13 +300,15 @@ class ProjectService
             throw ValidationException::withMessages(['request_id' => 'This application is not yours to respond to.']);
         }
 
-        $request->update(['status' => $accept ? 'approved' : 'rejected']);
+        DB::transaction(function () use ($request, $accept, $project, $worker) {
+            $request->update(['status' => $accept ? 'approved' : 'rejected']);
 
-        if ($accept) {
-            $project->workers()->syncWithoutDetaching([$worker->id]);
-            // They arrive with a wage already worked out (their own minimum daily wage × the project's days).
-            $this->wages->syncAutoWages($project, [$worker->id]);
-        }
+            if ($accept) {
+                $project->workers()->syncWithoutDetaching([$worker->id]);
+                // They arrive with a wage already worked out (their own minimum daily wage × the project's days).
+                $this->wages->syncAutoWages($project, [$worker->id]);
+            }
+        });
 
         if ($request->isHomeownerInitiated()) {
             // The worker responded to whoever actually sent the invite — the homeowner, or a
@@ -332,6 +346,28 @@ class ProjectService
     }
 
     /**
+     * Runs $create and turns a duplicate-pending-request race (two near-simultaneous requests both
+     * passing the hasPendingRequest()/hasPendingContractorRequest() pre-check before either row
+     * exists, since that check and this insert aren't atomic) into the same friendly validation
+     * error the pre-check gives the common case, instead of a raw duplicate-key failure.
+     */
+    private function creatingRequest(callable $create, string $field, string $message): mixed
+    {
+        try {
+            return $create();
+        } catch (QueryException $e) {
+            // SQLSTATE 23000 is the integrity-constraint-violation class on every driver this app
+            // runs on (MySQL's 1062 duplicate entry, SQLite's own "UNIQUE constraint failed") — the
+            // pending_worker_id/pending_contractor_id unique index is the only constraint a request
+            // insert could plausibly hit here, so it's always this race, never a real FK error.
+            if (($e->errorInfo[0] ?? null) === '23000') {
+                throw ValidationException::withMessages([$field => $message]);
+            }
+            throw $e;
+        }
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function presentWorkerRequest(ProjectWorkerRequest $request): array
@@ -342,6 +378,66 @@ class ProjectService
             'workerId' => $request->worker_id,
             'initiatedBy' => $request->initiated_by,
             'status' => $request->status,
+            'createdAt' => $request->created_at->toIso8601String(),
+        ];
+    }
+
+    /**
+     * The project details an invited-but-not-yet-assigned worker/contractor may see before
+     * deciding whether to accept — deliberately narrower than present(): no budget breakdown,
+     * wages, approved plan or checklist, none of which are theirs to see until they're on the team.
+     *
+     * @return array<string, mixed>
+     */
+    private function presentProjectForInvitee(Project $project): array
+    {
+        $project->loadMissing(['user', 'workers.workerProfile', 'contractors.contractorProfile']);
+        $plan = $project->approved_plan ?? [];
+
+        return [
+            'id' => $project->id,
+            'title' => $project->title,
+            'location' => $project->location,
+            'status' => $project->status,
+            'budget' => $project->budget,
+            'totalEstimate' => $project->total_estimate,
+            'timelineValue' => $project->timeline_value,
+            'timelineUnit' => $project->timeline_unit,
+            'startedAt' => $project->started_at->toDateString(),
+            // What the homeowner described to the AI when planning this project — the closest thing
+            // to a project "description" this app has; projects carry no free-text column of their own.
+            'designStyle' => $plan['designStyle'] ?? null,
+            'areaSqm' => $plan['areaSqm'] ?? null,
+            'floors' => $plan['floors'] ?? null,
+            'bedrooms' => $plan['bedrooms'] ?? null,
+            'bathrooms' => $plan['bathrooms'] ?? null,
+            'garageCars' => $plan['garageCars'] ?? null,
+            'exteriorConcept' => $plan['exteriorConcept'] ?? null,
+            'interiorConcept' => $plan['interiorConcept'] ?? null,
+            'homeowner' => ['name' => $project->user->name],
+            'workers' => $project->workers->map(fn (User $w) => [
+                'id' => $w->id, 'name' => $w->name, 'trade' => $w->workerProfile?->trade,
+            ])->values(),
+            'contractors' => $project->contractors->map(fn (User $c) => [
+                'id' => $c->id, 'name' => $c->name, 'specialization' => $c->contractorProfile?->specialization,
+            ])->values(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     *
+     * @throws AuthorizationException
+     */
+    public function projectDetailsForWorkerRequest(ProjectWorkerRequest $request, User $actingUser): array
+    {
+        if ($actingUser->id !== $request->worker_id) {
+            throw new AuthorizationException('This invite is not yours to view.');
+        }
+
+        return [
+            'request' => $this->presentWorkerRequest($request),
+            'project' => $this->presentProjectForInvitee($request->project),
         ];
     }
 
@@ -376,11 +472,15 @@ class ProjectService
             throw ValidationException::withMessages(['contractor_id' => 'There is already a pending request for this contractor.']);
         }
 
-        $request = $project->contractorRequests()->create([
-            'contractor_id' => $contractor->id,
-            'initiated_by' => 'homeowner',
-            'status' => 'pending',
-        ]);
+        $request = $this->creatingRequest(
+            fn () => $project->contractorRequests()->create([
+                'contractor_id' => $contractor->id,
+                'initiated_by' => 'homeowner',
+                'status' => 'pending',
+            ]),
+            'contractor_id',
+            'There is already a pending request for this contractor.'
+        );
 
         $this->notifications->send(
             $contractor,
@@ -422,14 +522,18 @@ class ProjectService
             throw ValidationException::withMessages(['contractor_id' => 'You already have a pending request for this project.']);
         }
 
-        $request = $project->contractorRequests()->create([
-            'contractor_id' => $contractor->id,
-            'initiated_by' => 'contractor',
-            'status' => 'pending',
-            'quote_amount' => $quoteAmount,
-            'estimated_days' => $estimatedDays,
-            'message' => $message,
-        ]);
+        $request = $this->creatingRequest(
+            fn () => $project->contractorRequests()->create([
+                'contractor_id' => $contractor->id,
+                'initiated_by' => 'contractor',
+                'status' => 'pending',
+                'quote_amount' => $quoteAmount,
+                'estimated_days' => $estimatedDays,
+                'message' => $message,
+            ]),
+            'contractor_id',
+            'You already have a pending request for this project.'
+        );
 
         $this->notifications->send(
             $project->user,
@@ -470,19 +574,21 @@ class ProjectService
             throw ValidationException::withMessages(['request_id' => 'This application is not yours to respond to.']);
         }
 
-        $request->update(['status' => $accept ? 'approved' : 'rejected']);
+        DB::transaction(function () use ($request, $accept, $project, $contractor) {
+            $request->update(['status' => $accept ? 'approved' : 'rejected']);
 
-        if ($accept) {
-            // A contractor who applied with a quote starts out agreed at that quote as a fixed fee;
-            // the homeowner can still change it. An invite has no quote, so the fee is worked out from
-            // the plan instead (WageService) — and the other automatic fees are re-split for the new head count.
-            $project->contractors()->syncWithoutDetaching(
-                $request->quote_amount
-                    ? [$contractor->id => ['wage_amount' => $request->quote_amount, 'wage_unit' => Wage::FIXED, 'wage_days' => null, 'wage_auto' => false]]
-                    : [$contractor->id]
-            );
-            $this->wages->syncAutoWages($project, [$contractor->id]);
-        }
+            if ($accept) {
+                // A contractor who applied with a quote starts out agreed at that quote as a fixed fee;
+                // the homeowner can still change it. An invite has no quote, so the fee is worked out from
+                // the plan instead (WageService) — and the other automatic fees are re-split for the new head count.
+                $project->contractors()->syncWithoutDetaching(
+                    $request->quote_amount
+                        ? [$contractor->id => ['wage_amount' => $request->quote_amount, 'wage_unit' => Wage::FIXED, 'wage_days' => null, 'wage_auto' => false]]
+                        : [$contractor->id]
+                );
+                $this->wages->syncAutoWages($project, [$contractor->id]);
+            }
+        });
 
         if ($request->isHomeownerInitiated()) {
             $this->notifications->send(
@@ -528,6 +634,24 @@ class ProjectService
             'quoteAmount' => $request->quote_amount,
             'estimatedDays' => $request->estimated_days,
             'message' => $request->message,
+            'createdAt' => $request->created_at->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     *
+     * @throws AuthorizationException
+     */
+    public function projectDetailsForContractorRequest(ProjectContractorRequest $request, User $actingUser): array
+    {
+        if ($actingUser->id !== $request->contractor_id) {
+            throw new AuthorizationException('This invite is not yours to view.');
+        }
+
+        return [
+            'request' => $this->presentContractorRequest($request),
+            'project' => $this->presentProjectForInvitee($request->project),
         ];
     }
 
@@ -563,7 +687,8 @@ class ProjectService
                     'location' => $project->location,
                     'budget' => $project->budget,
                     'totalEstimate' => $project->total_estimate,
-                    'timelineMonths' => $project->timeline_months,
+                    'timelineValue' => $project->timeline_value,
+                    'timelineUnit' => $project->timeline_unit,
                     'startedAt' => $project->started_at->toDateString(),
                     'overallProgressPct' => $project->overallProgressPct(),
                     'ownerName' => $project->user->name,
@@ -750,13 +875,6 @@ class ProjectService
 
             return array_merge($presented, [
                 'ownerName' => $project->user->name,
-                'canManageChecklist' => $project->isManageableBy($user),
-                // Ongoing is the only time the checklist can change; after the contractor submits the
-                // project, and once it's completed, it's read-only for everyone.
-                'checklistLocked' => $project->status !== 'active',
-                // The "Mark Project as Finished" button: an assigned contractor, an ongoing project and
-                // every task checked (the server re-checks all of this when it's actually pressed).
-                'canSubmitCompletion' => $project->isManageableBy($user) && $project->status === 'active' && $project->checklistIsComplete(),
                 // The viewer's own pay on this project, so their screen doesn't have to dig it out of the team list.
                 'myWage' => $mine['wage'] ?? null,
             ]);
@@ -849,7 +967,8 @@ class ProjectService
                     'location' => $project->location,
                     'budget' => $project->budget,
                     'totalEstimate' => $project->total_estimate,
-                    'timelineMonths' => $project->timeline_months,
+                    'timelineValue' => $project->timeline_value,
+                    'timelineUnit' => $project->timeline_unit,
                     'startedAt' => $project->started_at->toDateString(),
                     'overallProgressPct' => $project->overallProgressPct(),
                     'ownerName' => $project->user->name,
@@ -910,7 +1029,8 @@ class ProjectService
             // What the AI estimated at the start, before anything was added to it.
             'planEstimate' => $project->total_estimate,
             'estimateAdjustment' => $adjustment,
-            'timelineMonths' => $project->timeline_months,
+            'timelineValue' => $project->timeline_value,
+            'timelineUnit' => $project->timeline_unit,
             'startedAt' => $project->started_at->toDateString(),
             'overallProgressPct' => $project->overallProgressPct(),
             // Completed tasks over all tasks — what finishing the project is judged on.
@@ -919,6 +1039,11 @@ class ProjectService
             'completion' => $project->completionSummary(),
             // The homeowner's two buttons: shown while the contractor's submission is waiting for them.
             'canConfirmCompletion' => $viewer !== null && $project->isOwnedBy($viewer) && $project->status === Project::PENDING_CONFIRMATION,
+            // Who can edit the checklist and submit the project as finished: an assigned contractor,
+            // or the homeowner themselves when no contractor is assigned to this project at all.
+            'canManageChecklist' => $viewer !== null && $project->isManageableBy($viewer),
+            'checklistLocked' => $project->status !== 'active',
+            'canSubmitCompletion' => $viewer !== null && $project->isManageableBy($viewer) && $project->status === 'active' && $project->checklistIsComplete(),
             'phases' => $project->phases->map(fn (ProjectPhase $phase) => [
                 'id' => $phase->id,
                 'name' => $phase->name,

@@ -66,6 +66,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/projects/{project}/ratings', [ProjectRatingController::class, 'store']);
     Route::post('/projects/{project}/apply', [ProjectController::class, 'applyAsWorker'])->middleware('role:worker');
     Route::post('/projects/{project}/apply-contractor', [ProjectController::class, 'applyAsContractor'])->middleware('role:contractor');
+    // The project details behind an invite/application, for the person it belongs to — before they accept/decline.
+    Route::get('/worker-requests/{workerRequest}/project', [WorkerRequestController::class, 'project']);
+    Route::get('/contractor-requests/{contractorRequest}/project', [ContractorRequestController::class, 'project']);
     Route::patch('/worker-requests/{workerRequest}/respond', [WorkerRequestController::class, 'respond']);
     Route::patch('/contractor-requests/{contractorRequest}/respond', [ContractorRequestController::class, 'respond']);
 
@@ -97,10 +100,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/homeowner-profile', [HomeownerProfileController::class, 'update'])->middleware('role:homeowner');
 
     // Finishing a project: the assigned contractor checks off the checklist (a whole phase at a time, or task by
-    // task) and submits the project as finished;
-    // the homeowner then confirms completion or asks for corrections. Ownership and status are re-checked
-    // in ProjectCompletionService, so these role gates are only the first line.
-    Route::middleware('role:contractor')->group(function () {
+    // task) and submits the project as finished — or, on a small project with no contractor assigned, the
+    // homeowner does this themselves. Either way the homeowner then confirms completion or asks for
+    // corrections (skipped entirely when the homeowner submitted it themselves). Ownership, contractor
+    // assignment and status are re-checked in ProjectCompletionService, so these role gates are only the
+    // first line.
+    Route::middleware('role:homeowner,contractor')->group(function () {
         Route::post('/projects/{project}/phases/{phase}/checklist/check-all', [ProjectCompletionController::class, 'checkAll']);
         Route::post('/projects/{project}/phases/{phase}/checklist/uncheck-all', [ProjectCompletionController::class, 'uncheckAll']);
         Route::post('/projects/{project}/completion/submit', [ProjectCompletionController::class, 'submit']);

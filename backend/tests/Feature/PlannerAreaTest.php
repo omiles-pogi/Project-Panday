@@ -26,7 +26,7 @@ class PlannerAreaTest extends TestCase
 
         return [
             'projectTitle' => 'House', 'location' => '', 'areaSqm' => $areaSqm, 'floors' => 1, 'bedrooms' => 3, 'bathrooms' => 2, 'garageCars' => $garageCars,
-            'designStyle' => 'Modern', 'budget' => 0, 'timelineMonths' => 8,
+            'designStyle' => 'Modern', 'budget' => 0, 'timelineValue' => 8, 'timelineUnit' => 'months',
             'phases' => [['name' => 'Build', 'percentComplete' => 100, 'durationWeeks' => 34, 'tasks' => ['Pour slab']]],
             'budgetBreakdown' => array_map(fn (string $c) => ['category' => $c, 'amount' => 100000], $categories),
             'materials' => [['material' => 'Portland Cement 40kg', 'category' => 'Construction Materials', 'qty' => 100, 'unit' => 'bag', 'unitPrice' => 300, 'supplierProductId' => 0]],

@@ -28,7 +28,7 @@ class AddBudgetTest extends TestCase
             'location' => 'Davao',
             'budget' => 2000000,
             'totalEstimate' => 2400000,
-            'timelineMonths' => 6,
+            'timelineValue' => 6, 'timelineUnit' => 'months',
             'phases' => [['name' => 'Foundation', 'percentComplete' => 100]],
         ]);
     }

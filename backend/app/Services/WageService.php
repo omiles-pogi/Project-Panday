@@ -76,10 +76,14 @@ class WageService
             : null;
     }
 
-    /** Days of work in the project's timeline. */
+    /** Days of work in the project's timeline, whatever unit it's stated in. */
     public function workingDays(Project $project): int
     {
-        return max(1, (int) round(max(1, (int) $project->timeline_months) * (int) config('wages.working_days_per_month')));
+        // Six-day working weeks, expressed as a share of the timeline's calendar days — scaled so a
+        // month-long project still lands on exactly working_days_per_month, as it always has.
+        $ratio = (int) config('wages.working_days_per_month') / (Project::WEEKS_PER_MONTH * 7);
+
+        return max(1, (int) round($project->timelineDays() * $ratio));
     }
 
     /** What all contractors share: the approved plan's fee line, else a percentage of the estimate. */

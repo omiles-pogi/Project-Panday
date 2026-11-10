@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Project;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreProjectRequest extends FormRequest
 {
@@ -21,7 +23,8 @@ class StoreProjectRequest extends FormRequest
             'location' => ['nullable', 'string', 'max:255'],
             'budget' => ['required', 'numeric', 'min:0'],
             'totalEstimate' => ['required', 'numeric', 'min:0'],
-            'timelineMonths' => ['required', 'integer', 'min:0'],
+            'timelineValue' => ['required', 'integer', 'min:0'],
+            'timelineUnit' => ['required', 'string', Rule::in(Project::TIMELINE_UNITS)],
             // Optional for older clients; preserve the approved scope and breakdown on the server.
             // 0 is valid for both: a repair/repainting/fixture job has no floor area or storey of its own.
             'areaSqm' => ['sometimes', 'numeric', 'min:0'],

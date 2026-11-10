@@ -126,7 +126,7 @@ class WorkerMinWageTest extends TestCase
         $owner = $this->user('homeowner');
         $contractor = $this->user('contractor');
         $project = app(ProjectService::class)->createFromPlan($owner, [
-            'projectTitle' => 'My House', 'budget' => 0, 'totalEstimate' => 1000000, 'timelineMonths' => 6,
+            'projectTitle' => 'My House', 'budget' => 0, 'totalEstimate' => 1000000, 'timelineValue' => 6, 'timelineUnit' => 'months',
             'phases' => [['name' => 'Build', 'percentComplete' => 100]],
         ]);
         $project->contractors()->attach($contractor->id);

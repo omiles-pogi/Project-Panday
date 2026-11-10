@@ -40,7 +40,7 @@ class ProjectTimelineTest extends TestCase
             'location' => 'Quezon City',
             'budget' => 2500000,
             'totalEstimate' => 2420000,
-            'timelineMonths' => 6,
+            'timelineValue' => 6, 'timelineUnit' => 'months',
             'phases' => $phases ?? [
                 ['name' => 'Site preparation', 'percentComplete' => 20, 'durationWeeks' => 6, 'tasks' => ['Clearing', 'Excavation']],
                 ['name' => 'Structure', 'percentComplete' => 40, 'durationWeeks' => 10, 'tasks' => ['Columns', 'Beams', 'Slab', 'Walls']],
@@ -70,6 +70,36 @@ class ProjectTimelineTest extends TestCase
 
         // 6/26 of 181 days: the shortest phase gets the shortest window.
         $this->assertLessThan($phases[1]->planned_start->diffInDays($phases[1]->planned_end), $phases[0]->planned_start->diffInDays($phases[0]->planned_end));
+    }
+
+    public function test_a_timeline_in_days_or_weeks_schedules_the_exact_calendar_window(): void
+    {
+        $owner = $this->user('homeowner');
+        Carbon::setTestNow('2027-01-01 09:00:00');
+
+        $daysProject = app(ProjectService::class)->createFromPlan($owner, [
+            'projectTitle' => 'Quick Repair', 'budget' => 0, 'totalEstimate' => 50000, 'timelineValue' => 14, 'timelineUnit' => 'days',
+            'phases' => [['name' => 'Fix', 'percentComplete' => 100, 'tasks' => ['Patch']]],
+        ]);
+        $weeksProject = app(ProjectService::class)->createFromPlan($owner, [
+            'projectTitle' => 'Renovation', 'budget' => 0, 'totalEstimate' => 50000, 'timelineValue' => 3, 'timelineUnit' => 'weeks',
+            'phases' => [['name' => 'Renovate', 'percentComplete' => 100, 'tasks' => ['Repaint']]],
+        ]);
+
+        Sanctum::actingAs($owner);
+        $this->getJson("/api/projects/{$daysProject->id}/timeline")
+            ->assertOk()
+            ->assertJsonPath('startDate', '2027-01-01')
+            ->assertJsonPath('endDate', '2027-01-14')
+            ->assertJsonPath('timelineValue', 14)
+            ->assertJsonPath('timelineUnit', 'days');
+
+        $this->getJson("/api/projects/{$weeksProject->id}/timeline")
+            ->assertOk()
+            ->assertJsonPath('startDate', '2027-01-01')
+            ->assertJsonPath('endDate', '2027-01-21')
+            ->assertJsonPath('timelineValue', 3)
+            ->assertJsonPath('timelineUnit', 'weeks');
     }
 
     public function test_phases_without_ai_durations_are_scheduled_by_their_share_of_the_project(): void

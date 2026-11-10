@@ -86,11 +86,15 @@ class ProjectCompletionService
      */
     public function submit(Project $project, User $acting): array
     {
-        if (! $project->hasAssignedContractor($acting)) {
-            throw ValidationException::withMessages(['project_id' => 'Only a contractor assigned to this project can mark it as finished.']);
+        if (! $project->isManageableBy($acting)) {
+            throw ValidationException::withMessages(['project_id' => 'Only a contractor assigned to this project, or the homeowner managing it directly, can mark it as finished.']);
         }
 
-        DB::transaction(function () use ($project, $acting) {
+        // A homeowner running a contractor-free project is submitting to themselves — there's no
+        // one left to review it, so it completes immediately instead of waiting in pending_confirmation.
+        $selfCompletes = $project->isOwnedBy($acting) && ! $project->hasAnyContractor();
+
+        DB::transaction(function () use ($project, $acting, $selfCompletes) {
             $locked = Project::whereKey($project->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->status !== 'active') {
@@ -111,25 +115,28 @@ class ProjectCompletionService
             }
 
             $locked->update([
-                'status' => Project::PENDING_CONFIRMATION,
+                'status' => $selfCompletes ? 'completed' : Project::PENDING_CONFIRMATION,
                 'finished_at' => now(),
                 'finished_by' => $acting->id,
                 // A fresh submission starts the homeowner's review over.
-                'completion_confirmed_at' => null,
+                'completion_confirmed_at' => $selfCompletes ? now() : null,
                 'corrections_requested_at' => null,
                 'corrections_note' => null,
             ]);
         });
 
         $project->refresh();
-        $project->loadMissing('user');
-        $this->notifications->send(
-            $project->user,
-            'project_completion_submitted',
-            'Project submitted as finished',
-            "{$acting->name} marked \"{$project->title}\" as finished. Please review it and confirm completion, or request corrections.",
-            ['projectId' => $project->id, 'projectTitle' => $project->title]
-        );
+
+        if (! $selfCompletes) {
+            $project->loadMissing('user');
+            $this->notifications->send(
+                $project->user,
+                'project_completion_submitted',
+                'Project submitted as finished',
+                "{$acting->name} marked \"{$project->title}\" as finished. Please review it and confirm completion, or request corrections.",
+                ['projectId' => $project->id, 'projectTitle' => $project->title]
+            );
+        }
 
         return $this->state($project);
     }

@@ -22,7 +22,7 @@ class ProjectProgressTest extends TestCase
     private function project(User $owner, array $weights): Project
     {
         return app(ProjectService::class)->createFromPlan($owner, [
-            'projectTitle' => 'Progress regression', 'budget' => 1000000, 'totalEstimate' => 900000, 'timelineMonths' => 6,
+            'projectTitle' => 'Progress regression', 'budget' => 1000000, 'totalEstimate' => 900000, 'timelineValue' => 6, 'timelineUnit' => 'months',
             'phases' => array_map(fn ($weight, $index) => [
                 'name' => 'Phase '.($index + 1), 'percentComplete' => $weight, 'durationWeeks' => 4,
                 'tasks' => ['Prepare site', 'Complete work', 'Inspect work'],

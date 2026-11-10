@@ -8,8 +8,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
-#[Fillable(['user_id', 'title', 'location', 'status', 'budget', 'total_estimate', 'timeline_months', 'started_at', 'ai_materials', 'approved_plan', 'materials_reviewed_at', 'materials_reviewed_by', 'auto_approve_materials', 'finished_at', 'finished_by', 'completion_confirmed_at', 'corrections_requested_at', 'corrections_note'])]
+#[Fillable(['user_id', 'title', 'location', 'status', 'budget', 'total_estimate', 'timeline_value', 'timeline_unit', 'started_at', 'ai_materials', 'approved_plan', 'materials_reviewed_at', 'materials_reviewed_by', 'auto_approve_materials', 'finished_at', 'finished_by', 'completion_confirmed_at', 'corrections_requested_at', 'corrections_note'])]
 class Project extends Model
 {
     /** active is "Ongoing"; pending_confirmation is a project the contractor has submitted as finished. */
@@ -17,6 +18,12 @@ class Project extends Model
 
     /** not_started: an empty placeholder awaiting its AI plan's approval. */
     public const STATUSES = ['not_started', 'active', self::PENDING_CONFIRMATION, 'completed'];
+
+    /** The only timeline units a project may be expressed in. */
+    public const TIMELINE_UNITS = ['days', 'weeks', 'months'];
+
+    /** The AI's own duration-math convention (see ConstructionPlanService's system prompt). */
+    public const WEEKS_PER_MONTH = 4.3;
 
     protected function casts(): array
     {
@@ -36,6 +43,33 @@ class Project extends Model
     public function finishedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'finished_by');
+    }
+
+    /** The exact calendar date this timeline ends on, counting from $start (inclusive, so this is the last day). */
+    public function timelineEndDate(Carbon $start): Carbon
+    {
+        $value = max(1, (int) $this->timeline_value);
+
+        return match ($this->timeline_unit) {
+            'days' => $start->copy()->addDays($value)->subDay(),
+            'weeks' => $start->copy()->addWeeks($value)->subDay(),
+            default => $start->copy()->addMonthsNoOverflow($value)->subDay(),
+        };
+    }
+
+    /**
+     * Approximate total calendar days this timeline spans, for day-count math that doesn't need an
+     * actual calendar (e.g. wage estimates) — unlike timelineEndDate(), which lays it out for real.
+     */
+    public function timelineDays(): float
+    {
+        $value = max(1, (int) $this->timeline_value);
+
+        return match ($this->timeline_unit) {
+            'days' => $value,
+            'weeks' => $value * 7,
+            default => $value * self::WEEKS_PER_MONTH * 7,
+        };
     }
 
     /**
@@ -133,6 +167,12 @@ class Project extends Model
         return $this->contractors->contains('id', $user->id);
     }
 
+    /** Whether any contractor at all is assigned, regardless of who. */
+    public function hasAnyContractor(): bool
+    {
+        return $this->contractors->isNotEmpty();
+    }
+
     public function hasAssignedWorker(User $user): bool
     {
         return $this->workers->contains('id', $user->id);
@@ -151,10 +191,13 @@ class Project extends Model
         return $this->isOwnedBy($user) || $this->hasAssignedContractor($user) || $this->hasAssignedWorker($user);
     }
 
-    /** Only assigned contractors manage the phase checklist. */
+    /**
+     * An assigned contractor manages the phase checklist. Small projects can skip hiring a
+     * contractor entirely, so without one the homeowner manages it themselves.
+     */
     public function isManageableBy(User $user): bool
     {
-        return $this->hasAssignedContractor($user);
+        return $this->hasAssignedContractor($user) || ($this->isOwnedBy($user) && ! $this->hasAnyContractor());
     }
 
     /** Owner, or an assigned contractor acting on their behalf, can invite workers to the team. */

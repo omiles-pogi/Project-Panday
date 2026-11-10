@@ -39,7 +39,7 @@ class WageAutoFillTest extends TestCase
     private function project(?int $contractorFeeLine = null): Project
     {
         $plan = [
-            'projectTitle' => 'My House', 'budget' => 0, 'totalEstimate' => 2000000, 'timelineMonths' => 6,
+            'projectTitle' => 'My House', 'budget' => 0, 'totalEstimate' => 2000000, 'timelineValue' => 6, 'timelineUnit' => 'months',
             'phases' => [['name' => 'Build', 'percentComplete' => 100]],
         ];
         if ($contractorFeeLine !== null) {
@@ -84,6 +84,27 @@ class WageAutoFillTest extends TestCase
 
         // 6 months × 26 working days.
         $this->assertSame(['amount' => 900, 'unit' => 'per_day', 'days' => 156, 'auto' => true], $this->wageOf($project, 'worker', $worker));
+    }
+
+    public function test_working_days_convert_correctly_for_a_timeline_in_days_or_weeks(): void
+    {
+        $daysProject = app(ProjectService::class)->createFromPlan($this->owner, [
+            'projectTitle' => 'Quick Repair', 'budget' => 0, 'totalEstimate' => 50000, 'timelineValue' => 14, 'timelineUnit' => 'days',
+            'phases' => [['name' => 'Fix', 'percentComplete' => 100]],
+        ]);
+        $weeksProject = app(ProjectService::class)->createFromPlan($this->owner, [
+            'projectTitle' => 'Renovation', 'budget' => 0, 'totalEstimate' => 50000, 'timelineValue' => 2, 'timelineUnit' => 'weeks',
+            'phases' => [['name' => 'Renovate', 'percentComplete' => 100]],
+        ]);
+
+        $daysWorker = $this->workerWithRate(900);
+        $weeksWorker = $this->workerWithRate(900);
+        $this->invite($daysProject, 'worker', $daysWorker);
+        $this->invite($weeksProject, 'worker', $weeksWorker);
+
+        // 14 days and 2 weeks are the same span, so they land on the same working-day count.
+        $this->assertSame(12, $this->wageOf($daysProject, 'worker', $daysWorker)['days']);
+        $this->assertSame(12, $this->wageOf($weeksProject, 'worker', $weeksWorker)['days']);
     }
 
     public function test_a_worker_with_no_minimum_gets_the_default_day_rate(): void
@@ -233,7 +254,7 @@ class WageAutoFillTest extends TestCase
     public function test_a_project_with_nothing_to_base_a_fee_on_leaves_the_contractor_without_one(): void
     {
         $project = app(ProjectService::class)->createFromPlan($this->owner, [
-            'projectTitle' => 'Tiny', 'budget' => 0, 'totalEstimate' => 0, 'timelineMonths' => 1,
+            'projectTitle' => 'Tiny', 'budget' => 0, 'totalEstimate' => 0, 'timelineValue' => 1, 'timelineUnit' => 'months',
             'phases' => [['name' => 'Build', 'percentComplete' => 100]],
         ]);
         $contractor = $this->user('contractor');
@@ -321,7 +342,7 @@ class WageAutoFillTest extends TestCase
     public function test_automatic_mode_rejects_custom_amounts_and_does_not_invent_a_fee_without_project_data(): void
     {
         $project = app(ProjectService::class)->createFromPlan($this->owner, [
-            'projectTitle' => 'No estimate', 'budget' => 0, 'totalEstimate' => 0, 'timelineMonths' => 1,
+            'projectTitle' => 'No estimate', 'budget' => 0, 'totalEstimate' => 0, 'timelineValue' => 1, 'timelineUnit' => 'months',
             'phases' => [['name' => 'Build', 'percentComplete' => 100]],
         ]);
         $contractor = $this->user('contractor');

@@ -28,7 +28,7 @@ use Illuminate\Validation\ValidationException;
 class MaterialRequestService
 {
     private const PRESENT_WITH = [
-        'project:id,title,location,user_id,budget,total_estimate,timeline_months,approved_plan,ai_materials,auto_approve_materials',
+        'project:id,title,location,user_id,budget,total_estimate,timeline_value,timeline_unit,approved_plan,ai_materials,auto_approve_materials',
         'phase:id,name',
         'contractor:id,name',
         'homeowner:id,name',

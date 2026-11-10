@@ -36,7 +36,7 @@ class ProjectWageTest extends TestCase
         $this->otherWorker = $this->user('worker');
 
         $this->project = app(ProjectService::class)->createFromPlan($this->owner, [
-            'projectTitle' => 'My House', 'budget' => 0, 'totalEstimate' => 2000000, 'timelineMonths' => 6,
+            'projectTitle' => 'My House', 'budget' => 0, 'totalEstimate' => 2000000, 'timelineValue' => 6, 'timelineUnit' => 'months',
             'phases' => [['name' => 'Build', 'percentComplete' => 100, 'tasks' => ['Pour slab']]],
         ]);
         $this->project->contractors()->attach([$this->contractor->id, $this->otherContractor->id]);

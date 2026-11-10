@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Project;
 use App\Models\User;
 use App\Services\ProjectService;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -46,7 +47,7 @@ class ProjectTest extends TestCase
             'location' => 'Quezon City',
             'budget' => 2500000,
             'totalEstimate' => 2420000,
-            'timelineMonths' => 7,
+            'timelineValue' => 7, 'timelineUnit' => 'months',
             'phases' => [
                 ['name' => 'Foundation', 'percentComplete' => 20],
                 ['name' => 'Structural Works', 'percentComplete' => 30],
@@ -205,6 +206,124 @@ class ProjectTest extends TestCase
         $this->postJson("/api/projects/{$project->id}/workers", ['worker_id' => $worker->id])->assertStatus(422);
 
         $this->assertDatabaseCount('project_worker_requests', 1);
+    }
+
+    /**
+     * hasPendingRequest()'s check-then-insert isn't atomic, so two near-simultaneous invites could
+     * both pass it before either row exists — this proves the database itself still refuses a
+     * second pending row, by creating one directly (bypassing the application check entirely)
+     * exactly as a race would.
+     */
+    public function test_the_database_itself_blocks_a_second_pending_request_even_past_the_app_check(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $worker = $this->worker();
+
+        $project->workerRequests()->create(['worker_id' => $worker->id, 'initiated_by' => 'homeowner', 'status' => 'pending']);
+
+        $this->expectException(QueryException::class);
+        $project->workerRequests()->create(['worker_id' => $worker->id, 'initiated_by' => 'homeowner', 'status' => 'pending']);
+    }
+
+    /** The scope the homeowner described to the AI — design, area, bed/bath, garage, concepts —
+     * is the closest thing to a project "description" this app has, so the invite details screen
+     * shows it, read straight from the project's approved plan. */
+    public function test_the_project_details_include_the_scope_the_homeowner_described_to_the_ai(): void
+    {
+        $owner = $this->homeowner();
+        Sanctum::actingAs($owner);
+        $projectId = $this->postJson('/api/projects', array_merge($this->planPayload(), [
+            'designStyle' => 'Modern',
+            'areaSqm' => 120,
+            'floors' => 2,
+            'bedrooms' => 3,
+            'bathrooms' => 2,
+            'garageCars' => 1,
+            'exteriorConcept' => 'Clean white facade with large windows.',
+            'interiorConcept' => 'Open-plan living area with warm wood accents.',
+        ]))->json('id');
+        $project = Project::findOrFail($projectId);
+        $worker = $this->worker();
+
+        Sanctum::actingAs($owner);
+        $requestId = $this->postJson("/api/projects/{$project->id}/workers", ['worker_id' => $worker->id])->json('id');
+
+        Sanctum::actingAs($worker);
+        $this->getJson("/api/worker-requests/{$requestId}/project")
+            ->assertOk()
+            ->assertJsonPath('project.designStyle', 'Modern')
+            ->assertJsonPath('project.areaSqm', 120)
+            ->assertJsonPath('project.floors', 2)
+            ->assertJsonPath('project.bedrooms', 3)
+            ->assertJsonPath('project.bathrooms', 2)
+            ->assertJsonPath('project.garageCars', 1)
+            ->assertJsonPath('project.exteriorConcept', 'Clean white facade with large windows.')
+            ->assertJsonPath('project.interiorConcept', 'Open-plan living area with warm wood accents.');
+    }
+
+    public function test_the_invited_worker_can_view_the_project_details_behind_their_invite(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $worker = $this->worker();
+
+        Sanctum::actingAs($owner);
+        $requestId = $this->postJson("/api/projects/{$project->id}/workers", ['worker_id' => $worker->id])->json('id');
+
+        Sanctum::actingAs($worker);
+        $this->getJson("/api/worker-requests/{$requestId}/project")
+            ->assertOk()
+            ->assertJsonPath('request.status', 'pending')
+            ->assertJsonPath('request.workerId', $worker->id)
+            ->assertJsonPath('project.title', $project->title)
+            ->assertJsonPath('project.homeowner.name', $owner->name);
+    }
+
+    public function test_only_the_invited_worker_can_view_the_project_details(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $worker = $this->worker();
+        $otherWorker = $this->worker();
+
+        Sanctum::actingAs($owner);
+        $requestId = $this->postJson("/api/projects/{$project->id}/workers", ['worker_id' => $worker->id])->json('id');
+
+        Sanctum::actingAs($otherWorker);
+        $this->getJson("/api/worker-requests/{$requestId}/project")->assertForbidden();
+    }
+
+    public function test_the_invited_contractor_can_view_the_project_details_behind_their_invite(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $contractor = $this->contractor();
+
+        Sanctum::actingAs($owner);
+        $requestId = $this->postJson("/api/projects/{$project->id}/contractors", ['contractor_id' => $contractor->id])->json('id');
+
+        Sanctum::actingAs($contractor);
+        $this->getJson("/api/contractor-requests/{$requestId}/project")
+            ->assertOk()
+            ->assertJsonPath('request.status', 'pending')
+            ->assertJsonPath('request.contractorId', $contractor->id)
+            ->assertJsonPath('project.title', $project->title)
+            ->assertJsonPath('project.homeowner.name', $owner->name);
+    }
+
+    public function test_only_the_invited_contractor_can_view_the_project_details(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $contractor = $this->contractor();
+        $otherContractor = $this->contractor();
+
+        Sanctum::actingAs($owner);
+        $requestId = $this->postJson("/api/projects/{$project->id}/contractors", ['contractor_id' => $contractor->id])->json('id');
+
+        Sanctum::actingAs($otherContractor);
+        $this->getJson("/api/contractor-requests/{$requestId}/project")->assertForbidden();
     }
 
     public function test_only_the_invited_worker_can_respond_to_their_invite(): void
@@ -458,6 +577,19 @@ class ProjectTest extends TestCase
         Sanctum::actingAs($owner);
         $this->postJson("/api/projects/{$project->id}/contractors", ['contractor_id' => $contractor->id])->assertStatus(201);
         $this->postJson("/api/projects/{$project->id}/contractors", ['contractor_id' => $contractor->id])->assertStatus(422);
+    }
+
+    /** Mirrors test_the_database_itself_blocks_a_second_pending_request_even_past_the_app_check(). */
+    public function test_the_database_itself_blocks_a_second_pending_contractor_request_even_past_the_app_check(): void
+    {
+        $owner = $this->homeowner();
+        $project = $this->createProject($owner);
+        $contractor = $this->contractor();
+
+        $project->contractorRequests()->create(['contractor_id' => $contractor->id, 'initiated_by' => 'homeowner', 'status' => 'pending']);
+
+        $this->expectException(QueryException::class);
+        $project->contractorRequests()->create(['contractor_id' => $contractor->id, 'initiated_by' => 'homeowner', 'status' => 'pending']);
     }
 
     public function test_a_contractor_can_apply_to_a_project_with_a_quote_and_the_homeowner_can_approve_it(): void

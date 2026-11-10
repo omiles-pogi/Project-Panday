@@ -262,7 +262,7 @@ class SupplierPlanTest extends TestCase
 
         return [
             'projectTitle' => 'House', 'location' => '', 'areaSqm' => 100, 'floors' => 1, 'bedrooms' => 2, 'bathrooms' => 1, 'garageCars' => 0,
-            'designStyle' => 'Modern', 'budget' => 0, 'timelineMonths' => 6,
+            'designStyle' => 'Modern', 'budget' => 0, 'timelineValue' => 6, 'timelineUnit' => 'months',
             'phases' => [['name' => 'Build', 'percentComplete' => 100, 'durationWeeks' => 26, 'tasks' => ['Pour slab']]],
             'budgetBreakdown' => array_map(fn (string $c) => ['category' => $c, 'amount' => 100000], $categories),
             'materials' => $materials,
@@ -317,7 +317,7 @@ class SupplierPlanTest extends TestCase
         $chosen = $this->product($this->supplier('Chosen Co'), 'Portland Cement', 'Cement', 300);
 
         $project = app(ProjectService::class)->createFromPlan($owner, [
-            'projectTitle' => 'House', 'budget' => 0, 'totalEstimate' => 600000, 'timelineMonths' => 6,
+            'projectTitle' => 'House', 'budget' => 0, 'totalEstimate' => 600000, 'timelineValue' => 6, 'timelineUnit' => 'months',
             'phases' => [['name' => 'Build', 'percentComplete' => 100]],
             'materials' => [['material' => 'Portland Cement', 'category' => 'Cement', 'qty' => 10, 'unit' => 'bag', 'unitPrice' => 300, 'supplierProductId' => $chosen->id, 'supplierName' => 'Chosen Co']],
         ]);
