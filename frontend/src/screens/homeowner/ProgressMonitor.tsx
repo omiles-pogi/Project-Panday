@@ -3,7 +3,6 @@ import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Card, PageHeader, ProgressBar, Screen, StatGrid, StatTile } from "@/components/ui";
-import { FLOATING_TAB_BAR_CLEARANCE } from "@/components/FloatingTabBar";
 import { ProgressRing } from "@/components/charts";
 import TeamActivity from "@/components/TeamActivity";
 import { fetchDashboard, fetchProjectActivityLog } from "@/services/api/projects";
@@ -56,7 +55,7 @@ export default function ProgressMonitor() {
 
   if (!project) {
     return (
-      <Screen topInset={false} extraBottomPadding={FLOATING_TAB_BAR_CLEARANCE}>
+      <Screen topInset={false}>
         <PageHeader title="Progress Monitor" subtitle="Track your construction progress day by day." />
         <View className="rounded-3xl p-6 items-center bg-card border border-border">
           <Ionicons name="stats-chart-outline" size={28} color="#f59e0b" style={{ marginBottom: 8 }} />
@@ -79,7 +78,7 @@ export default function ProgressMonitor() {
   const latestDay = days[0] ?? null;
 
   return (
-    <Screen topInset={false} extraBottomPadding={FLOATING_TAB_BAR_CLEARANCE}>
+    <Screen topInset={false}>
       <PageHeader title="Progress Monitor" subtitle={project.title} />
       {error && <Text className="text-xs text-danger">Refresh failed. Showing the last loaded progress: {error}</Text>}
       <Pressable accessibilityRole="button" onPress={refresh} className="self-start flex-row items-center gap-1.5">

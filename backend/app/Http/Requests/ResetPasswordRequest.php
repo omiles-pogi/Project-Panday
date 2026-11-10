@@ -19,7 +19,7 @@ class ResetPasswordRequest extends FormRequest
     {
         return [
             'email' => ['required', 'string', 'email'],
-            'code' => ['required', 'digits:6'],
+            'reset_token' => ['required', 'string', 'regex:/^[a-f0-9]{64}$/D'],
             'password' => ['required', 'confirmed', Password::min(8)],
         ];
     }

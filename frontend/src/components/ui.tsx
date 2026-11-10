@@ -43,8 +43,7 @@ export function Screen({
 }: {
   children: ReactNode;
   topInset?: boolean;
-  /** Extra bottom clearance for a screen that floats something over its own content — e.g. the
-   * homeowner tabs' floating nav bar (see FLOATING_TAB_BAR_CLEARANCE). 0 for everyone else. */
+  /** Optional extra clearance for a screen-specific content overlay. Defaults to 0. */
   extraBottomPadding?: number;
 }) {
   const insets = useSafeAreaInsets();

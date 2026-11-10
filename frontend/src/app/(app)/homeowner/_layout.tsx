@@ -26,7 +26,6 @@ export default function HomeownerLayout() {
         <Drawer.Screen name="approvals" />
         <Drawer.Screen name="supplier-catalog" />
         <Drawer.Screen name="messages" />
-        <Drawer.Screen name="quotes" options={withHeader("Supplier Quotes")} />
         <Drawer.Screen name="profile" options={withHeader("Profile")} />
       </Drawer>
     </PlanProvider>

@@ -3,13 +3,14 @@ import { Text, TextInput, View, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import KeyboardView from "@/components/KeyboardView";
 import KeyboardAwareScrollView from "@/components/KeyboardAwareScrollView";
-import { Link } from "expo-router";
+import { Link, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
 import Mascot from "@/components/Mascot";
 import WaveHeader from "@/components/WaveHeader";
 import { isValidLoginForm } from "@/validators/auth";
 
 export default function Login() {
+  const { passwordReset } = useLocalSearchParams<{ passwordReset?: string }>();
   const { login, prefillEmail } = useAuth();
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState(prefillEmail);
@@ -44,6 +45,7 @@ export default function Login() {
         <KeyboardAwareScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
           <View className="px-6 pt-6 pb-10">
             <Text className="text-2xl font-extrabold text-foreground mb-6">Sign in</Text>
+            {passwordReset === "success" && <Text accessibilityRole="alert" className="text-sm text-primary mb-4">Password updated. You can now sign in with your new password.</Text>}
 
             <View className="gap-3">
               <Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />

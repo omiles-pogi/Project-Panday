@@ -7,6 +7,7 @@ import {
   ScrollView,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { usePlan, type ApprovalStage } from "@/context/PlanContext";
 import { useTheme } from "@/context/ThemeContext";
@@ -18,7 +19,6 @@ import { CountUp } from "@/components/charts";
 import { peso, pesoCompact } from "@/utils/currency";
 import { compareBudget } from "@/utils/budget";
 import { timelineLabel } from "@/utils/timeline";
-import { FLOATING_TAB_BAR_CLEARANCE } from "@/components/FloatingTabBar";
 import { garageLabel } from "@/utils/garage";
 import { createProject, fetchDashboard, fetchMyHomeownerProjects, startProjectFromPlan } from "@/services/api/projects";
 import type { ProjectSummary } from "@/types/project";
@@ -603,6 +603,7 @@ function UserBubble({ msg }: { msg: ChatMessage }) {
 
 export default function ProjectChat() {
   const { chrome } = useTheme();
+  const insets = useSafeAreaInsets();
   const {
     plan,
     messages: planMessages,
@@ -611,15 +612,15 @@ export default function ProjectChat() {
     ready,
     activeProjectKey,
     restoredVersion,
+    resumeLatestRequested,
     selectProject,
     linkToProject,
     send,
     updatePlan,
   } = usePlan();
   const [editorTab, setEditorTab] = useState<PlanEditorTab | null>(null);
-  // The AI Plan tab hides its tab bar while the keyboard is up (see the tabs layout), so this
-  // screen reaches the very bottom of the window; lifting it by exactly the keyboard's height puts
-  // the message box right on top of the keyboard, the same way the messages chat does it.
+  // The planner has no bottom bar. Preserve its single existing keyboard animation for
+  // the shared conversation/composer container; do not layer another avoider or offset on it.
   const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
   const liftStyle = useAnimatedStyle(() => ({ paddingBottom: Math.max(0, -keyboardHeight.value) }));
   const keyboardVisible = useKeyboardState((k) => k.isVisible);
@@ -674,7 +675,9 @@ export default function ProjectChat() {
     let cancelled = false;
     const projectId = /^\d+$/.test(activeProjectKey) ? Number(activeProjectKey) : undefined;
     // A deliberate unsaved draft must not be replaced by the latest saved project.
-    if (!projectId && (plan || planMessages.length > 0)) return;
+    // An empty-history AI shortcut stays empty; retain explicit project refreshes and
+    // the existing project picker/history instead of substituting a default project.
+    if (!projectId && (resumeLatestRequested || plan || planMessages.length > 0)) return;
     fetchDashboard(projectId)
       .then(({ project }) => {
         if (cancelled) return;
@@ -686,7 +689,7 @@ export default function ProjectChat() {
         if (!cancelled) setSyncError(err instanceof Error ? err.message : "Could not refresh project data.");
       });
     return () => { cancelled = true; };
-  }, [ready, activeProjectKey, plan, planMessages.length, selectProject]));
+  }, [ready, activeProjectKey, plan, planMessages.length, selectProject, resumeLatestRequested]));
 
   useEffect(() => {
     scrollRef.current?.scrollToEnd({ animated: true });
@@ -919,9 +922,9 @@ export default function ProjectChat() {
         <PlanEditorSheet plan={plan} initialTab={editorTab} onClose={() => setEditorTab(null)} onSave={handleSaveEdit} />
       )}
 
-      {/* The floating tab bar hides itself while the keyboard is up (see FloatingTabBar), so it
-          only needs clearing from this input when it's actually on screen. */}
-      <View className="px-4" style={{ paddingBottom: keyboardVisible ? 12 : 16 + FLOATING_TAB_BAR_CLEARANCE }}>
+      {/* The bar never mounts in chat. Only protect the closed-keyboard composer from the
+          system navigation inset; the existing keyboard animation remains the sole lift. */}
+      <View className="px-4" style={{ paddingBottom: keyboardVisible ? 12 : 16 + insets.bottom, flexShrink: 0 }}>
         {syncError && <Text className="text-xs mb-2 text-danger">{syncError}</Text>}
         <View className="flex-row gap-3 items-end rounded-2xl p-3 bg-card border border-border">
           <TextInput

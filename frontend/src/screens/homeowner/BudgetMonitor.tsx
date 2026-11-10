@@ -13,7 +13,6 @@ import EstimateAdditionsCard from "@/components/EstimateAdditionsCard";
 import ExportPdfButton from "@/components/ExportPdfButton";
 import { planPdfHtml, sharePdf } from "@/utils/pdf";
 import { normalizePlanTimeline } from "@/utils/timeline";
-import { FLOATING_TAB_BAR_CLEARANCE } from "@/components/FloatingTabBar";
 import type { DashboardProject } from "@/types/project";
 
 export default function BudgetMonitor() {
@@ -85,7 +84,7 @@ export default function BudgetMonitor() {
 
   if (!project) {
     return (
-      <Screen topInset={false} extraBottomPadding={FLOATING_TAB_BAR_CLEARANCE}>
+      <Screen topInset={false}>
         <PageHeader title="Budget Monitor" subtitle="Track how your project's budget is holding up." />
         <View className="rounded-3xl p-6 items-center bg-card border border-border">
           <Ionicons name="wallet-outline" size={28} color="#f59e0b" style={{ marginBottom: 8 }} />
@@ -121,7 +120,7 @@ export default function BudgetMonitor() {
   };
 
   return (
-    <Screen topInset={false} extraBottomPadding={FLOATING_TAB_BAR_CLEARANCE}>
+    <Screen topInset={false}>
       <PageHeader title="Budget Monitor" subtitle={project.title} />
       {error && <Text className="text-xs text-danger">Refresh failed. Showing the last loaded records: {error}</Text>}
       <Pressable onPress={() => setRefreshKey((key) => key + 1)} accessibilityRole="button" className="self-start flex-row items-center gap-2">

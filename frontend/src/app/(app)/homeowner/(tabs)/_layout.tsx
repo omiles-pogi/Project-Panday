@@ -60,7 +60,7 @@ export default function HomeownerTabsLayout() {
           title: "AI Construction Planner",
           tabBarIcon: tabIcon("project-chat"),
           tabBarLabel: TAB_TITLE["project-chat"],
-          // Hidden while typing so the chat's message box can sit directly on top of the keyboard.
+          // FloatingTabBar removes itself for this entire route, with or without a keyboard.
           tabBarHideOnKeyboard: true,
         }}
       />

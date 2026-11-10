@@ -73,16 +73,16 @@ Every screen runs on the real backend — there is no sample-data screen left in
   timeline, budget and materials, with a supplier picker per category; project dashboard with "not
   started yet" projects and the project calendar (AI-proposed schedule vs actual progress); Progress,
   Budget Monitor (with the team on site, and the plan and budget as a PDF), Find Your Team, Material
-  Approvals, Supplier Catalog, Supplier Quotes (ask suppliers to bid, compare, award), Messages, and a
+  Approvals, Supplier Catalog, Messages, and a
   private Profile (location, contact number, project counts).
 - **Contractor** — browse and apply to projects, My Projects (the checklist, with Check All / Uncheck All on each phase and
   "Mark Project as Finished" at the bottom, which sends it to the homeowner to confirm or send back; plus the team's
   attendance and daily logs), a dashboard with each project's calendar, Material Requests (draft → homeowner approval → supplier
-  orders, exportable as a PDF), Supplier Materials, Supplier Quotes, Messages, Profile.
+  orders, exportable as a PDF), Supplier Materials, Messages, Profile.
 - **Worker** — a dashboard that holds Attendance (check in / out), the Daily Work Log and Earnings (days worked ×
   day rate) next to the assignments, plus browse and apply to projects, skills profile, Messages.
-- **Supplier** — dashboard, inventory (listings and stock), material orders (confirm / decline / deliver), Bid
-  Requests (price a homeowner's or contractor's material list), and a shop Profile (location, contact number,
+- **Supplier** — dashboard, inventory (listings and stock), material orders (confirm / decline / deliver),
+  and a shop Profile (location, contact number,
   about — shown to buyers on the catalog).
 
 **PDF export** is built on the phone (`src/utils/pdf.ts`, `expo-print` + `expo-sharing`) and works in Expo Go.

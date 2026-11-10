@@ -1,6 +1,7 @@
 import { Stack } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
 import WaitingApproval from "@/screens/auth/WaitingApproval";
+import { PasswordRecoveryProvider } from "@/context/PasswordRecoveryContext";
 
 export default function AuthLayout() {
   const { pending } = useAuth();
@@ -8,5 +9,9 @@ export default function AuthLayout() {
   // PandAi keeps the user company while an admin reviews the new account.
   if (pending) return <WaitingApproval />;
 
-  return <Stack screenOptions={{ headerShown: false, animation: "slide_from_right" }} />;
+  return (
+    <PasswordRecoveryProvider>
+      <Stack screenOptions={{ headerShown: false, animation: "slide_from_right" }} />
+    </PasswordRecoveryProvider>
+  );
 }

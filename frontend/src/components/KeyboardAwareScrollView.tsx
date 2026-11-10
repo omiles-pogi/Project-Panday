@@ -24,7 +24,10 @@ const FOCUS_POLL_MS = 250;
  * open, it scrolls just far enough to bring the focused input fully into view. Use it in place of
  * ScrollView anywhere a form or text field lives inside the scrolling content.
  */
-export default function KeyboardAwareScrollView({ onScroll, onLayout, ...props }: ScrollViewProps) {
+export default function KeyboardAwareScrollView({ onScroll, onLayout, focusBottomOffset = 0, ...props }: ScrollViewProps & {
+  /** Keep controls below a focused recovery field reachable without changing viewport padding. */
+  focusBottomOffset?: number;
+}) {
   const ref = useRef<ComponentRef<typeof ScrollView>>(null);
   const offset = useRef(0);
   const viewHeight = useRef(0);
@@ -42,7 +45,7 @@ export default function KeyboardAwareScrollView({ onScroll, onLayout, ...props }
       content,
       (_x, y, _width, height) => {
         const top = y - MARGIN;
-        const bottom = y + height + MARGIN;
+        const bottom = y + height + MARGIN + focusBottomOffset;
         if (bottom > offset.current + viewHeight.current) {
           ref.current?.scrollTo({ y: Math.max(0, Math.min(top, bottom - viewHeight.current)), animated: true });
         } else if (top < offset.current) {
@@ -51,7 +54,7 @@ export default function KeyboardAwareScrollView({ onScroll, onLayout, ...props }
       },
       () => undefined
     );
-  }, []);
+  }, [focusBottomOffset]);
 
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";

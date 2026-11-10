@@ -60,7 +60,7 @@ export function forgotPasswordRequest(email: string): Promise<{ message: string 
 
 export function resetPasswordRequest(fields: {
   email: string;
-  code: string;
+  reset_token: string;
   password: string;
   password_confirmation: string;
 }): Promise<{ message: string }> {
@@ -68,6 +68,13 @@ export function resetPasswordRequest(fields: {
     method: "POST",
     body: JSON.stringify(fields),
   }) as Promise<{ message: string }>;
+}
+
+export function verifyPasswordResetCodeRequest(email: string, code: string): Promise<{ reset_token: string; expires_in: number }> {
+  return apiFetch("/api/auth/verify-password-reset-code", {
+    method: "POST",
+    body: JSON.stringify({ email, code }),
+  }) as Promise<{ reset_token: string; expires_in: number }>;
 }
 
 export type ApprovalStatus ="pending" | "approved" | "rejected";

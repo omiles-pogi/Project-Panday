@@ -5,7 +5,7 @@ import KeyboardAwareScrollView from "@/components/KeyboardAwareScrollView";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/context/ThemeContext";
 
-// Bottom sheet for forms (submit bid, update order, edit product).
+// Bottom sheet for forms (update fulfillment, edit product).
 export default function Sheet({
   visible,
   title,

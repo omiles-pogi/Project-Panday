@@ -50,11 +50,6 @@ export const ICON: Record<NotificationType, IconName> = {
   project_completion_submitted: "flag-outline",
   project_completion_confirmed: "checkmark-done-circle-outline",
   project_corrections_requested: "construct-outline",
-  quote_request_received: "pricetags-outline",
-  quote_bid_received: "pricetag-outline",
-  quote_bid_awarded: "trophy-outline",
-  quote_bid_not_selected: "close-circle-outline",
-  quote_request_cancelled: "close-circle-outline",
 };
 
 // Only these carry a pending request that this viewer can act on directly from the panel.

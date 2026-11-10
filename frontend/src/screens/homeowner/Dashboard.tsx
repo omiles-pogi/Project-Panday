@@ -20,7 +20,6 @@ import ProjectCalendar from "@/screens/timeline/ProjectCalendar";
 import WageSheet from "@/components/WageSheet";
 import AddBudgetSheet from "@/components/AddBudgetSheet";
 import { wageLine } from "@/utils/wage";
-import { FLOATING_TAB_BAR_CLEARANCE } from "@/components/FloatingTabBar";
 
 /** The hero card's tag. "Completed" is now something the homeowner confirms, not just a progress reading. */
 function projectLabel(status: ProjectStatus, pct: number): { label: string; color: string } {
@@ -459,7 +458,7 @@ export default function Dashboard() {
   if (!project || project.status === "not_started") {
     return (
       <>
-        <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 96 + FLOATING_TAB_BAR_CLEARANCE, gap: 16 }}>
+        <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 16 }}>
           {picker}
           {createErrorNote}
           {project ? (
@@ -522,7 +521,7 @@ export default function Dashboard() {
 
   return (
     <>
-      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 96 + FLOATING_TAB_BAR_CLEARANCE, gap: 16 }}>
+      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 16 }}>
       {picker}
       {createErrorNote}
       {/* Hero project card */}

@@ -4,20 +4,18 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class AwardQuoteRequestRequest extends FormRequest
+class VerifyPasswordResetCodeRequest extends FormRequest
 {
     public function authorize(): bool
     {
         return true;
     }
 
-    /**
-     * @return array<string, mixed>
-     */
     public function rules(): array
     {
         return [
-            'bid_id' => ['required', 'integer'],
+            'email' => ['required', 'string', 'email'],
+            'code' => ['required', 'string', 'regex:/^[0-9]{6}$/D'],
         ];
     }
 }

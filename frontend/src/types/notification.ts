@@ -30,12 +30,7 @@ export type NotificationType =
   | "schedule_delay"
   | "project_completion_submitted"
   | "project_completion_confirmed"
-  | "project_corrections_requested"
-  | "quote_request_received"
-  | "quote_bid_received"
-  | "quote_bid_awarded"
-  | "quote_bid_not_selected"
-  | "quote_request_cancelled";
+  | "project_corrections_requested";
 
 export interface NotificationData {
   /** Chat notifications open the recipient's private conversation. */
@@ -53,8 +48,6 @@ export interface NotificationData {
   /** Material workflow notifications point at the request, and (for suppliers) their fulfillment. */
   materialRequestId?: number;
   supplierFulfillmentId?: number;
-  /** Supplier bidding: the quote request a notification is about. */
-  quoteRequestId?: number;
   /** The underlying request's CURRENT status, live-checked on every fetch (not frozen at the
    * notification's creation time) — once this leaves "pending", its action buttons disappear. */
   requestStatus?: RequestStatus;

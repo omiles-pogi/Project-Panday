@@ -71,6 +71,8 @@ interface PlanContextValue {
   /** Switches to whichever saved conversation (a project's, or the draft) was last touched —
    * never creates a new one. Used by the floating nav bar's center AI button. */
   openMostRecent: () => void;
+  /** The AI shortcut may deliberately open an empty history instead of a default project. */
+  resumeLatestRequested: boolean;
 }
 
 const PlanContext = createContext<PlanContextValue | null>(null);
@@ -87,8 +89,7 @@ interface Conversation {
   messages: ChatHistoryMessage[];
   approvalStage: ApprovalStage | null;
   clarificationRounds: number;
-  /** Stamped whenever this conversation is saved — absent on a conversation cached before this
-   * existed, which then just sorts as the oldest. Drives openMostRecent(). */
+  /** Last message/plan/approval activity; absent on older cached conversations. */
   updatedAt?: number;
 }
 
@@ -134,6 +135,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
   // initial state first (which would overwrite the saved conversations with nothing), and lets
   // consumers like ProjectChat know when it's safe to build their own view of the conversation.
   const [ready, setReady] = useState(false);
+  const [resumeLatestRequested, setResumeLatestRequested] = useState(false);
 
   // All projects' conversations, keyed by project id (or "draft") — kept in a ref rather than
   // state since nothing needs to re-render off the whole map, only off the active slot's own
@@ -178,7 +180,13 @@ export function PlanProvider({ children }: { children: ReactNode }) {
   // Keeps the active slot in the map (and on disk) up to date with whatever's currently showing.
   useEffect(() => {
     if (!ready) return;
-    conversationsRef.current[activeProjectKey] = { plan, messages, approvalStage, clarificationRounds, updatedAt: Date.now() };
+    const previous = conversationsRef.current[activeProjectKey];
+    // Hydration and project selection are reads, not conversation activity. In particular,
+    // an empty draft must not become newer than every real conversation on each restart.
+    const changed = previous?.messages !== messages || previous?.plan !== plan ||
+      previous?.approvalStage !== approvalStage || (previous?.clarificationRounds ?? 0) !== clarificationRounds;
+    const updatedAt = (messages.length > 0 || plan) && changed ? Date.now() : previous?.updatedAt;
+    conversationsRef.current[activeProjectKey] = { plan, messages, approvalStage, clarificationRounds, updatedAt };
     persist();
   }, [ready, activeProjectKey, plan, messages, approvalStage, clarificationRounds, persist]);
 
@@ -259,6 +267,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
 
   const selectProject = useCallback(
     (projectId: number | null, savedPlan?: Partial<ConstructionPlan> | null) => {
+      setResumeLatestRequested(false);
       const key = projectId != null ? String(projectId) : DRAFT_KEY;
       let conversation = conversationsRef.current[key] ?? EMPTY_CONVERSATION;
       const normalizedSavedPlan = normalizePlanTimeline(savedPlan);
@@ -286,6 +295,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
 
   const startFresh = useCallback(
     (projectId: number) => {
+      setResumeLatestRequested(false);
       const key = String(projectId);
       activeKeyRef.current = key;
       conversationsRef.current[key] = EMPTY_CONVERSATION;
@@ -315,19 +325,23 @@ export function PlanProvider({ children }: { children: ReactNode }) {
   // never the "latest started project" or any other unrelated notion of recency, and never one
   // that doesn't already exist, so it can't create a new conversation by accident.
   const openMostRecent = useCallback(() => {
-    let bestKey = DRAFT_KEY;
-    let bestTime = -1;
-    for (const [key, conversation] of Object.entries(conversationsRef.current)) {
-      const time = conversation.updatedAt ?? 0;
-      if (time > bestTime) {
-        bestKey = key;
-        bestTime = time;
-      }
-    }
+    if (!ready) return;
+    const saved = Object.entries(conversationsRef.current)
+      .filter(([, conversation]) => conversation.messages.length > 0 || conversation.plan);
+    // Legacy histories lack timestamps: prefer a populated draft, then the newest project
+    // id as a deterministic fallback. Never select an empty placeholder over a real thread.
+    saved.sort(([keyA, a], [keyB, b]) =>
+      (b.updatedAt ?? 0) - (a.updatedAt ?? 0) ||
+      Number(keyB === DRAFT_KEY) - Number(keyA === DRAFT_KEY) ||
+      (Number(keyB) || 0) - (Number(keyA) || 0)
+    );
+    const bestKey = saved[0]?.[0] ?? DRAFT_KEY;
     selectProject(/^\d+$/.test(bestKey) ? Number(bestKey) : null);
-  }, [selectProject]);
+    setResumeLatestRequested(true);
+  }, [ready, selectProject]);
 
   const reset = useCallback(() => {
+    setResumeLatestRequested(false);
     activeKeyRef.current = DRAFT_KEY;
     conversationsRef.current[DRAFT_KEY] = EMPTY_CONVERSATION;
     persist();
@@ -357,6 +371,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
         startFresh,
         linkToProject,
         openMostRecent,
+        resumeLatestRequested,
       }}
     >
       {children}

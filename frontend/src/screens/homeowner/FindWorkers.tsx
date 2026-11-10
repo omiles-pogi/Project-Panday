@@ -3,7 +3,6 @@ import { useFocusEffect } from "expo-router";
 import { Text, View, Pressable, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Card, Field, PageHeader, Screen, SubmitButton } from "@/components/ui";
-import { FLOATING_TAB_BAR_CLEARANCE } from "@/components/FloatingTabBar";
 import { searchWorkers, rateWorker } from "@/services/api/workers";
 import { searchContractors, rateContractor } from "@/services/api/contractors";
 import {
@@ -526,7 +525,7 @@ export default function FindWorkers() {
   const contractorWagesById = new Map(hiringWages?.contractors.map((entry) => [entry.userId, entry]));
 
   return (
-    <Screen extraBottomPadding={FLOATING_TAB_BAR_CLEARANCE}>
+    <Screen>
       <PageHeader
         title="Find Your Team"
         subtitle={

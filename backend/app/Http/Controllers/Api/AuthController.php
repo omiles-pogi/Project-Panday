@@ -8,6 +8,7 @@ use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
 use App\Http\Requests\ResetPasswordRequest;
 use App\Http\Requests\UpdateAccountRequest;
+use App\Http\Requests\VerifyPasswordResetCodeRequest;
 use App\Services\AuthService;
 use App\Services\PasswordResetService;
 use Illuminate\Http\JsonResponse;
@@ -80,13 +81,21 @@ class AuthController extends Controller
         return response()->json(['message' => 'If that email is registered, a reset code is on its way.']);
     }
 
-    /** Swaps the emailed code for a new password, and signs the account out everywhere else. */
+    /** Consume the OTP and return a short-lived reset grant, never the code itself. */
+    public function verifyPasswordResetCode(VerifyPasswordResetCodeRequest $request): JsonResponse
+    {
+        return response()->json($this->passwordResets->verify(
+            $request->validated('email'), $request->validated('code')
+        ))->header('Cache-Control', 'no-store');
+    }
+
+    /** Requires a verified grant; an OTP alone cannot change a password. */
     public function resetPassword(ResetPasswordRequest $request): JsonResponse
     {
         try {
-            $this->passwordResets->reset($request->validated('email'), $request->validated('code'), $request->validated('password'));
+            $this->passwordResets->reset($request->validated('email'), $request->validated('reset_token'), $request->validated('password'));
         } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
+            return response()->json(['error' => $e->getMessage(), 'errors' => $e->errors()], 422);
         }
 
         return response()->json(['message' => 'Password updated. You can sign in now.']);

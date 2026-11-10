@@ -18,7 +18,6 @@ use App\Http\Controllers\Api\ProjectController;
 use App\Http\Controllers\Api\ProjectPhaseTaskController;
 use App\Http\Controllers\Api\ProjectRatingController;
 use App\Http\Controllers\Api\ProjectTimelineController;
-use App\Http\Controllers\Api\QuoteController;
 use App\Http\Controllers\Api\SupplierFulfillmentController;
 use App\Http\Controllers\Api\SupplierProductController;
 use App\Http\Controllers\Api\SupplierProfileController;
@@ -31,6 +30,7 @@ Route::post('/auth/register', [AuthController::class, 'register'])->middleware('
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 Route::post('/auth/approval-status', [AuthController::class, 'approvalStatus'])->middleware('throttle:30,1');
 Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
+Route::post('/auth/verify-password-reset-code', [AuthController::class, 'verifyPasswordResetCode'])->middleware('throttle:5,1');
 Route::post('/auth/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -113,19 +113,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('role:homeowner')->group(function () {
         Route::post('/projects/{project}/completion/confirm', [ProjectCompletionController::class, 'confirm']);
         Route::post('/projects/{project}/completion/request-corrections', [ProjectCompletionController::class, 'requestCorrections']);
-    });
-
-    // Supplier bidding: the homeowner (or their contractor) asks for quotes and awards one; suppliers bid.
-    Route::middleware('role:homeowner,contractor')->group(function () {
-        Route::get('/quote-requests', [QuoteController::class, 'index']);
-        Route::post('/projects/{project}/quote-requests', [QuoteController::class, 'store']);
-        Route::post('/quote-requests/{quoteRequest}/award', [QuoteController::class, 'award']);
-        Route::post('/quote-requests/{quoteRequest}/cancel', [QuoteController::class, 'cancel']);
-    });
-    Route::middleware('role:supplier')->group(function () {
-        Route::get('/supplier/quote-requests', [QuoteController::class, 'supplierIndex']);
-        Route::put('/quote-requests/{quoteRequest}/bid', [QuoteController::class, 'bid']);
-        Route::delete('/quote-requests/{quoteRequest}/bid', [QuoteController::class, 'withdraw']);
     });
 
     // A worker's day on site — attendance, the daily log and earnings — and the team's view of it.
