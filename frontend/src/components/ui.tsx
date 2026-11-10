@@ -36,7 +36,17 @@ export { KeyboardView };
  * render their first content right under the status bar. Pass `topInset={false}` only for a
  * screen that already has a real navigation header, which already reserves that space itself.
  */
-export function Screen({ children, topInset = true }: { children: ReactNode; topInset?: boolean }) {
+export function Screen({
+  children,
+  topInset = true,
+  extraBottomPadding = 0,
+}: {
+  children: ReactNode;
+  topInset?: boolean;
+  /** Extra bottom clearance for a screen that floats something over its own content — e.g. the
+   * homeowner tabs' floating nav bar (see FLOATING_TAB_BAR_CLEARANCE). 0 for everyone else. */
+  extraBottomPadding?: number;
+}) {
   const insets = useSafeAreaInsets();
   return (
     <KeyboardView>
@@ -45,7 +55,7 @@ export function Screen({ children, topInset = true }: { children: ReactNode; top
       contentContainerStyle={{
         padding: 16,
         paddingTop: 16 + (topInset ? insets.top : 0),
-        paddingBottom: 96,
+        paddingBottom: 96 + extraBottomPadding,
         gap: 16,
         width: "100%",
         maxWidth: MAX_CONTENT_WIDTH,

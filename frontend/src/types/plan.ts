@@ -1,3 +1,5 @@
+export type TimelineUnit = "days" | "weeks" | "months";
+
 export interface PlanPhase {
   name: string;
   percentComplete: number;
@@ -57,7 +59,8 @@ export interface ConstructionPlan {
   garageCars?: number;
   designStyle: string;
   budget: number;
-  timelineMonths: number;
+  timelineValue: number;
+  timelineUnit: TimelineUnit;
   phases: PlanPhase[];
   budgetBreakdown: BudgetLine[];
   materials: MaterialLine[];

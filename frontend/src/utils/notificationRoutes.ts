@@ -13,6 +13,12 @@ export function notificationRoute(n: AppNotification, role: UserRole): string | 
     return null;
   }
 
+  // A team invite: the invited worker/contractor sees the project's details before deciding.
+  if ((n.type === "worker_invite" || n.type === "contractor_invite") && n.data.requestId) {
+    const kind = n.type === "worker_invite" ? "worker" : "contractor";
+    return role === kind ? `/${kind}/invite/${n.data.requestId}` : null;
+  }
+
   // Material workflow: open the request (homeowner/contractor) or the supplier's own fulfillment.
   const materialRequestId = n.data.materialRequestId;
   if (materialRequestId) {

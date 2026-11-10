@@ -13,19 +13,14 @@ import { usePlan } from "@/context/PlanContext";
 import { colors } from "@/theme/colors";
 import Mascot from "@/components/Mascot";
 import MessageButton from "@/components/MessageButton";
+import ProjectChecklistCard from "@/components/ProjectChecklistCard";
 import ProjectCompletionCard from "@/components/ProjectCompletionCard";
 import ProjectRatingPrompt from "@/components/ProjectRatingPrompt";
 import ProjectCalendar from "@/screens/timeline/ProjectCalendar";
 import WageSheet from "@/components/WageSheet";
 import AddBudgetSheet from "@/components/AddBudgetSheet";
 import { wageLine } from "@/utils/wage";
-
-const QUICK_ACTIONS = [
-  { label: "AI Plan", icon: "sparkles-outline", href: "/homeowner/project-chat" },
-  { label: "Budget", icon: "wallet-outline", href: "/homeowner/budget-monitor" },
-  { label: "Progress", icon: "stats-chart-outline", href: "/homeowner/progress" },
-  { label: "Approvals", icon: "checkmark-circle-outline", href: "/homeowner/approvals" },
-] as const;
+import { FLOATING_TAB_BAR_CLEARANCE } from "@/components/FloatingTabBar";
 
 /** The hero card's tag. "Completed" is now something the homeowner confirms, not just a progress reading. */
 function projectLabel(status: ProjectStatus, pct: number): { label: string; color: string } {
@@ -464,7 +459,7 @@ export default function Dashboard() {
   if (!project || project.status === "not_started") {
     return (
       <>
-        <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 16 }}>
+        <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 96 + FLOATING_TAB_BAR_CLEARANCE, gap: 16 }}>
           {picker}
           {createErrorNote}
           {project ? (
@@ -499,19 +494,6 @@ export default function Dashboard() {
               </Pressable>
             </View>
           )}
-          <View className="flex-row flex-wrap gap-2">
-            {QUICK_ACTIONS.map(({ label, icon, href }) => (
-              <Pressable
-                key={href}
-                onPress={() => router.push(href as never)}
-                className="items-center gap-1.5 py-3.5 rounded-2xl bg-card border border-border"
-                style={{ width: "23%" }}
-              >
-                <Ionicons name={icon} size={22} color="#f59e0b" />
-                <Text className="text-xs font-semibold text-muted-foreground">{label}</Text>
-              </Pressable>
-            ))}
-          </View>
         </ScrollView>
         <NewProjectFab onPress={handleNewProject} />
         {deleteModal}
@@ -540,7 +522,7 @@ export default function Dashboard() {
 
   return (
     <>
-      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 16 }}>
+      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: 96 + FLOATING_TAB_BAR_CLEARANCE, gap: 16 }}>
       {picker}
       {createErrorNote}
       {/* Hero project card */}
@@ -614,23 +596,20 @@ export default function Dashboard() {
         onChanged={async () => setData(await fetchDashboard(project.id))}
       />
 
+      {/* Small projects with no contractor: the homeowner manages the checklist themselves. */}
+      {project.canManageChecklist && (
+        <View className="rounded-3xl p-4 bg-card border border-border">
+          <Text className="font-bold text-sm text-foreground mb-3">Project Checklist</Text>
+          <ProjectChecklistCard
+            key={`project-checklist-${project.id}`}
+            project={project}
+            onChanged={async () => setData(await fetchDashboard(project.id))}
+          />
+        </View>
+      )}
+
       {/* At 100%, invites the homeowner to rate the contractor and workers who built it */}
       <ProjectRatingPrompt key={`project-rating-${project.id}`} projectId={project.id} progressPct={project.status === "completed" ? 100 : pct} />
-
-      {/* Quick actions */}
-      <View className="flex-row flex-wrap gap-2">
-        {QUICK_ACTIONS.map(({ label, icon, href }) => (
-          <Pressable
-            key={href}
-            onPress={() => router.push(href as never)}
-            className="items-center gap-1.5 py-3.5 rounded-2xl bg-card border border-border"
-            style={{ width: "23%" }}
-          >
-            <Ionicons name={icon} size={22} color="#f59e0b" />
-            <Text className="text-xs font-semibold text-muted-foreground">{label}</Text>
-          </Pressable>
-        ))}
-      </View>
 
       {/* Stats row */}
       <View className="flex-row gap-2">

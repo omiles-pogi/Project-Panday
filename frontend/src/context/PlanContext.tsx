@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { isChatReply, isClarificationNeeded, type ConstructionPlan, type SupplierSelections } from "@/types/plan";
 import { generateConstructionPlan, type ChatHistoryMessage } from "@/services/ai/client";
 import { garageLabel } from "@/utils/garage";
-import { monthsLabel } from "@/utils/timeline";
+import { normalizePlanTimeline, timelineLabel } from "@/utils/timeline";
 import { useAuth } from "@/context/AuthContext";
 
 export type SendResult =
@@ -68,6 +68,9 @@ interface PlanContextValue {
    * so its conversation moves from the temporary draft slot to that project's own slot instead of
    * staying lumped in with whatever the next new draft turns out to be. */
   linkToProject: (projectId: number) => void;
+  /** Switches to whichever saved conversation (a project's, or the draft) was last touched —
+   * never creates a new one. Used by the floating nav bar's center AI button. */
+  openMostRecent: () => void;
 }
 
 const PlanContext = createContext<PlanContextValue | null>(null);
@@ -84,6 +87,9 @@ interface Conversation {
   messages: ChatHistoryMessage[];
   approvalStage: ApprovalStage | null;
   clarificationRounds: number;
+  /** Stamped whenever this conversation is saved — absent on a conversation cached before this
+   * existed, which then just sorts as the oldest. Drives openMostRecent(). */
+  updatedAt?: number;
 }
 
 const EMPTY_CONVERSATION: Conversation = { plan: null, messages: [], approvalStage: null, clarificationRounds: 0 };
@@ -92,7 +98,7 @@ function isCompletePlan(value: Partial<ConstructionPlan> | null | undefined): va
   return !!value && typeof value.projectTitle === "string" && typeof value.areaSqm === "number" &&
     typeof value.floors === "number" && typeof value.bedrooms === "number" && typeof value.bathrooms === "number" &&
     typeof value.designStyle === "string" && typeof value.budget === "number" && typeof value.totalEstimate === "number" &&
-    typeof value.timelineMonths === "number" && typeof value.location === "string" &&
+    typeof value.timelineValue === "number" && typeof value.timelineUnit === "string" && typeof value.location === "string" &&
     typeof value.exteriorConcept === "string" && typeof value.interiorConcept === "string" &&
     Array.isArray(value.phases) && Array.isArray(value.materials) && Array.isArray(value.budgetBreakdown);
 }
@@ -107,7 +113,7 @@ function summarizePlan(plan: ConstructionPlan): string {
     `${plan.areaSqm} sqm, ${plan.designStyle} style. ` +
     // Labeled explicitly so the AI never confuses the homeowner's budget with its own estimate.
     `Homeowner's budget: ${plan.budget > 0 ? `₱${plan.budget.toLocaleString()}` : "not stated yet"}; ` +
-    `AI cost estimate: ₱${plan.totalEstimate.toLocaleString()}; timeline ${monthsLabel(plan.timelineMonths)}. Phases: ${phaseNames}.`
+    `AI cost estimate: ₱${plan.totalEstimate.toLocaleString()}; timeline ${timelineLabel(plan.timelineValue, plan.timelineUnit)}. Phases: ${phaseNames}.`
   );
 }
 
@@ -148,7 +154,13 @@ export function PlanProvider({ children }: { children: ReactNode }) {
       .then((raw) => {
         if (raw) {
           try {
-            conversationsRef.current = { ...JSON.parse(raw), ...conversationsRef.current };
+            const parsed = JSON.parse(raw) as Record<string, Conversation>;
+            // Conversations cached on the device before timelineValue/timelineUnit existed still
+            // have their plan (if any) in the old timelineMonths shape.
+            for (const key of Object.keys(parsed)) {
+              parsed[key] = { ...parsed[key], plan: normalizePlanTimeline(parsed[key].plan) };
+            }
+            conversationsRef.current = { ...parsed, ...conversationsRef.current };
           } catch {
             conversationsRef.current = {};
           }
@@ -166,7 +178,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
   // Keeps the active slot in the map (and on disk) up to date with whatever's currently showing.
   useEffect(() => {
     if (!ready) return;
-    conversationsRef.current[activeProjectKey] = { plan, messages, approvalStage, clarificationRounds };
+    conversationsRef.current[activeProjectKey] = { plan, messages, approvalStage, clarificationRounds, updatedAt: Date.now() };
     persist();
   }, [ready, activeProjectKey, plan, messages, approvalStage, clarificationRounds, persist]);
 
@@ -249,11 +261,12 @@ export function PlanProvider({ children }: { children: ReactNode }) {
     (projectId: number | null, savedPlan?: Partial<ConstructionPlan> | null) => {
       const key = projectId != null ? String(projectId) : DRAFT_KEY;
       let conversation = conversationsRef.current[key] ?? EMPTY_CONVERSATION;
-      const restore = !conversation.plan && isCompletePlan(savedPlan);
+      const normalizedSavedPlan = normalizePlanTimeline(savedPlan);
+      const restore = !conversation.plan && isCompletePlan(normalizedSavedPlan);
       if (restore) {
         conversation = {
           ...conversation,
-          plan: savedPlan,
+          plan: normalizedSavedPlan,
           approvalStage: "summary",
           messages: [...conversation.messages, { role: "assistant", content: "Your approved plan was loaded from the saved project." }],
         };
@@ -298,6 +311,22 @@ export function PlanProvider({ children }: { children: ReactNode }) {
     [activeProjectKey, persist]
   );
 
+  // Picks whichever conversation (a project's, or the draft) carries the newest updatedAt —
+  // never the "latest started project" or any other unrelated notion of recency, and never one
+  // that doesn't already exist, so it can't create a new conversation by accident.
+  const openMostRecent = useCallback(() => {
+    let bestKey = DRAFT_KEY;
+    let bestTime = -1;
+    for (const [key, conversation] of Object.entries(conversationsRef.current)) {
+      const time = conversation.updatedAt ?? 0;
+      if (time > bestTime) {
+        bestKey = key;
+        bestTime = time;
+      }
+    }
+    selectProject(/^\d+$/.test(bestKey) ? Number(bestKey) : null);
+  }, [selectProject]);
+
   const reset = useCallback(() => {
     activeKeyRef.current = DRAFT_KEY;
     conversationsRef.current[DRAFT_KEY] = EMPTY_CONVERSATION;
@@ -327,6 +356,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
         selectProject,
         startFresh,
         linkToProject,
+        openMostRecent,
       }}
     >
       {children}

@@ -1,4 +1,5 @@
 import type { IconName } from "@/components/ui";
+import type { ConstructionPlan, TimelineUnit } from "@/types/plan";
 import type {
   PhaseScheduleStatus,
   ScheduleStatus,
@@ -39,9 +40,22 @@ export const TASK_STATUS_META: Record<TaskScheduleStatus, { label: string; color
   upcoming: { label: "Upcoming", color: "#6b7280", icon: "ellipse-outline" },
 };
 
-/** "1 month" vs "2 months" — never says "1 months". */
-export function monthsLabel(n: number): string {
-  return `${n} month${n === 1 ? "" : "s"}`;
+/** "1 month", "2 weeks", "10 days" — never says "1 months". */
+export function timelineLabel(value: number, unit: TimelineUnit): string {
+  const word = unit.slice(0, -1); // "days" -> "day", "weeks" -> "week", "months" -> "month"
+  return `${value} ${word}${value === 1 ? "" : "s"}`;
+}
+
+/**
+ * Fills in timelineValue/timelineUnit on a plan saved before they existed (a plain timelineMonths
+ * number instead) — a saved project's approvedPlan, or a conversation cached on the device before
+ * this change shipped. Leaves an already-current plan untouched.
+ */
+export function normalizePlanTimeline<T extends Partial<ConstructionPlan> | null | undefined>(plan: T): T {
+  if (!plan || plan.timelineValue !== undefined) return plan;
+  const legacyMonths = (plan as Record<string, unknown>).timelineMonths;
+  if (typeof legacyMonths !== "number") return plan;
+  return { ...plan, timelineValue: legacyMonths, timelineUnit: "months" };
 }
 
 /** Parses a backend ISO date as a local calendar date — `new Date("2027-01-05")` would be UTC

@@ -14,7 +14,7 @@ import type {
   Wage,
   WageInput,
 } from "@/types/project";
-import type { ContractorRequest, WorkerRequest } from "@/types/notification";
+import type { ContractorInviteDetails, ContractorRequest, WorkerInviteDetails, WorkerRequest } from "@/types/notification";
 
 export async function createProject(plan: ConstructionPlan): Promise<DashboardProject> {
   const data = await apiFetch("/api/projects", {
@@ -197,6 +197,12 @@ export async function applyToProject(projectId: number): Promise<WorkerRequest> 
   return data as WorkerRequest;
 }
 
+/** The project behind an invite/application, for the worker it was sent to — before they decide. */
+export async function fetchWorkerRequestProject(requestId: number): Promise<WorkerInviteDetails> {
+  const data = await apiFetch(`/api/worker-requests/${requestId}/project`);
+  return data as WorkerInviteDetails;
+}
+
 /** Accepts/declines an invite (as the invited worker) or approves/rejects an application (as
  * the project owner) — respondToWorkerRequest resolves whichever direction the request is. */
 export async function respondToWorkerRequest(requestId: number, accept: boolean): Promise<WorkerRequest> {
@@ -229,6 +235,12 @@ export async function applyAsContractor(
     }),
   });
   return data as ContractorRequest;
+}
+
+/** Mirrors fetchWorkerRequestProject, for the contractor-direction request lifecycle. */
+export async function fetchContractorRequestProject(requestId: number): Promise<ContractorInviteDetails> {
+  const data = await apiFetch(`/api/contractor-requests/${requestId}/project`);
+  return data as ContractorInviteDetails;
 }
 
 /** Mirrors respondToWorkerRequest, for the contractor-direction request lifecycle. */

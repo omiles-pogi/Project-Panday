@@ -1,12 +1,34 @@
+import { Platform } from "react-native";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import type { ConstructionPlan } from "@/types/plan";
 import type { MaterialRequest } from "@/types/materialRequest";
 import { peso } from "@/utils/currency";
-import { monthsLabel } from "@/utils/timeline";
+import { timelineLabel } from "@/utils/timeline";
 
-/** The PDFs are rendered on the phone from data the app already has, then handed to the share sheet. */
+/**
+ * The PDFs are rendered on the phone from data the app already has, then handed to the share sheet.
+ * On web, expo-print's printToFileAsync ignores the html it's given and prints whatever's on the
+ * current page instead, and there's no shareable file uri — so this opens the generated HTML in its
+ * own tab and triggers the browser's print dialog there, where "Save as PDF" is one of its options.
+ */
 export async function sharePdf(html: string, title: string): Promise<void> {
+  if (Platform.OS === "web") {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      throw new Error("Please allow pop-ups for this site, then try exporting again.");
+    }
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.document.title = title;
+    // A brief pause so the new tab finishes painting before the print dialog takes over.
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+    }, 300);
+    return;
+  }
+
   if (!(await Sharing.isAvailableAsync())) {
     throw new Error("Sharing isn't available on this device, so the PDF can't be saved.");
   }
@@ -63,7 +85,8 @@ export function planPdfHtml(saved: Partial<ConstructionPlan>): string {
     bathrooms: 0,
     designStyle: "—",
     budget: 0,
-    timelineMonths: 0,
+    timelineValue: 0,
+    timelineUnit: "months",
     phases: [],
     budgetBreakdown: [],
     materials: [],
@@ -85,7 +108,7 @@ export function planPdfHtml(saved: Partial<ConstructionPlan>): string {
       ${fact("Floors", plan.floors)}
       ${fact("Bedrooms / baths", `${plan.bedrooms} / ${plan.bathrooms}`)}
       ${fact("Garage", garage)}
-      ${fact("Timeline", monthsLabel(plan.timelineMonths))}
+      ${fact("Timeline", timelineLabel(plan.timelineValue, plan.timelineUnit))}
     </div>
     <div class="facts">
       ${fact("Your budget", plan.budget > 0 ? peso(plan.budget) : "Not set")}

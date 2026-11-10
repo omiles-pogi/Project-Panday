@@ -70,7 +70,7 @@ export default function RequestList({
         title={viewer === "homeowner" ? "Material Approvals" : "Material Requests"}
         subtitle={
           viewer === "homeowner"
-            ? "Review your contractor's material requests and approve the ones you're good with."
+            ? "See suggested suppliers for what your plan needs, and approve any request your contractor sends."
             : "Prepare material lists, send them for approval and track supplier fulfilment."
         }
       />
@@ -107,7 +107,7 @@ export default function RequestList({
             {list.length > 0
               ? "Nothing in this view."
               : viewer === "homeowner"
-                ? "No material requests yet. Your contractor's submitted requests will appear here for approval."
+                ? "No material requests yet. If you have a contractor, their submitted requests will appear here — otherwise, check the suggested materials and suppliers above for what your plan needs."
                 : "No material requests yet. Create one for a project you're assigned to."}
           </Text>
         </Card>

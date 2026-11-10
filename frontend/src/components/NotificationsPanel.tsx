@@ -3,13 +3,13 @@ import { Text, View, Pressable, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import Sheet from "@/components/Sheet";
+import { Badge, type IconName } from "@/components/ui";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useTheme } from "@/context/ThemeContext";
 import { useNotifications } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
-import type { AppNotification, NotificationType } from "@/types/notification";
+import type { AppNotification, NotificationType, RequestStatus } from "@/types/notification";
 import { notificationRoute } from "@/utils/notificationRoutes";
-import type { IconName } from "@/components/ui";
 
 function timeAgo(iso: string): string {
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -60,6 +60,11 @@ export const ICON: Record<NotificationType, IconName> = {
 // Only these carry a pending request that this viewer can act on directly from the panel.
 const ACTIONABLE: NotificationType[] = ["worker_invite", "worker_application", "contractor_invite", "contractor_application"];
 const INVITE_TYPES: NotificationType[] = ["worker_invite", "contractor_invite"];
+const INVITE_STATUS_META: Record<RequestStatus, { label: string; color: string }> = {
+  pending: { label: "Pending", color: "#f59e0b" },
+  approved: { label: "Accepted", color: "#10b981" },
+  rejected: { label: "Declined", color: "#ef4444" },
+};
 const CONTRACTOR_TYPES: NotificationType[] = [
   "contractor_invite",
   "contractor_invite_response",
@@ -220,9 +225,13 @@ export default function NotificationsPanel({ visible, onClose }: { visible: bool
 
       <View style={{ gap: 10 }}>
         {notifications.map((n) => {
-          const actionable =
-            ACTIONABLE.includes(n.type) && !!n.data.requestId && (!n.data.requestStatus || n.data.requestStatus === "pending");
           const isInvite = INVITE_TYPES.includes(n.type);
+          // Invites get a "view project details" button instead of inline Accept/Decline — only
+          // applications (approve/reject) still act directly from the panel.
+          const actionable =
+            ACTIONABLE.includes(n.type) && !isInvite && !!n.data.requestId && (!n.data.requestStatus || n.data.requestStatus === "pending");
+          const inviteStatus: RequestStatus = n.data.requestStatus ?? "pending";
+          const invitePath = isInvite && n.data.requestId && user ? notificationRoute(n, user.role) : null;
           return (
             <Pressable
               key={n.id}
@@ -268,7 +277,7 @@ export default function NotificationsPanel({ visible, onClose }: { visible: bool
                     {respondingId === n.id ? (
                       <ActivityIndicator size="small" color="#0f1117" />
                     ) : (
-                      <Text className="text-xs font-bold text-primary-foreground">{isInvite ? "Accept" : "Approve"}</Text>
+                      <Text className="text-xs font-bold text-primary-foreground">Approve</Text>
                     )}
                   </Pressable>
                   <Pressable
@@ -277,7 +286,26 @@ export default function NotificationsPanel({ visible, onClose }: { visible: bool
                     className="flex-1 py-2 rounded-lg items-center bg-muted border border-border"
                     style={{ opacity: respondingId === n.id ? 0.6 : 1 }}
                   >
-                    <Text className="text-xs font-semibold text-muted-foreground">{isInvite ? "Decline" : "Reject"}</Text>
+                    <Text className="text-xs font-semibold text-muted-foreground">Reject</Text>
+                  </Pressable>
+                </View>
+              )}
+
+              {isInvite && invitePath && (
+                <View className="flex-row items-center justify-between gap-2 mt-3">
+                  {inviteStatus !== "pending" && <Badge label={INVITE_STATUS_META[inviteStatus].label} color={INVITE_STATUS_META[inviteStatus].color} />}
+                  <Pressable
+                    onPress={() => {
+                      markRead(n.id).catch(() => undefined);
+                      onClose();
+                      router.push(invitePath as never);
+                    }}
+                    className="py-2 px-4 rounded-lg items-center bg-primary"
+                    style={{ marginLeft: inviteStatus !== "pending" ? 0 : "auto" }}
+                  >
+                    <Text className="text-xs font-bold text-primary-foreground">
+                      {inviteStatus === "pending" ? "View project details" : "View project"}
+                    </Text>
                   </Pressable>
                 </View>
               )}

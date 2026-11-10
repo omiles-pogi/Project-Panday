@@ -216,7 +216,9 @@ function ReviewStatus({ plan, viewer, onReview }: { plan: MaterialPlan; viewer: 
         </View>
       </InfoBox>
     ) : (
-      <Text className="text-xs text-muted-foreground">Your contractor hasn&apos;t reviewed the AI&apos;s quantities yet.</Text>
+      <Text className="text-xs text-muted-foreground">
+        These are the AI&apos;s original quantities — not yet reviewed by a contractor.
+      </Text>
     );
   }
 

@@ -110,14 +110,19 @@ export default function ProjectCompletionCard({ project, onChanged }: { project:
   }
 
   if (project.status === "completed") {
+    // On a small project with no contractor, the homeowner finishes and confirms in one step —
+    // both timestamps land together, and there's no contractor to credit for the work.
+    const selfCompleted = !!completion.submittedAt && completion.submittedAt === completion.confirmedAt;
     return (
       <InfoBox color="#10b981" title="Project Status: Completed">
-        {[
-          completion.confirmedAt ? `You confirmed completion on ${formatDateTime(completion.confirmedAt)}.` : null,
-          completion.submittedAt ? `Your contractor finished the work on ${formatDateTime(completion.submittedAt)}.` : null,
-        ]
-          .filter(Boolean)
-          .join(" ")}
+        {selfCompleted
+          ? `You marked this project as finished on ${formatDateTime(completion.submittedAt!)} — with no contractor assigned, there was nothing left to confirm.`
+          : [
+              completion.confirmedAt ? `You confirmed completion on ${formatDateTime(completion.confirmedAt)}.` : null,
+              completion.submittedAt ? `Your contractor finished the work on ${formatDateTime(completion.submittedAt)}.` : null,
+            ]
+              .filter(Boolean)
+              .join(" ")}
       </InfoBox>
     );
   }

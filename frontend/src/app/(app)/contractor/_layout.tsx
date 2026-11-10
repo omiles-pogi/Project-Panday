@@ -23,6 +23,7 @@ export default function ContractorLayout() {
         { name: "quotes", title: "Supplier Quotes" },
         { name: "material-request/[id]", title: "Material Request", detail: true },
         { name: "chat/[id]", title: "Chat", detail: true },
+        { name: "invite/[requestId]", title: "Project Invite", detail: true },
       ]}
     />
   );

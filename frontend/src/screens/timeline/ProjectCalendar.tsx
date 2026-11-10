@@ -16,7 +16,7 @@ import {
   defaultMonthKey,
   formatRange,
   formatShortDate,
-  monthsLabel,
+  timelineLabel,
 } from "@/utils/timeline";
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
@@ -109,7 +109,7 @@ function ScheduleSummary({ timeline }: { timeline: ProjectTimeline }) {
         </Text>
         <Text className="text-sm mt-1 text-secondary-foreground">{meta.summary(gap)}</Text>
         <Text className="text-xs mt-2 text-muted-foreground">
-          AI schedule: {formatRange(timeline.startDate, timeline.endDate)} · {monthsLabel(timeline.timelineMonths)}
+          AI schedule: {formatRange(timeline.startDate, timeline.endDate)} · {timelineLabel(timeline.timelineValue, timeline.timelineUnit)}
           {runningLabel ? ` · ${runningLabel}` : ""}
         </Text>
       </InfoBox>

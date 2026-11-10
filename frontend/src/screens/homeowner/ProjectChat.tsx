@@ -17,15 +17,19 @@ import BudgetCategoryBreakdown from "@/components/BudgetCategoryBreakdown";
 import { CountUp } from "@/components/charts";
 import { peso, pesoCompact } from "@/utils/currency";
 import { compareBudget } from "@/utils/budget";
-import { monthsLabel } from "@/utils/timeline";
+import { timelineLabel } from "@/utils/timeline";
+import { FLOATING_TAB_BAR_CLEARANCE } from "@/components/FloatingTabBar";
 import { garageLabel } from "@/utils/garage";
-import { createProject, fetchDashboard, startProjectFromPlan } from "@/services/api/projects";
+import { createProject, fetchDashboard, fetchMyHomeownerProjects, startProjectFromPlan } from "@/services/api/projects";
+import type { ProjectSummary } from "@/types/project";
 import Mascot from "@/components/Mascot";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { useKeyboardState, useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import PlanEditorSheet, { type PlanEditorTab } from "@/components/PlanEditorSheet";
 import ExportPdfButton from "@/components/ExportPdfButton";
 import { planPdfHtml, sharePdf } from "@/utils/pdf";
+import { timeAgo } from "@/utils/chatTime";
+import * as Clipboard from "expo-clipboard";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -39,10 +43,12 @@ interface ChatMessage {
   card?: CardType;
   quickReplies?: string[];
   typing?: boolean;
+  createdAt: string;
 }
 
 let uid = 100;
 const nextId = () => ++uid;
+const now = () => new Date().toISOString();
 
 function Chip({ text, onPress }: { text: string; onPress: () => void }) {
   return (
@@ -106,7 +112,7 @@ function PlanCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: ()
   const phasesDetail =
     phaseNames.length > 2 ? `${phaseNames.slice(0, 2).join(", ")} +${phaseNames.length - 2} more` : phaseNames.join(", ");
   const items: { icon: IconName; title: string; value: string; detail: string; color: string }[] = [
-    { icon: "calendar-outline", title: "Timeline", value: monthsLabel(plan.timelineMonths), detail: `${plan.phases.length} phases planned`, color: "#3b82f6" },
+    { icon: "calendar-outline", title: "Timeline", value: timelineLabel(plan.timelineValue, plan.timelineUnit), detail: `${plan.phases.length} phases planned`, color: "#3b82f6" },
     {
       icon: "wallet-outline",
       title: "AI Cost Estimate",
@@ -405,7 +411,7 @@ function SummaryCard({ plan }: { plan: ConstructionPlan }) {
           <View className="flex-1 p-3 rounded-xl items-center bg-muted">
             <Text className="text-xs mb-1 text-muted-foreground">Project Duration</Text>
             <Text className="font-bold text-base" style={{ color: "#3b82f6" }}>
-              {monthsLabel(plan.timelineMonths)}
+              {timelineLabel(plan.timelineValue, plan.timelineUnit)}
             </Text>
           </View>
         </View>
@@ -417,6 +423,33 @@ function SummaryCard({ plan }: { plan: ConstructionPlan }) {
         </Pressable>
       </View>
     </View>
+  );
+}
+
+const STARTER_PROMPTS = [
+  "3-bedroom house in Quezon City, 120 sqm, ₱2.5M budget, modern design",
+  "Repaint and renovate my kitchen, ₱150K budget",
+  "Add a second floor to my house, modern design",
+];
+
+function timeGreeting(): { text: string; icon: IconName } {
+  const hour = new Date().getHours();
+  if (hour < 12) return { text: "Good morning", icon: "sunny-outline" };
+  if (hour < 18) return { text: "Good afternoon", icon: "partly-sunny-outline" };
+  return { text: "Good evening", icon: "moon-outline" };
+}
+
+function RecentProjectCard({ project, onPress }: { project: ProjectSummary; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} className="w-36 p-3 rounded-2xl mr-3 bg-card border border-border">
+      <View className="w-full h-14 rounded-xl mb-2 items-center justify-center" style={{ backgroundColor: "#f59e0b15" }}>
+        <Ionicons name="hammer-outline" size={20} color="#f59e0b" />
+      </View>
+      <Text numberOfLines={1} className="text-xs font-semibold text-foreground">
+        {project.title}
+      </Text>
+      <Text className="text-xs mt-0.5 text-muted-foreground">{project.overallProgressPct}% complete</Text>
+    </Pressable>
   );
 }
 
@@ -457,14 +490,6 @@ const NEXT_LABEL: Record<ResolvedStage, string> = {
   summary: "",
 };
 
-function greeting(): ChatMessage {
-  return {
-    id: nextId(),
-    role: "ai",
-    text: 'Describe your project and I\'ll generate a complete construction plan — timeline, budget, and materials. You can also just ask me questions or chat anytime, even after your plan is ready.\n\nTry: "3-bedroom house in Quezon City, 120 sqm, ₱2.5M budget, modern design."',
-  };
-}
-
 /**
  * Rebuilds the visible chat thread from PlanContext's persistent history when this screen
  * (re)mounts — e.g. after navigating to Find Your Team and back. Without this, the conversation
@@ -479,15 +504,16 @@ function reconstructMessages(
   stage: ApprovalStage | null
 ): ChatMessage[] {
   if (history.length === 0) {
-    return [greeting()];
+    return [];
   }
-  const rebuilt: ChatMessage[] = [greeting()];
+  const rebuilt: ChatMessage[] = [];
   history.forEach((m, i) => {
     const isLastAssistantTurn = m.role === "assistant" && i === history.length - 1;
     rebuilt.push({
       id: nextId(),
       role: m.role === "user" ? "user" : "ai",
       text: m.content,
+      createdAt: now(),
       card: isLastAssistantTurn && plan ? stage ?? "plan" : undefined,
     });
   });
@@ -511,18 +537,34 @@ function AIBubble({
   onChooseSupplier: (category: SupplierCategory, supplier: SupplierOption | null) => void;
   busy: boolean;
 }) {
+  const { chrome } = useTheme();
+  const [copied, setCopied] = useState(false);
+  const copyText = async () => {
+    await Clipboard.setStringAsync(msg.text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
   return (
     <View className="flex-row gap-3 items-start mb-4">
       <Mascot size={44} mood={msg.typing ? "thinking" : "happy"} bob={msg.typing} />
-      <View className="flex-1" style={{ gap: 8 }}>
+      <View className="flex-1" style={{ gap: 6 }}>
         {msg.typing ? (
           <View className="rounded-2xl self-start bg-card border border-border">
             <Dots />
           </View>
         ) : (
-          <View className="rounded-2xl px-4 py-3 self-start bg-card border border-border" style={{ maxWidth: "100%" }}>
-            <Text className="text-sm leading-relaxed text-card-foreground">{msg.text}</Text>
-          </View>
+          <>
+            <View className="rounded-2xl px-4 py-3 self-start bg-card border border-border" style={{ maxWidth: "100%" }}>
+              <Text className="text-sm leading-relaxed text-card-foreground">{msg.text}</Text>
+            </View>
+            <View className="flex-row items-center gap-3 px-1">
+              <Pressable onPress={copyText} hitSlop={8}>
+                <Ionicons name={copied ? "checkmark" : "copy-outline"} size={13} color={chrome.mutedForeground} />
+              </Pressable>
+              <Text className="text-xs text-muted-foreground">{copied ? "Copied" : timeAgo(msg.createdAt)}</Text>
+            </View>
+          </>
         )}
         {!msg.typing && plan && msg.card === "plan" && <PlanCard plan={plan} onNext={onAdvance} onEdit={() => onEdit("details")} />}
         {!msg.typing && plan && msg.card === "budget" && <BudgetCard plan={plan} onNext={onAdvance} onEdit={() => onEdit("budget")} />}
@@ -550,10 +592,11 @@ function AIBubble({
 
 function UserBubble({ msg }: { msg: ChatMessage }) {
   return (
-    <View className="flex-row justify-end mb-4">
+    <View className="items-end mb-4">
       <View className="rounded-2xl px-4 py-3 bg-primary" style={{ maxWidth: "80%" }}>
         <Text className="text-sm leading-relaxed text-primary-foreground">{msg.text}</Text>
       </View>
+      <Text className="text-xs mt-1 mr-1 text-muted-foreground">{timeAgo(msg.createdAt)}</Text>
     </View>
   );
 }
@@ -585,8 +628,24 @@ export default function ProjectChat() {
   const [stage, setStage] = useState<Stage>(() => approvalStage ?? (plan ? "plan" : "idle"));
   const [busy, setBusy] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [recentProjects, setRecentProjects] = useState<ProjectSummary[]>([]);
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const operationRef = useRef(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!ready) return;
+      let cancelled = false;
+      fetchMyHomeownerProjects()
+        .then((list) => {
+          if (!cancelled) setRecentProjects(list.slice(0, 6));
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }, [ready])
+  );
 
   // PlanContext's conversation loads from storage asynchronously (so it survives an app
   // restart, not just in-app navigation) and switches to a different project's own conversation
@@ -633,6 +692,24 @@ export default function ProjectChat() {
     scrollRef.current?.scrollToEnd({ animated: true });
   }, [messages]);
 
+  // onFocus alone only scrolled the first time the keyboard opened this screen. Tying it to the
+  // keyboard's own visibility instead catches every later open too — but the keyboard's own
+  // open/resize animation is still mid-flight at the moment this fires, so a single immediate call
+  // scrolls to where the content ends *before* it's done shrinking to make room, landing short.
+  // Repeating it while the animation plays (Android's keyboard animates ~250-300ms) keeps nudging
+  // the scroll position to match, so it still lands at the true end once everything settles.
+  useEffect(() => {
+    if (!keyboardVisible) return;
+    const scrollToEnd = () => scrollRef.current?.scrollToEnd({ animated: true });
+    scrollToEnd();
+    const interval = setInterval(scrollToEnd, 60);
+    const timeout = setTimeout(() => clearInterval(interval), 400);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [keyboardVisible]);
+
   const resolveTyping = (id: number, update: Partial<ChatMessage>) => {
     setMessages((p) => p.map((m) => (m.id === id ? { ...m, ...update, typing: false } : m)));
   };
@@ -643,13 +720,13 @@ export default function ProjectChat() {
     if (!text.trim() || busy || !ready) return;
     const operation = ++operationRef.current;
     const hadPlanBefore = !!plan;
-    setMessages((p) => [...p, { id: nextId(), role: "user", text: text.trim() }]);
+    setMessages((p) => [...p, { id: nextId(), role: "user", text: text.trim(), createdAt: now() }]);
     setInput("");
 
     if (!hadPlanBefore) setStage("generating");
     setBusy(true);
     const typingId = nextId();
-    setMessages((p) => [...p, { id: typingId, role: "ai", text: "", typing: true }]);
+    setMessages((p) => [...p, { id: typingId, role: "ai", text: "", typing: true, createdAt: now() }]);
 
     // Fires live as a chat reply streams in — flips the dots off and appends text word-by-word,
     // like Claude/ChatGPT. Never fires for a plan/clarification (those stay as dots until done,
@@ -717,17 +794,17 @@ export default function ProjectChat() {
       } catch (err) {
         if (operation !== operationRef.current) return;
         const message = err instanceof Error ? err.message : "Could not save the project.";
-        setMessages((previous) => [...previous, { id: nextId(), role: "ai", text: `Your plan was not saved. ${message} Please try again.` }]);
+        setMessages((previous) => [...previous, { id: nextId(), role: "ai", text: `Your plan was not saved. ${message} Please try again.`, createdAt: now() }]);
         setBusy(false);
         return;
       }
       if (operation !== operationRef.current) return;
     }
 
-    setMessages((p) => [...p, { id: nextId(), role: "user", text: label }]);
+    setMessages((p) => [...p, { id: nextId(), role: "user", text: label, createdAt: now() }]);
     setBusy(true);
     const typingId = nextId();
-    setMessages((p) => [...p, { id: typingId, role: "ai", text: "", typing: true }]);
+    setMessages((p) => [...p, { id: typingId, role: "ai", text: "", typing: true, createdAt: now() }]);
     setTimeout(() => {
       if (operation !== operationRef.current) return;
       resolveTyping(typingId, { text: STAGE_TEXT[next](plan), card: next });
@@ -752,7 +829,12 @@ export default function ProjectChat() {
     setEditorTab(null);
     setMessages((p) => [
       ...p,
-      { id: nextId(), role: "ai", text: "Got it — I've applied your changes. Everything above now reflects your edited plan, and I'll build on it from here." },
+      {
+        id: nextId(),
+        role: "ai",
+        text: "Got it — I've applied your changes. Everything above now reflects your edited plan, and I'll build on it from here.",
+        createdAt: now(),
+      },
     ]);
   };
 
@@ -760,17 +842,59 @@ export default function ProjectChat() {
     if (stage === "idle") handleSend(text);
   };
 
-  const showSuggestions = messages.length <= 1;
+  const showSuggestions = messages.length === 0;
 
   return (
     <View className="flex-1 bg-background">
     <Animated.View style={[{ flex: 1 }, liftStyle]}>
       <ScrollView ref={scrollRef} className="flex-1 px-4 py-5" contentContainerStyle={{ paddingBottom: 8 }}>
         {showSuggestions && (
-          <View className="items-center mb-5">
-            <Mascot size={110} />
-            <Text className="text-lg font-extrabold text-foreground mt-2">Hi, I&apos;m PandAi!</Text>
-            <Text className="text-xs text-muted-foreground mt-0.5">Your AI construction buddy</Text>
+          <View className="items-center" style={{ paddingTop: 16, paddingBottom: 28 }}>
+            <Mascot size={72} />
+            <View className="flex-row items-center gap-2 mt-3">
+              <Ionicons name={timeGreeting().icon} size={20} color="#f59e0b" />
+              <Text className="text-xl font-extrabold text-foreground">{timeGreeting().text}</Text>
+            </View>
+            <Text className="text-xs mt-1 mb-6 text-muted-foreground">
+              I&apos;m PandAi — what are we building today?
+            </Text>
+
+            {recentProjects.length > 0 && (
+              <View className="w-full mb-6">
+                <View className="flex-row items-center justify-between px-1 mb-2">
+                  <Text className="text-xs font-semibold text-muted-foreground">RECENT PROJECTS</Text>
+                  <Pressable onPress={() => router.push("/homeowner" as never)}>
+                    <Text className="text-xs font-semibold" style={{ color: "#f59e0b" }}>
+                      View all
+                    </Text>
+                  </Pressable>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ height: 120 }}>
+                  {recentProjects.map((p) => (
+                    <RecentProjectCard
+                      key={p.id}
+                      project={p}
+                      onPress={() => router.push(`/homeowner?projectId=${p.id}` as never)}
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            <View className="w-full" style={{ gap: 8 }}>
+              {STARTER_PROMPTS.map((p) => (
+                <Pressable
+                  key={p}
+                  onPress={() => handleSend(p)}
+                  className="px-4 py-3 rounded-2xl bg-card border border-border flex-row items-center gap-2"
+                >
+                  <Ionicons name="sparkles-outline" size={14} color="#f59e0b" />
+                  <Text className="text-xs text-foreground flex-1" numberOfLines={1}>
+                    {p}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
         )}
         {messages.map((msg) =>
@@ -795,7 +919,9 @@ export default function ProjectChat() {
         <PlanEditorSheet plan={plan} initialTab={editorTab} onClose={() => setEditorTab(null)} onSave={handleSaveEdit} />
       )}
 
-      <View className="px-4" style={{ paddingBottom: keyboardVisible ? 12 : 16 }}>
+      {/* The floating tab bar hides itself while the keyboard is up (see FloatingTabBar), so it
+          only needs clearing from this input when it's actually on screen. */}
+      <View className="px-4" style={{ paddingBottom: keyboardVisible ? 12 : 16 + FLOATING_TAB_BAR_CLEARANCE }}>
         {syncError && <Text className="text-xs mb-2 text-danger">{syncError}</Text>}
         <View className="flex-row gap-3 items-end rounded-2xl p-3 bg-card border border-border">
           <TextInput

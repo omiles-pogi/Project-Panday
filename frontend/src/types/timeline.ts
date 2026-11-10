@@ -1,3 +1,5 @@
+import type { TimelineUnit } from "@/types/plan";
+
 export type ScheduleStatus =
   | "completed"
   | "not_started"
@@ -60,7 +62,8 @@ export interface ProjectTimeline {
   title: string;
   startDate: string;
   endDate: string;
-  timelineMonths: number;
+  timelineValue: number;
+  timelineUnit: TimelineUnit;
   today: string;
   overall: {
     plannedPct: number;

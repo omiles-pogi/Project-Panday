@@ -1,3 +1,6 @@
+import type { TimelineUnit } from "@/types/plan";
+import type { ProjectStatus } from "@/types/project";
+
 export type NotificationType =
   | "new_message"
   | "wage_set"
@@ -76,6 +79,7 @@ export interface WorkerRequest {
   workerId: number;
   initiatedBy: RequestInitiator;
   status: RequestStatus;
+  createdAt: string;
 }
 
 export interface ContractorRequest {
@@ -87,4 +91,53 @@ export interface ContractorRequest {
   quoteAmount: number | null;
   estimatedDays: number | null;
   message: string | null;
+  createdAt: string;
+}
+
+/** A project's team member, as shown to someone only invited to it — not yet their wage/profile. */
+export interface InviteProjectTeamMember {
+  id: number;
+  name: string;
+  trade?: string | null;
+  specialization?: string | null;
+}
+
+/**
+ * The project behind an invite/application, as shown to the worker/contractor it was sent to —
+ * deliberately narrower than the owner's/team's own view: no budget breakdown, wages, approved
+ * plan or checklist, none of which are theirs to see until they're actually on the team.
+ */
+export interface InviteProject {
+  id: number;
+  title: string;
+  location: string | null;
+  status: ProjectStatus;
+  budget: number;
+  totalEstimate: number;
+  timelineValue: number;
+  timelineUnit: TimelineUnit;
+  startedAt: string;
+  /** The scope the homeowner described to the AI when planning this project — null for a project
+   * with no approved plan on record. */
+  designStyle: string | null;
+  areaSqm: number | null;
+  floors: number | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  garageCars: number | null;
+  exteriorConcept: string | null;
+  interiorConcept: string | null;
+  homeowner: { name: string };
+  workers: InviteProjectTeamMember[];
+  contractors: InviteProjectTeamMember[];
+}
+
+export interface WorkerInviteDetails {
+  request: WorkerRequest;
+  project: InviteProject;
+}
+
+export interface ContractorInviteDetails {
+  request: ContractorRequest;
+  project: InviteProject;
 }

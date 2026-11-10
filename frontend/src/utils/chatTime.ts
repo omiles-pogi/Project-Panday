@@ -35,3 +35,13 @@ export function formatDayLabel(iso: string, now = new Date()): string {
 export function isSameDay(a: string, b: string): boolean {
   return sameDay(new Date(a), new Date(b));
 }
+
+/** "just now" / "15m ago" / "3h ago" / "2d ago" */
+export function timeAgo(iso: string, now = new Date()): string {
+  const mins = Math.floor((now.getTime() - new Date(iso).getTime()) / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}

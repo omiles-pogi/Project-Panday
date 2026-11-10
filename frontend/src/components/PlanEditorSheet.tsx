@@ -2,11 +2,16 @@ import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Sheet from "@/components/Sheet";
-import { Button, Field, InfoBox, SubmitButton } from "@/components/ui";
+import { Button, ChipPicker, Field, InfoBox, SubmitButton } from "@/components/ui";
 import { useTheme } from "@/context/ThemeContext";
 import { budgetCategoryMeta } from "@/utils/budgetCategories";
 import { peso } from "@/utils/currency";
-import type { ConstructionPlan } from "@/types/plan";
+import type { ConstructionPlan, TimelineUnit } from "@/types/plan";
+
+const TIMELINE_UNIT_LABELS: Record<TimelineUnit, string> = { days: "Days", weeks: "Weeks", months: "Months" };
+const TIMELINE_UNIT_OPTIONS = Object.values(TIMELINE_UNIT_LABELS);
+const unitFromLabel = (label: string): TimelineUnit =>
+  (Object.keys(TIMELINE_UNIT_LABELS) as TimelineUnit[]).find((u) => TIMELINE_UNIT_LABELS[u] === label) ?? "months";
 
 export type PlanEditorTab = "details" | "phases" | "budget" | "materials";
 
@@ -29,7 +34,8 @@ interface Draft {
   garageCars: string;
   designStyle: string;
   budget: string;
-  timelineMonths: string;
+  timelineValue: string;
+  timelineUnit: TimelineUnit;
   exteriorConcept: string;
   interiorConcept: string;
   /** origName is the phase's name when the editor opened, so a rename can be carried to the materials that name it. */
@@ -76,7 +82,8 @@ function toDraft(plan: ConstructionPlan): Draft {
     garageCars: str(plan.garageCars ?? 0),
     designStyle: plan.designStyle,
     budget: plan.budget > 0 ? str(plan.budget) : "",
-    timelineMonths: str(plan.timelineMonths),
+    timelineValue: str(plan.timelineValue),
+    timelineUnit: plan.timelineUnit,
     exteriorConcept: plan.exteriorConcept,
     interiorConcept: plan.interiorConcept,
     phases: plan.phases.map((p) => ({
@@ -112,7 +119,7 @@ function validate(d: Draft): string | null {
   if (!d.projectTitle.trim()) return "Give the project a title.";
   if (num(d.areaSqm) < 0) return "Floor area can't be negative.";
   if (Math.round(num(d.floors)) < 0) return "Floors can't be negative.";
-  if (Math.round(num(d.timelineMonths)) < 1) return "Timeline must be at least 1 month.";
+  if (Math.round(num(d.timelineValue)) < 1) return `Timeline must be at least 1 ${d.timelineUnit.slice(0, -1)}.`;
   if (d.phases.some((p) => !p.name.trim())) return "Every phase needs a name — or remove the empty one.";
   if (d.materials.some((m) => !m.material.trim())) return "Every material needs a name — or remove the empty one.";
   if (d.materials.some((m) => num(m.qty) <= 0)) return "Every material needs a quantity greater than 0.";
@@ -134,7 +141,8 @@ function toPlan(d: Draft, base: ConstructionPlan): ConstructionPlan {
     garageCars: Math.min(10, Math.max(0, Math.round(num(d.garageCars)))),
     designStyle: d.designStyle.trim(),
     budget: Math.max(0, Math.round(num(d.budget))),
-    timelineMonths: Math.round(num(d.timelineMonths)),
+    timelineValue: Math.max(1, Math.round(num(d.timelineValue))),
+    timelineUnit: d.timelineUnit,
     exteriorConcept: d.exteriorConcept.trim(),
     interiorConcept: d.interiorConcept.trim(),
     phases: d.phases.map((p) => ({
@@ -267,9 +275,15 @@ export default function PlanEditorSheet({
               />
             </View>
             <View className="flex-1">
-              <Field label="Timeline (months)" keyboardType="number-pad" value={draft.timelineMonths} onChangeText={(v) => set("timelineMonths", v)} />
+              <Field label="Timeline" keyboardType="number-pad" value={draft.timelineValue} onChangeText={(v) => set("timelineValue", v)} />
             </View>
           </View>
+          <ChipPicker
+            label="Timeline unit"
+            options={TIMELINE_UNIT_OPTIONS}
+            value={TIMELINE_UNIT_LABELS[draft.timelineUnit]}
+            onChange={(v) => set("timelineUnit", unitFromLabel(v))}
+          />
           <Field label="Exterior concept" multiline value={draft.exteriorConcept} onChangeText={(v) => set("exteriorConcept", v)} />
           <Field label="Interior concept" multiline value={draft.interiorConcept} onChangeText={(v) => set("interiorConcept", v)} />
         </>

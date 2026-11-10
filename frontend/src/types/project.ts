@@ -1,4 +1,4 @@
-import type { ConstructionPlan } from "@/types/plan";
+import type { ConstructionPlan, TimelineUnit } from "@/types/plan";
 
 export interface BudgetFulfillmentLine {
   id: number;
@@ -117,9 +117,17 @@ export interface DashboardProject {
   completion?: CompletionTrail;
   /** The homeowner's "Confirm Project Completion" / "Request Corrections" buttons are on offer. */
   canConfirmCompletion?: boolean;
+  /** Can edit the checklist and submit the project as finished: an assigned contractor, or the
+   * homeowner themselves on a small project with no contractor assigned at all. */
+  canManageChecklist?: boolean;
+  /** Read-only: the project was submitted as finished, or is completed. */
+  checklistLocked?: boolean;
+  /** "Mark Project as Finished" is available: ongoing, and every task checked. */
+  canSubmitCompletion?: boolean;
   budget: number;
   totalEstimate: number;
-  timelineMonths: number;
+  timelineValue: number;
+  timelineUnit: TimelineUnit;
   startedAt: string;
   overallProgressPct: number;
   phases: DashboardPhase[];
@@ -148,9 +156,7 @@ export interface DashboardData {
 export interface MyProject extends DashboardProject {
   ownerName: string;
   canManageChecklist: boolean;
-  /** Read-only: the project was submitted as finished, or is completed. */
   checklistLocked: boolean;
-  /** "Mark Project as Finished" is available: ongoing, and every task checked. */
   canSubmitCompletion: boolean;
   /** The viewer's own pay on this project. */
   myWage?: Wage | null;
@@ -187,7 +193,8 @@ export interface AvailableProject {
   location: string | null;
   budget: number;
   totalEstimate: number;
-  timelineMonths: number;
+  timelineValue: number;
+  timelineUnit: TimelineUnit;
   startedAt: string;
   overallProgressPct: number;
   ownerName: string;

@@ -18,6 +18,7 @@ export default function WorkerLayout() {
         { name: "available", title: "Available Projects" },
         { name: "skills", title: "Skills & Profile" },
         { name: "chat/[id]", title: "Chat", detail: true },
+        { name: "invite/[requestId]", title: "Project Invite", detail: true },
       ]}
     />
   );
