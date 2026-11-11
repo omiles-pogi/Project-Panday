@@ -25,15 +25,26 @@ export default function Sheet({
       <KeyboardView modal className="flex-1 justify-end" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
         <Pressable className="flex-1" onPress={onClose} accessibilityLabel="Close" />
         <View
-          className="bg-card border border-border rounded-t-3xl self-center w-full"
-          style={{ maxHeight: "90%", maxWidth: 520 }}
+          className="rounded-t-3xl self-center w-full border"
+          style={{ maxHeight: "90%", maxWidth: 520, backgroundColor: chrome.card, borderColor: chrome.border }}
         >
           <View className="flex-row items-start justify-between px-5 pt-5 pb-3">
             <View className="flex-1 pr-3">
-              <Text className="text-lg font-bold text-foreground">{title}</Text>
-              {subtitle ? <Text className="text-xs mt-0.5 text-muted-foreground">{subtitle}</Text> : null}
+              <Text className="text-lg font-bold" style={{ color: chrome.foreground }}>
+                {title}
+              </Text>
+              {subtitle ? (
+                <Text className="text-xs mt-0.5" style={{ color: chrome.mutedForeground }}>
+                  {subtitle}
+                </Text>
+              ) : null}
             </View>
-            <Pressable onPress={onClose} hitSlop={8} className="w-8 h-8 rounded-full items-center justify-center bg-muted">
+            <Pressable
+              onPress={onClose}
+              hitSlop={8}
+              className="w-8 h-8 rounded-full items-center justify-center"
+              style={{ backgroundColor: chrome.muted }}
+            >
               <Ionicons name="close" size={18} color={chrome.mutedForeground} />
             </Pressable>
           </View>

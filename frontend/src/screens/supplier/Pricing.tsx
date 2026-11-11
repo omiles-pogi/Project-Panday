@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Button, Card, ChipPicker, Field, MONO, PageHeader, Screen, SubmitButton } from "@/components/ui";
 import Sheet from "@/components/Sheet";
+import { ROLE_FLOATING_TAB_BAR_CLEARANCE } from "@/components/RoleFloatingTabBar";
 import StockBadge from "@/components/StockBadge";
 import { useSupplier } from "@/context/SupplierContext";
 import { useTheme } from "@/context/ThemeContext";
@@ -50,7 +51,7 @@ export default function Pricing() {
   };
 
   return (
-    <Screen>
+    <Screen extraBottomPadding={ROLE_FLOATING_TAB_BAR_CLEARANCE}>
       <PageHeader title="Inventory" subtitle="Manage your materials, prices and stock levels." badge="Supplier" />
 
       <InventoryStats products={products} />

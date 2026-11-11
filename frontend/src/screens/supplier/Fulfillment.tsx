@@ -4,6 +4,7 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Button, Card, ChipPicker, Field, MONO, PageHeader, Screen, SubmitButton } from "@/components/ui";
 import Sheet from "@/components/Sheet";
+import { ROLE_FLOATING_TAB_BAR_CLEARANCE } from "@/components/RoleFloatingTabBar";
 import StockBadge from "@/components/StockBadge";
 import { FULFILLMENT_FLOW, FULFILLMENT_STATUS, FulfillmentStatusBadge, ItemStatusBadge } from "@/components/MaterialStatusBadge";
 import { useSupplier } from "@/context/SupplierContext";
@@ -42,7 +43,7 @@ export default function Fulfillment() {
   const counts = Object.fromEntries(Object.entries(FILTERS).map(([k, v]) => [k, v ? fulfillments.filter((o) => v.includes(o.status)).length : fulfillments.length]));
 
   return (
-    <Screen>
+    <Screen extraBottomPadding={ROLE_FLOATING_TAB_BAR_CLEARANCE}>
       <PageHeader title="Material Fulfillment" subtitle="Confirm what you can supply, at what price." badge="Supplier" />
 
       <ChipPicker

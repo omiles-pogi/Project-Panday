@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Badge, Button, Card, ChipPicker, MONO, PageHeader, Screen } from "@/components/ui";
 import Sheet from "@/components/Sheet";
+import { ROLE_FLOATING_TAB_BAR_CLEARANCE } from "@/components/RoleFloatingTabBar";
 import { RequestStatusBadge } from "@/components/MaterialStatusBadge";
 import MaterialPlanSection from "@/screens/materialRequests/MaterialPlanSection";
 import { createMaterialRequest, fetchMaterialRequests } from "@/services/api/materialRequests";
@@ -65,7 +66,7 @@ export default function RequestList({
   const shown = list.filter((r) => FILTERS[filter](r, viewer));
 
   return (
-    <Screen topInset={topInset}>
+    <Screen topInset={topInset} extraBottomPadding={viewer === "contractor" ? ROLE_FLOATING_TAB_BAR_CLEARANCE : 0}>
       <PageHeader
         title={viewer === "homeowner" ? "Material Approvals" : "Material Requests"}
         subtitle={

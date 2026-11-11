@@ -1,21 +1,14 @@
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import { Badge, Card, PageHeader, Screen, StatGrid, StatTile } from "@/components/ui";
+import { Badge, Card, PageHeader, ProgressBar, Screen, StatGrid, StatTile } from "@/components/ui";
+import { ROLE_FLOATING_TAB_BAR_CLEARANCE } from "@/components/RoleFloatingTabBar";
 import { fetchMyProjects } from "@/services/api/projects";
 import { useFocusedResource } from "@/hooks/useFocusedResource";
 import { useTheme } from "@/context/ThemeContext";
 import ProjectCalendar from "@/screens/timeline/ProjectCalendar";
 import { peso } from "@/utils/currency";
 import { formatDateTime, isOngoing, projectStatusMeta } from "@/utils/projectStatus";
-
-const QUICK_ACTIONS = [
-  { label: "Browse", icon: "list-outline", href: "/contractor/available" },
-  { label: "Projects", icon: "briefcase-outline", href: "/contractor/projects" },
-  { label: "Messages", icon: "chatbubbles-outline", href: "/contractor/messages" },
-  { label: "Requests", icon: "clipboard-outline", href: "/contractor/material-requests" },
-] as const;
 
 export default function Dashboard() {
   const { chrome } = useTheme();
@@ -24,7 +17,7 @@ export default function Dashboard() {
 
   if (!error && projects === null) {
     return (
-      <Screen>
+      <Screen extraBottomPadding={ROLE_FLOATING_TAB_BAR_CLEARANCE}>
         <View className="items-center py-12">
           <ActivityIndicator color="#f59e0b" />
         </View>
@@ -42,7 +35,7 @@ export default function Dashboard() {
     : 0;
 
   return (
-    <Screen>
+    <Screen extraBottomPadding={ROLE_FLOATING_TAB_BAR_CLEARANCE}>
       <PageHeader title="Dashboard" subtitle="Projects homeowners have added you to." />
 
       {error && <Text className="text-xs text-danger px-1">{error}</Text>}
@@ -59,20 +52,6 @@ export default function Dashboard() {
         <StatTile label="Avg. Progress" value={`${avgProgress}%`} color="#3b82f6" icon="trending-up-outline" />
       </StatGrid>
 
-      <View className="flex-row flex-wrap gap-2">
-        {QUICK_ACTIONS.map(({ label, icon, href }) => (
-          <Pressable
-            key={href}
-            onPress={() => router.push(href as never)}
-            className="items-center gap-1.5 py-3.5 rounded-2xl bg-card border border-border"
-            style={{ width: "23%" }}
-          >
-            <Ionicons name={icon} size={22} color="#f59e0b" />
-            <Text className="text-xs font-semibold text-muted-foreground">{label}</Text>
-          </Pressable>
-        ))}
-      </View>
-
       <View style={{ gap: 12 }}>
         <View className="flex-row items-center justify-between">
           <Text className="font-bold text-sm text-foreground">Active Projects</Text>
@@ -83,7 +62,7 @@ export default function Dashboard() {
 
         {active.length === 0 && (
           <Text className="text-xs text-muted-foreground px-1">
-            No active projects yet. Homeowners can invite you from Find Your Team, or tap &quot;Browse&quot; above
+            No active projects yet. Homeowners can invite you from Find Your Team, or tap &quot;Browse&quot; below
             to find projects looking for a contractor.
           </Text>
         )}
@@ -106,9 +85,7 @@ export default function Dashboard() {
                   <Badge label={peso(p.budget)} color="#9ca3af" />
                 </View>
               </View>
-              <View className="h-2 rounded-full overflow-hidden bg-muted">
-                <View className="h-full rounded-full bg-primary" style={{ width: `${p.overallProgressPct}%` }} />
-              </View>
+              <ProgressBar pct={p.overallProgressPct} color="#f59e0b" height={8} />
               {p.status === "pending_confirmation" ? (
                 <View className="mt-3">
                   <Badge label={projectStatusMeta(p.status).label} color={projectStatusMeta(p.status).color} />

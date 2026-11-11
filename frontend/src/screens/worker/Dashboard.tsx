@@ -1,21 +1,13 @@
 import { Pressable, Text, View, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import { Card, PageHeader, Screen, StatGrid, StatTile } from "@/components/ui";
+import { Card, PageHeader, ProgressBar, Screen, StatGrid, StatTile } from "@/components/ui";
+import { ROLE_FLOATING_TAB_BAR_CLEARANCE } from "@/components/RoleFloatingTabBar";
 import { useAuth } from "@/context/AuthContext";
 import { fetchMyProjects } from "@/services/api/projects";
 import { useFocusedResource } from "@/hooks/useFocusedResource";
 import { isOngoing } from "@/utils/projectStatus";
 import AttendanceSection from "@/screens/worker/AttendanceSection";
 import DailyLogSection from "@/screens/worker/DailyLogSection";
-import EarningsSection from "@/screens/worker/EarningsSection";
-
-const QUICK_ACTIONS = [
-  { label: "Assignments", icon: "briefcase-outline", href: "/worker/assignments" },
-  { label: "Browse", icon: "list-outline", href: "/worker/available" },
-  { label: "Messages", icon: "chatbubbles-outline", href: "/worker/messages" },
-  { label: "Profile", icon: "build-outline", href: "/worker/skills" },
-] as const;
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -23,7 +15,7 @@ export default function Dashboard() {
 
   if (!error && projects === null) {
     return (
-      <Screen>
+      <Screen extraBottomPadding={ROLE_FLOATING_TAB_BAR_CLEARANCE}>
         <View className="items-center py-12">
           <ActivityIndicator color="#f59e0b" />
         </View>
@@ -34,7 +26,7 @@ export default function Dashboard() {
   const active = projects?.filter((p) => isOngoing(p.status)) ?? [];
 
   return (
-    <Screen>
+    <Screen extraBottomPadding={ROLE_FLOATING_TAB_BAR_CLEARANCE}>
       <PageHeader title={`Good day, ${user?.name ?? "Worker"}`} subtitle="Projects homeowners have added you to." />
 
       {error && <Text className="text-xs text-danger px-1">{error}</Text>}
@@ -49,20 +41,6 @@ export default function Dashboard() {
         />
         <StatTile label="Completed" value={projects?.filter((p) => p.status === "completed").length ?? 0} color="#10b981" icon="checkmark-circle-outline" />
       </StatGrid>
-
-      <View className="flex-row flex-wrap gap-2">
-        {QUICK_ACTIONS.map(({ label, icon, href }) => (
-          <Pressable
-            key={href}
-            onPress={() => router.push(href as never)}
-            className="items-center gap-1.5 py-3.5 rounded-2xl bg-card border border-border"
-            style={{ width: "23%" }}
-          >
-            <Ionicons name={icon} size={22} color="#f59e0b" />
-            <Text className="text-xs font-semibold text-muted-foreground">{label}</Text>
-          </Pressable>
-        ))}
-      </View>
 
       <AttendanceSection />
 
@@ -97,17 +75,13 @@ export default function Dashboard() {
                 {p.ownerName}
                 {p.location ? ` · ${p.location}` : ""}
               </Text>
-              <View className="h-1.5 rounded-full overflow-hidden bg-background">
-                <View className="h-full rounded-full bg-primary" style={{ width: `${p.overallProgressPct}%` }} />
-              </View>
+              <ProgressBar pct={p.overallProgressPct} color="#f59e0b" height={6} />
             </Pressable>
           ))}
         </View>
       </Card>
 
       <DailyLogSection />
-
-      <EarningsSection />
     </Screen>
   );
 }

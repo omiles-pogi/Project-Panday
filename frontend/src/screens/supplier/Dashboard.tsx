@@ -1,19 +1,13 @@
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { router } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import { Badge, Button, Card, MONO, PageHeader, Screen, StatGrid, StatTile } from "@/components/ui";
+import { ROLE_FLOATING_TAB_BAR_CLEARANCE } from "@/components/RoleFloatingTabBar";
 import StockBadge from "@/components/StockBadge";
 import { useAuth } from "@/context/AuthContext";
 import { useSupplier } from "@/context/SupplierContext";
 import { CAT_COLORS } from "@/data/supplier";
 import { peso } from "@/utils/currency";
 import InventoryStats from "./InventoryStats";
-
-const QUICK_ACTIONS = [
-  { label: "Inventory", icon: "layers-outline", href: "/supplier/pricing" },
-  { label: "Fulfillment", icon: "cube-outline", href: "/supplier/fulfillment" },
-  { label: "More", icon: "ellipsis-horizontal", href: "/supplier/more" },
-] as const;
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -32,7 +26,7 @@ export default function Dashboard() {
   const goToInventory = () => router.push("/supplier/pricing" as never);
 
   return (
-    <Screen>
+    <Screen extraBottomPadding={ROLE_FLOATING_TAB_BAR_CLEARANCE}>
       <PageHeader title={`Hello, ${user?.name ?? "Supplier"}`} subtitle="Your supplier portal at a glance." />
 
       <InventoryStats products={products} onPress={goToInventory} />
@@ -77,20 +71,6 @@ export default function Dashboard() {
           <Button label="+ Add Material" onPress={() => router.push("/supplier/pricing?add=1" as never)} />
         </View>
       </Card>
-
-      <View className="flex-row flex-wrap gap-2">
-        {QUICK_ACTIONS.map(({ label, icon, href }) => (
-          <Pressable
-            key={href}
-            onPress={() => router.push(href as never)}
-            className="items-center gap-1.5 py-3.5 rounded-2xl bg-card border border-border"
-            style={{ width: "23%" }}
-          >
-            <Ionicons name={icon} size={22} color="#f59e0b" />
-            <Text className="text-xs font-semibold text-muted-foreground">{label}</Text>
-          </Pressable>
-        ))}
-      </View>
 
       <StatGrid>
         <StatTile label="Pending Requests" value={pendingRequests} color="#f59e0b" icon="mail-unread-outline" onPress={goToFulfillment} />
