@@ -191,7 +191,9 @@ export default function NotificationsPanel({ visible, onClose }: { visible: bool
 
       {notifications.length > 0 && (
         <View className="flex-row flex-wrap items-center justify-between" style={{ gap: 10 }}>
-          <Text className="text-xs font-medium text-muted-foreground">{unreadCount > 0 ? `${unreadCount} unread` : "All read"}</Text>
+          <Text className="text-xs font-medium" style={{ color: chrome.mutedForeground }}>
+            {unreadCount > 0 ? `${unreadCount} unread` : "All read"}
+          </Text>
           <View className="flex-row" style={{ gap: 8 }}>
             <ToolbarButton
               label="Mark all read"
@@ -214,7 +216,9 @@ export default function NotificationsPanel({ visible, onClose }: { visible: bool
       {!loading && notifications.length === 0 ? (
         <View className="items-center py-8">
           <Ionicons name="notifications-off-outline" size={28} color={chrome.mutedForeground} style={{ marginBottom: 8 }} />
-          <Text className="text-sm text-muted-foreground">No notifications yet.</Text>
+          <Text className="text-sm" style={{ color: chrome.mutedForeground }}>
+            No notifications yet.
+          </Text>
         </View>
       ) : null}
 
@@ -242,9 +246,15 @@ export default function NotificationsPanel({ visible, onClose }: { visible: bool
               <View className="flex-row items-start gap-2.5">
                 <Ionicons name={ICON[n.type]} size={16} color={n.isRead ? chrome.mutedForeground : "#f59e0b"} style={{ marginTop: 1 }} />
                 <View className="flex-1">
-                  <Text className="text-sm font-semibold text-foreground">{n.title}</Text>
-                  <Text className="text-xs mt-0.5 text-muted-foreground">{n.body}</Text>
-                  <Text className="text-xs mt-1 text-muted-foreground">{timeAgo(n.createdAt)}</Text>
+                  <Text className="text-sm font-semibold" style={{ color: chrome.foreground }}>
+                    {n.title}
+                  </Text>
+                  <Text className="text-xs mt-0.5" style={{ color: chrome.mutedForeground }}>
+                    {n.body}
+                  </Text>
+                  <Text className="text-xs mt-1" style={{ color: chrome.mutedForeground }}>
+                    {timeAgo(n.createdAt)}
+                  </Text>
                 </View>
                 {!n.isRead && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#f59e0b", marginTop: 4 }} />}
                 <Pressable
@@ -278,10 +288,12 @@ export default function NotificationsPanel({ visible, onClose }: { visible: bool
                   <Pressable
                     onPress={() => handleRespond(n, false)}
                     disabled={respondingId === n.id}
-                    className="flex-1 py-2 rounded-lg items-center bg-muted border border-border"
-                    style={{ opacity: respondingId === n.id ? 0.6 : 1 }}
+                    className="flex-1 py-2 rounded-lg items-center border"
+                    style={{ opacity: respondingId === n.id ? 0.6 : 1, backgroundColor: chrome.muted, borderColor: chrome.border }}
                   >
-                    <Text className="text-xs font-semibold text-muted-foreground">Reject</Text>
+                    <Text className="text-xs font-semibold" style={{ color: chrome.mutedForeground }}>
+                      Reject
+                    </Text>
                   </Pressable>
                 </View>
               )}

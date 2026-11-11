@@ -3,6 +3,7 @@ import { Text, View, Pressable, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Card, Field, PageHeader, Screen, SubmitButton } from "@/components/ui";
 import NameCard from "@/components/NameCard";
+import { ROLE_FLOATING_TAB_BAR_CLEARANCE } from "@/components/RoleFloatingTabBar";
 import { useAuth } from "@/context/AuthContext";
 import { fetchWorkerProfile, updateMyWorkerProfile } from "@/services/api/workers";
 
@@ -77,7 +78,7 @@ export default function Skills() {
 
   if (loading) {
     return (
-      <Screen>
+      <Screen extraBottomPadding={ROLE_FLOATING_TAB_BAR_CLEARANCE}>
         <View className="items-center justify-center py-12">
           <ActivityIndicator color="#f59e0b" />
         </View>
@@ -94,7 +95,7 @@ export default function Skills() {
     .toUpperCase();
 
   return (
-    <Screen>
+    <Screen extraBottomPadding={ROLE_FLOATING_TAB_BAR_CLEARANCE}>
       <PageHeader
         title="Skills & Profile"
         subtitle="This is what homeowners and contractors see when searching for workers."

@@ -8,7 +8,6 @@ use App\Models\Project;
 use App\Services\WorkerActivityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 class WorkerActivityController extends Controller
 {
@@ -21,20 +20,12 @@ class WorkerActivityController extends Controller
 
     public function checkIn(Request $request, Project $project): JsonResponse
     {
-        try {
-            return response()->json($this->activity->checkIn($project, $request->user()), 201);
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
+        return $this->attempt(fn () => $this->activity->checkIn($project, $request->user()), 201);
     }
 
     public function checkOut(Request $request, Project $project): JsonResponse
     {
-        try {
-            return response()->json($this->activity->checkOut($project, $request->user()));
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
+        return $this->attempt(fn () => $this->activity->checkOut($project, $request->user()));
     }
 
     public function workLogs(Request $request): JsonResponse
@@ -44,13 +35,11 @@ class WorkerActivityController extends Controller
 
     public function saveWorkLog(SaveWorkLogRequest $request, Project $project): JsonResponse
     {
-        try {
+        return $this->attempt(function () use ($request, $project) {
             $data = $request->validated();
 
-            return response()->json($this->activity->saveLog($project, $request->user(), $data['summary'], $data['log_date'] ?? null));
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
+            return $this->activity->saveLog($project, $request->user(), $data['summary'], $data['log_date'] ?? null);
+        });
     }
 
     public function earnings(Request $request): JsonResponse
@@ -60,10 +49,6 @@ class WorkerActivityController extends Controller
 
     public function team(Request $request, Project $project): JsonResponse
     {
-        try {
-            return response()->json($this->activity->teamActivity($project, $request->user()));
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
+        return $this->attempt(fn () => $this->activity->teamActivity($project, $request->user()));
     }
 }

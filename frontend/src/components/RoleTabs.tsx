@@ -1,7 +1,7 @@
-import { type ColorValue } from "react-native";
 import { Tabs } from "expo-router";
 import { DrawerToggleButton } from "expo-router/drawer";
-import { Ionicons } from "@expo/vector-icons";
+import type { Ionicons } from "@expo/vector-icons";
+import RoleFloatingTabBar from "@/components/RoleFloatingTabBar";
 import { useTheme } from "@/context/ThemeContext";
 
 export interface RoleTab {
@@ -9,40 +9,28 @@ export interface RoleTab {
   title: string;
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
-  /** Unread-style count shown on the tab icon; hidden when 0 or omitted. */
-  badge?: number;
   /** Kept as a route (reachable from the side menu) but not shown in the bottom bar. */
   hidden?: boolean;
 }
 
-// Shared bottom-tab shell for the contractor, supplier, and worker apps, styled like the
-// homeowner tabs: the header's left button opens the role's side menu (RoleDrawer).
+// Contractor/worker tabs use the shared floating bar; Supplier supplies its own drawer footer.
 export default function RoleTabs({ tabs, hideBar = false }: { tabs: RoleTab[]; hideBar?: boolean }) {
   const { chrome } = useTheme();
   return (
     <Tabs
-      tabBar={hideBar ? () => null : undefined}
+      tabBar={hideBar ? () => null : (props) => <RoleFloatingTabBar {...props} tabs={tabs} />}
       screenOptions={{
         headerStyle: { backgroundColor: chrome.card },
         headerTintColor: chrome.foreground,
         headerLeft: () => <DrawerToggleButton tintColor={chrome.mutedForeground} />,
-        tabBarActiveTintColor: "#f59e0b",
-        tabBarInactiveTintColor: chrome.mutedForeground,
-        tabBarStyle: { backgroundColor: chrome.card, borderTopColor: chrome.border },
       }}
     >
+      {/* `href: null` would also hide a tab from RoleFloatingTabBar's default linking, but it also
+          broke router.push() landing on that screen directly (it bounced back to the first tab
+          instead) — RoleFloatingTabBar already decides what's shown from `tabs[].hidden` on its
+          own, so Expo Router's own hiding is never needed here. */}
       {tabs.map((t) => (
-        <Tabs.Screen
-          key={t.name}
-          name={t.name}
-          options={{
-            title: t.title,
-            tabBarLabel: t.label,
-            tabBarIcon: ({ color }: { color: ColorValue }) => <Ionicons name={t.icon} size={20} color={color as string} />,
-            tabBarBadge: t.badge ? (t.badge > 99 ? "99+" : t.badge) : undefined,
-            ...(t.hidden ? { href: null } : {}),
-          }}
-        />
+        <Tabs.Screen key={t.name} name={t.name} options={{ title: t.title }} />
       ))}
     </Tabs>
   );

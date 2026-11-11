@@ -10,10 +10,8 @@ use App\Models\MaterialRequest;
 use App\Models\Project;
 use App\Models\SupplierFulfillment;
 use App\Services\MaterialRequestService;
-use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 /** Contractor + homeowner side of the material workflow (see MaterialRequestService). */
 class MaterialRequestController extends Controller
@@ -85,14 +83,5 @@ class MaterialRequestController extends Controller
     public function aiSuggestions(Request $request, Project $project): JsonResponse
     {
         return $this->attempt(fn () => $this->requests->aiSuggestions($project, $request->user()));
-    }
-
-    private function attempt(Closure $action, int $status = 200): JsonResponse
-    {
-        try {
-            return response()->json($action(), $status);
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
     }
 }

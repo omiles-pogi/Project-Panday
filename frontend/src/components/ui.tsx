@@ -1,11 +1,10 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Animated, {
   FadeIn,
   FadeInDown,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
-  withTiming,
 } from "react-native-reanimated";
 import KeyboardView from "./KeyboardView";
 import KeyboardAwareScrollView from "./KeyboardAwareScrollView";
@@ -13,6 +12,8 @@ import { CountUp } from "./charts";
 import { useTheme } from "@/context/ThemeContext";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
+  Animated as RNAnimated,
+  Easing,
   Pressable,
   Text,
   TextInput,
@@ -152,14 +153,26 @@ export function Badge({ label, color }: { label: string; color: string }) {
 }
 
 export function ProgressBar({ pct, color, height = 8 }: { pct: number; color: string; height?: number }) {
-  const width = useSharedValue(0);
+  const clamped = Math.max(0, Math.min(100, pct));
+  // react-native-reanimated's useSharedValue/useAnimatedStyle never actually repainted the fill on
+  // web (percentage or pixel width, neither one took) — React Native's own core Animated API is a
+  // different bridge entirely and is the long-established way to animate a width like this.
+  const [progress] = useState(() => new RNAnimated.Value(0));
+
   useEffect(() => {
-    width.value = withTiming(Math.max(0, Math.min(100, pct)), { duration: 700 });
-  }, [pct, width]);
-  const fill = useAnimatedStyle(() => ({ width: `${width.value}%` }));
+    RNAnimated.timing(progress, {
+      toValue: clamped,
+      duration: 900,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [clamped, progress]);
+
+  const width = progress.interpolate({ inputRange: [0, 100], outputRange: ["0%", "100%"], extrapolate: "clamp" });
+
   return (
     <View className="rounded-full overflow-hidden bg-muted" style={{ height }}>
-      <Animated.View className="h-full rounded-full" style={[{ backgroundColor: color }, fill]} />
+      <RNAnimated.View className="h-full rounded-full" style={{ backgroundColor: color, width }} />
     </View>
   );
 }

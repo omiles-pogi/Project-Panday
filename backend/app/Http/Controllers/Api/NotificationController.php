@@ -7,7 +7,6 @@ use App\Models\AppNotification;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 class NotificationController extends Controller
 {
@@ -25,13 +24,7 @@ class NotificationController extends Controller
 
     public function markRead(Request $request, AppNotification $notification): JsonResponse
     {
-        try {
-            $notification = $this->notifications->markRead($notification, $request->user());
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
-
-        return response()->json($this->notifications->present($notification));
+        return $this->attempt(fn () => $this->notifications->present($this->notifications->markRead($notification, $request->user())));
     }
 
     public function markAllRead(Request $request): JsonResponse
@@ -49,12 +42,10 @@ class NotificationController extends Controller
 
     public function destroy(Request $request, AppNotification $notification): JsonResponse
     {
-        try {
+        return $this->attempt(function () use ($request, $notification) {
             $this->notifications->delete($notification, $request->user());
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
 
-        return response()->json(null, 204);
+            return null;
+        }, 204);
     }
 }

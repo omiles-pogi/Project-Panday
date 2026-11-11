@@ -8,7 +8,6 @@ use App\Models\ProjectContractorRequest;
 use App\Services\ProjectService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 class ContractorRequestController extends Controller
 {
@@ -22,16 +21,10 @@ class ContractorRequestController extends Controller
 
     public function respond(RespondToRequestRequest $request, ProjectContractorRequest $contractorRequest): JsonResponse
     {
-        try {
-            $contractorRequest = $this->projects->respondToContractorRequest(
-                $contractorRequest,
-                $request->user(),
-                $request->validated('decision') === 'accept'
-            );
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
-
-        return response()->json($contractorRequest);
+        return $this->attempt(fn () => $this->projects->respondToContractorRequest(
+            $contractorRequest,
+            $request->user(),
+            $request->validated('decision') === 'accept'
+        ));
     }
 }

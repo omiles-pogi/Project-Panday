@@ -104,7 +104,7 @@ test('existing Inventory Add Material sheet opens, closes and reopens from the c
   }
 });
 
-test('shared navigator defaults stay unchanged; only Supplier opts into the single floating footer', () => {
+test('Contractor/Worker retain the incoming floating bar; only Supplier opts into its drawer footer', () => {
   function Drawer() {} Drawer.Screen = 'DrawerScreen';
   function Tabs() {} Tabs.Screen = 'TabScreen';
   const shared = {
@@ -112,13 +112,14 @@ test('shared navigator defaults stay unchanged; only Supplier opts into the sing
     'expo-router': { Tabs, router: {} }, 'expo-router/drawer': { Drawer, DrawerToggleButton: 'DrawerToggleButton' },
     '@expo/vector-icons': { Ionicons: 'Icon' }, '@/context/ThemeContext': { useTheme: () => ({ chrome: colors.lightChrome }) },
     '@/components/RoleDrawerContent': defaults('DrawerContent'),
+    '@/components/RoleFloatingTabBar': defaults('RoleFloatingTabBar'),
   };
   const RoleDrawer = load('src/components/RoleDrawer.tsx', shared).default;
   for (const role of ['contractor', 'worker']) assert.equal(RoleDrawer({ role, items: [], pages: [] }).type, Drawer);
   const wrapped = RoleDrawer({ role: 'supplier', items: [], pages: [], footer: jsx('Footer', {}) });
   assert.equal(wrapped.props.style.flex, 1); assert.equal(nodes(wrapped, Drawer).length, 1); assert.equal(nodes(wrapped, 'Footer').length, 1);
   const RoleTabs = load('src/components/RoleTabs.tsx', shared).default;
-  assert.equal(RoleTabs({ tabs: [] }).props.tabBar, undefined);
+  assert.equal(RoleTabs({ tabs: [] }).props.tabBar({}).type, 'RoleFloatingTabBar');
   assert.equal(RoleTabs({ tabs: [], hideBar: true }).props.tabBar(), null);
   const SupplierTabs = load('src/app/(app)/supplier/(tabs)/_layout.tsx', { 'react/jsx-runtime': runtime, '@/components/RoleTabs': defaults('RoleTabs') }).default;
   assert.equal(SupplierTabs().props.hideBar, true);

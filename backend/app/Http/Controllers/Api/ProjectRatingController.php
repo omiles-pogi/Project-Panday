@@ -8,7 +8,6 @@ use App\Models\Project;
 use App\Services\ProjectRatingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 class ProjectRatingController extends Controller
 {
@@ -16,19 +15,11 @@ class ProjectRatingController extends Controller
 
     public function show(Request $request, Project $project): JsonResponse
     {
-        try {
-            return response()->json($this->ratings->statusFor($project, $request->user()));
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
+        return $this->attempt(fn () => $this->ratings->statusFor($project, $request->user()));
     }
 
     public function store(RateProjectTeamMemberRequest $request, Project $project): JsonResponse
     {
-        try {
-            return response()->json($this->ratings->rate($project, $request->user(), $request->validated()), 201);
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
+        return $this->attempt(fn () => $this->ratings->rate($project, $request->user(), $request->validated()), 201);
     }
 }

@@ -7,10 +7,8 @@ use App\Http\Requests\ConfirmSupplierFulfillmentRequest;
 use App\Http\Requests\MaterialDecisionRequest;
 use App\Models\SupplierFulfillment;
 use App\Services\SupplierFulfillmentService;
-use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 /** Supplier side of the material workflow — every action is limited to the supplier's own fulfillments. */
 class SupplierFulfillmentController extends Controller
@@ -48,14 +46,5 @@ class SupplierFulfillmentController extends Controller
     public function decline(MaterialDecisionRequest $request, SupplierFulfillment $supplierOrder): JsonResponse
     {
         return $this->attempt(fn () => $this->fulfillments->reportUnavailable($supplierOrder, $request->user(), true, $request->validated('reason')));
-    }
-
-    private function attempt(Closure $action): JsonResponse
-    {
-        try {
-            return response()->json($action());
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
     }
 }

@@ -9,7 +9,6 @@ use App\Models\ProjectPhase;
 use App\Services\ProjectCompletionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 class ProjectCompletionController extends Controller
 {
@@ -22,7 +21,7 @@ class ProjectCompletionController extends Controller
             return response()->json(['error' => 'Phase does not belong to this project.'], 404);
         }
 
-        return $this->respond(fn () => $this->completion->checkAll($project, $phase, $request->user()));
+        return $this->attempt(fn () => $this->completion->checkAll($project, $phase, $request->user()));
     }
 
     public function uncheckAll(Request $request, Project $project, ProjectPhase $phase): JsonResponse
@@ -31,34 +30,22 @@ class ProjectCompletionController extends Controller
             return response()->json(['error' => 'Phase does not belong to this project.'], 404);
         }
 
-        return $this->respond(fn () => $this->completion->uncheckAll($project, $phase, $request->user()));
+        return $this->attempt(fn () => $this->completion->uncheckAll($project, $phase, $request->user()));
     }
 
     /** The contractor submits the finished project to the homeowner. */
     public function submit(Request $request, Project $project): JsonResponse
     {
-        return $this->respond(fn () => $this->completion->submit($project, $request->user()));
+        return $this->attempt(fn () => $this->completion->submit($project, $request->user()));
     }
 
     public function confirm(Request $request, Project $project): JsonResponse
     {
-        return $this->respond(fn () => $this->completion->confirm($project, $request->user()));
+        return $this->attempt(fn () => $this->completion->confirm($project, $request->user()));
     }
 
     public function requestCorrections(RequestProjectCorrectionsRequest $request, Project $project): JsonResponse
     {
-        return $this->respond(fn () => $this->completion->requestCorrections($project, $request->user(), $request->validated()['note']));
-    }
-
-    /**
-     * @param  callable(): array<string, mixed>  $action
-     */
-    private function respond(callable $action): JsonResponse
-    {
-        try {
-            return response()->json($action());
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
+        return $this->attempt(fn () => $this->completion->requestCorrections($project, $request->user(), $request->validated()['note']));
     }
 }

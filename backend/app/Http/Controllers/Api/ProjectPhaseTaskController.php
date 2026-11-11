@@ -11,7 +11,6 @@ use App\Models\ProjectPhaseTask;
 use App\Services\ProjectService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 class ProjectPhaseTaskController extends Controller
 {
@@ -23,13 +22,7 @@ class ProjectPhaseTaskController extends Controller
             return response()->json(['error' => 'Phase does not belong to this project.'], 404);
         }
 
-        try {
-            $task = $this->projects->addPhaseTask($phase, $request->user(), $request->validated('description'));
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
-
-        return response()->json($task, 201);
+        return $this->attempt(fn () => $this->projects->addPhaseTask($phase, $request->user(), $request->validated('description')), 201);
     }
 
     public function update(UpdatePhaseTaskRequest $request, Project $project, ProjectPhase $phase, ProjectPhaseTask $task): JsonResponse
@@ -38,13 +31,7 @@ class ProjectPhaseTaskController extends Controller
             return response()->json(['error' => 'Task does not belong to this phase.'], 404);
         }
 
-        try {
-            $task = $this->projects->updatePhaseTask($task, $request->user(), $request->validated('is_done'));
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
-
-        return response()->json($task);
+        return $this->attempt(fn () => $this->projects->updatePhaseTask($task, $request->user(), $request->validated('is_done')));
     }
 
     public function destroy(Request $request, Project $project, ProjectPhase $phase, ProjectPhaseTask $task): JsonResponse
@@ -53,12 +40,10 @@ class ProjectPhaseTaskController extends Controller
             return response()->json(['error' => 'Task does not belong to this phase.'], 404);
         }
 
-        try {
+        return $this->attempt(function () use ($request, $task) {
             $this->projects->deletePhaseTask($task, $request->user());
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
 
-        return response()->json(null, 204);
+            return null;
+        }, 204);
     }
 }

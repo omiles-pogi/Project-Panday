@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { CountUp } from "@/components/charts";
 import { Badge, Card, PageHeader, Screen } from "@/components/ui";
 import MessageButton from "@/components/MessageButton";
+import { ROLE_FLOATING_TAB_BAR_CLEARANCE } from "@/components/RoleFloatingTabBar";
 import ProjectChecklistCard from "@/components/ProjectChecklistCard";
 import ProjectStatusBanner from "@/components/ProjectStatusBanner";
 import TeamActivity from "@/components/TeamActivity";
@@ -191,7 +192,7 @@ export default function ProjectManagement() {
   const { data: projects, error, refresh: load } = useFocusedResource(fetchMyProjects);
 
   return (
-    <Screen>
+    <Screen extraBottomPadding={ROLE_FLOATING_TAB_BAR_CLEARANCE}>
       <PageHeader title="My Projects" subtitle="Projects you're assigned to. Check off work as it's completed." />
       <Pressable accessibilityRole="button" onPress={load} className="self-start flex-row items-center gap-1.5">
         <Ionicons name="refresh-outline" size={14} color="#f59e0b" />

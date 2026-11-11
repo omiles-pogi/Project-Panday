@@ -9,7 +9,6 @@ use App\Http\Requests\UpdateContractorProfileRequest;
 use App\Models\User;
 use App\Services\ContractorService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Validation\ValidationException;
 
 class ContractorController extends Controller
 {
@@ -43,12 +42,6 @@ class ContractorController extends Controller
 
     public function rate(RateContractorRequest $request, User $contractor): JsonResponse
     {
-        try {
-            $rating = $this->contractors->rate($contractor, $request->user(), $request->validated());
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
-
-        return response()->json($rating, 201);
+        return $this->attempt(fn () => $this->contractors->rate($contractor, $request->user(), $request->validated()), 201);
     }
 }

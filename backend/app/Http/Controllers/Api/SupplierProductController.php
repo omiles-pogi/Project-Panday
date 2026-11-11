@@ -9,7 +9,6 @@ use App\Models\SupplierProduct;
 use App\Services\SupplierProductService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 class SupplierProductController extends Controller
 {
@@ -29,23 +28,15 @@ class SupplierProductController extends Controller
 
     public function update(UpdateSupplierProductRequest $request, SupplierProduct $supplierProduct): JsonResponse
     {
-        try {
-            $product = $this->products->update($supplierProduct, $request->user(), $request->validated());
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
-
-        return response()->json($product);
+        return $this->attempt(fn () => $this->products->update($supplierProduct, $request->user(), $request->validated()));
     }
 
     public function destroy(Request $request, SupplierProduct $supplierProduct): JsonResponse
     {
-        try {
+        return $this->attempt(function () use ($request, $supplierProduct) {
             $this->products->delete($supplierProduct, $request->user());
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
 
-        return response()->json(null, 204);
+            return null;
+        }, 204);
     }
 }
