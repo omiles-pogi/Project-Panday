@@ -11,3 +11,14 @@ export function usesInlineSupplierHistoryHeader(pathname: string): boolean {
 export function usesInlineSupplierDashboardHeader(pathname: string): boolean {
   return pathname.replace(/\/$/, "") === "/supplier";
 }
+
+export function usesInlineContractorHeader(pathname: string): boolean {
+  const path = pathname.replace(/\/$/, "");
+  return path === "/contractor" || path === "/contractor/history" || path.startsWith("/contractor/history/");
+}
+
+export function usesInlineWorkerHeader(pathname: string): boolean {
+  const path = pathname.replace(/\/$/, "");
+  return ["/worker", "/worker/available", "/worker/assignments", "/worker/skills", "/worker/messages", "/worker/more", "/worker/history"].includes(path)
+    || path.startsWith("/worker/history/");
+}

@@ -15,7 +15,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import NotificationBell from "@/components/NotificationBell";
 import NotificationToast from "@/components/NotificationToast";
 import { useAppFonts } from "@/theme/fonts";
-import { usesInlineHomeownerHeader, usesInlineSupplierHistoryHeader, usesInlineSupplierDashboardHeader } from "@/utils/headerRoutes";
+import { usesInlineHomeownerHeader, usesInlineSupplierHistoryHeader, usesInlineSupplierDashboardHeader, usesInlineContractorHeader, usesInlineWorkerHeader } from "@/utils/headerRoutes";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -59,7 +59,9 @@ function ThemedChrome() {
   const pathname = usePathname();
   // Shared headers own these exact controls; keep one visible instance on each active route.
   const inlineHeader = (user?.role === "homeowner" && usesInlineHomeownerHeader(pathname)) ||
-    (user?.role === "supplier" && (usesInlineSupplierHistoryHeader(pathname) || usesInlineSupplierDashboardHeader(pathname)));
+    (user?.role === "supplier" && (usesInlineSupplierHistoryHeader(pathname) || usesInlineSupplierDashboardHeader(pathname))) ||
+    (user?.role === "contractor" && usesInlineContractorHeader(pathname)) ||
+    (user?.role === "worker" && usesInlineWorkerHeader(pathname));
   const showNotifications =
     user?.role === "homeowner" || user?.role === "worker" || user?.role === "contractor" || user?.role === "supplier";
   return (

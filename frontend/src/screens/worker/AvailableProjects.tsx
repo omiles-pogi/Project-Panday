@@ -3,7 +3,6 @@ import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Card, PageHeader, Screen } from "@/components/ui";
-import { ROLE_FLOATING_TAB_BAR_CLEARANCE } from "@/components/RoleFloatingTabBar";
 import { useTheme } from "@/context/ThemeContext";
 import { applyToProject, fetchAvailableProjects } from "@/services/api/projects";
 import type { AvailableProject } from "@/types/project";
@@ -153,7 +152,7 @@ export default function AvailableProjects() {
   };
 
   return (
-    <Screen extraBottomPadding={ROLE_FLOATING_TAB_BAR_CLEARANCE}>
+    <Screen topInset={false}>
       <PageHeader title="Available Projects" subtitle="Active projects homeowners have posted — apply to join one." />
 
       {error && <Text className="text-xs text-danger px-1">{error}</Text>}

@@ -4,14 +4,15 @@ import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Badge, Card, PageHeader, Screen } from "@/components/ui";
 import MessageButton from "@/components/MessageButton";
-import { ROLE_FLOATING_TAB_BAR_CLEARANCE } from "@/components/RoleFloatingTabBar";
 import { fetchMyProjects } from "@/services/api/projects";
 import type { MyProject } from "@/types/project";
 import { projectStatusMeta } from "@/utils/projectStatus";
 import { wageLine } from "@/utils/wage";
 import { useFocusedResource } from "@/hooks/useFocusedResource";
+import { useTheme } from "@/context/ThemeContext";
 
 function ProjectCard({ project, initiallyExpanded }: { project: MyProject; initiallyExpanded?: boolean }) {
+  const { chrome } = useTheme();
   const [expanded, setExpanded] = useState(!!initiallyExpanded);
 
   return (
@@ -81,7 +82,7 @@ function ProjectCard({ project, initiallyExpanded }: { project: MyProject; initi
                   <Text
                     className="flex-1 text-xs"
                     style={{
-                      color: task.isDone ? "#10b981" : "#e8eaed",
+                      color: task.isDone ? "#10b981" : chrome.foreground,
                       textDecorationLine: task.isDone ? "line-through" : "none",
                     }}
                   >
@@ -106,7 +107,7 @@ export default function Assignments() {
   const { data: projects, error, refresh } = useFocusedResource(fetchMyProjects);
 
   return (
-    <Screen extraBottomPadding={ROLE_FLOATING_TAB_BAR_CLEARANCE}>
+    <Screen topInset={false}>
       <PageHeader title="My Assignments" subtitle="Projects you're on, and how they're coming along." />
       <Pressable accessibilityRole="button" onPress={refresh} className="self-start flex-row items-center gap-1.5">
         <Ionicons name="refresh-outline" size={14} color="#f59e0b" />

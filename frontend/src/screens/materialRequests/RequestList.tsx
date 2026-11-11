@@ -40,15 +40,23 @@ export default function RequestList({
   viewer,
   detailPath,
   topInset = true,
+  createRequested = false,
+  onCreateHandled,
+  extraBottomPadding,
 }: {
   viewer: Viewer;
   detailPath: (id: number) => string;
   topInset?: boolean;
+  /** Contractor shortcuts open the existing chooser, without creating a project or bypassing approval. */
+  createRequested?: boolean;
+  onCreateHandled?: () => void;
+  extraBottomPadding?: number;
 }) {
   const [requests, setRequests] = useState<MaterialRequest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("Needs Action");
   const [creating, setCreating] = useState(false);
+
 
   const load = useCallback(() => {
     fetchMaterialRequests()
@@ -66,7 +74,7 @@ export default function RequestList({
   const shown = list.filter((r) => FILTERS[filter](r, viewer));
 
   return (
-    <Screen topInset={topInset} extraBottomPadding={viewer === "contractor" ? ROLE_FLOATING_TAB_BAR_CLEARANCE : 0}>
+    <Screen topInset={topInset} extraBottomPadding={extraBottomPadding ?? (viewer === "contractor" ? ROLE_FLOATING_TAB_BAR_CLEARANCE : 0)}>
       <PageHeader
         title={viewer === "homeowner" ? "Material Approvals" : "Material Requests"}
         subtitle={
@@ -116,7 +124,10 @@ export default function RequestList({
         shown.map((r) => <RequestCard key={r.id} request={r} viewer={viewer} onPress={() => router.push(detailPath(r.id) as never)} />)
       )}
 
-      {creating && <CreateSheet onClose={() => setCreating(false)} detailPath={detailPath} />}
+      {viewer === "contractor" && (creating || createRequested) && <CreateSheet onClose={() => {
+        setCreating(false);
+        if (createRequested) onCreateHandled?.();
+      }} detailPath={detailPath} />}
     </Screen>
   );
 }

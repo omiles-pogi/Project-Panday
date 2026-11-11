@@ -123,6 +123,15 @@ test('root renders one header-action set only on the intended homeowner routes, 
   }
   role = 'contractor'; pathname = '/homeowner/history';
   assert.equal(nodes(chrome(), 'ThemeToggle').length, 1);
+  for (pathname of ['/contractor', '/contractor/', '/contractor/history', '/contractor/history/7']) {
+    assert.equal(nodes(chrome(), 'NotificationBell').length, 0);
+    assert.equal(nodes(chrome(), 'ThemeToggle').length, 0);
+    assert.equal(nodes(chrome(), 'NotificationToast').length, 1);
+  }
+  for (pathname of ['/contractor/projects', '/contractor/profile', '/contractor/history-other']) {
+    assert.equal(nodes(chrome(), 'NotificationBell').length, 1);
+    assert.equal(nodes(chrome(), 'ThemeToggle').length, 1);
+  }
   role = 'supplier';
   for (pathname of ['/supplier', '/supplier/', '/supplier/history', '/supplier/history/7', '/supplier/history/7/items']) {
     assert.equal(nodes(chrome(), 'NotificationBell').length, 0);
@@ -130,6 +139,16 @@ test('root renders one header-action set only on the intended homeowner routes, 
     assert.equal(nodes(chrome(), 'NotificationToast').length, 1);
   }
   for (pathname of ['/supplier/history-other', '/supplier/pricing', '/supplier/profile', '/supplier/fulfillment']) {
+    assert.equal(nodes(chrome(), 'NotificationBell').length, 1);
+    assert.equal(nodes(chrome(), 'ThemeToggle').length, 1);
+  }
+  role = 'worker';
+  for (pathname of ['/worker', '/worker/', '/worker/available', '/worker/assignments', '/worker/history', '/worker/history/7', '/worker/skills', '/worker/messages', '/worker/more']) {
+    assert.equal(nodes(chrome(), 'NotificationBell').length, 0);
+    assert.equal(nodes(chrome(), 'ThemeToggle').length, 0);
+    assert.equal(nodes(chrome(), 'NotificationToast').length, 1);
+  }
+  for (pathname of ['/worker/history-other', '/worker/chat/7', '/worker/invite/7']) {
     assert.equal(nodes(chrome(), 'NotificationBell').length, 1);
     assert.equal(nodes(chrome(), 'ThemeToggle').length, 1);
   }

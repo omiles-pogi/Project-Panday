@@ -12,7 +12,7 @@ const ITEMS = [
 export default function More() {
   const { user, logout } = useAuth();
   return (
-    <Screen>
+    <Screen topInset={false}>
       <PageHeader title="More" subtitle={user ? `${user.name} · Skilled Worker` : undefined} />
       <MenuGrid items={ITEMS} onSelect={(href) => router.push(href as never)} />
       <TourButton />

@@ -4,6 +4,8 @@ use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ConstructionPlanController;
 use App\Http\Controllers\Api\ContractorController;
+use App\Http\Controllers\Api\ContractorHistoryController;
+use App\Http\Controllers\Api\WorkerHistoryController;
 use App\Http\Controllers\Api\ContractorRequestController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\DeviceTokenController;
@@ -69,6 +71,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/projects/{project}/contractors', [ProjectController::class, 'assignContractor']);
     Route::delete('/projects/{project}/contractors/{contractor}', [ProjectController::class, 'unassignContractor']);
     Route::get('/my-projects', [ProjectController::class, 'myProjects']);
+    Route::middleware('role:worker')->group(function () {
+        Route::get('/worker-history', [WorkerHistoryController::class, 'index']);
+        Route::get('/worker-history/{projectId}', [WorkerHistoryController::class, 'show'])->whereNumber('projectId');
+    });
+    Route::middleware('role:contractor')->group(function () {
+        Route::get('/contractor-history', [ContractorHistoryController::class, 'index']);
+        Route::get('/contractor-history/{projectId}', [ContractorHistoryController::class, 'show'])->whereNumber('projectId');
+    });
     Route::get('/projects/{project}/activity-log', [ProjectController::class, 'activityLog']);
     // Calendar monitoring (AI-proposed schedule vs actual progress): homeowner and contractor only.
     Route::get('/projects/{project}/timeline', [ProjectTimelineController::class, 'show'])->middleware('role:homeowner,contractor');

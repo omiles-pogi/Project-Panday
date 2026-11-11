@@ -36,7 +36,9 @@
         }
       ],
       "expo-sharing",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-secure-store",
+      "expo-splash-screen"
     ],
     "experiments": {
       "typedRoutes": true

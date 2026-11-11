@@ -17,12 +17,12 @@ function ProjectRow({ item, busy, onCheckIn, onCheckOut }: { item: TodayAttendan
       <View className="flex-row items-start justify-between">
         <View className="flex-1 pr-3" style={{ gap: 2 }}>
           <Text className="text-sm font-medium text-foreground">{item.projectTitle}</Text>
-          {item.location ? <Text className="text-xs text-muted-foreground">{item.location}</Text> : null}
+          {item.location ? <Text className="text-xs text-secondary-foreground">{item.location}</Text> : null}
         </View>
         <Badge label={meta.label} color={meta.color} />
       </View>
       {item.checkInAt ? (
-        <Text className="text-xs text-muted-foreground">
+        <Text className="text-xs text-secondary-foreground">
           In {clockTime(item.checkInAt)}
           {item.checkOutAt ? ` · Out ${clockTime(item.checkOutAt)} · ${hoursLabel(item.hours)}` : " · still on site"}
         </Text>
@@ -68,7 +68,7 @@ export default function AttendanceSection() {
       ) : null}
 
       {data && data.today.length === 0 ? (
-        <Text className="text-xs text-muted-foreground">{"You aren't on an active project yet, so there's nothing to check in to."}</Text>
+        <Text className="text-xs text-secondary-foreground">{"You aren't on an active project yet, so there's nothing to check in to."}</Text>
       ) : null}
 
       <View style={{ gap: 10 }}>
@@ -92,7 +92,7 @@ export default function AttendanceSection() {
                 <Text className="text-xs text-foreground">
                   {formatShortDate(day.date)} · {day.projectTitle ?? "Project"}
                 </Text>
-                <Text className="text-xs text-muted-foreground">
+                <Text className="text-xs text-secondary-foreground">
                   {day.checkInAt ? clockTime(day.checkInAt) : "—"} – {day.checkOutAt ? clockTime(day.checkOutAt) : "no check-out"}
                 </Text>
               </View>

@@ -1,9 +1,10 @@
 import RoleTabs from "@/components/RoleTabs";
 
-// Four main tabs, like the homeowner app; the rest stay reachable from the side menu.
+// Preserve all tab routes. The worker drawer owns the five-item footer, including History.
 export default function WorkerTabsLayout() {
   return (
     <RoleTabs
+      hideBar
       tabs={[
         { name: "index", title: "Worker Dashboard", label: "Home", icon: "home-outline" },
         { name: "available", title: "Available Projects", label: "Browse", icon: "list-outline" },

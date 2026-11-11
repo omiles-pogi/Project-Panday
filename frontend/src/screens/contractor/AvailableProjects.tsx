@@ -4,7 +4,6 @@ import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Card, Field, PageHeader, Screen, SubmitButton } from "@/components/ui";
 import Sheet from "@/components/Sheet";
-import { ROLE_FLOATING_TAB_BAR_CLEARANCE } from "@/components/RoleFloatingTabBar";
 import { useTheme } from "@/context/ThemeContext";
 import { applyAsContractor, fetchAvailableProjectsForContractors } from "@/services/api/projects";
 import type { AvailableProject } from "@/types/project";
@@ -193,7 +192,7 @@ export default function AvailableProjects() {
   };
 
   return (
-    <Screen extraBottomPadding={ROLE_FLOATING_TAB_BAR_CLEARANCE}>
+    <Screen>
       <PageHeader title="Available Projects" subtitle="Homeowner-posted projects you can apply to." />
 
       {error && <Text className="text-xs text-danger px-1">{error}</Text>}

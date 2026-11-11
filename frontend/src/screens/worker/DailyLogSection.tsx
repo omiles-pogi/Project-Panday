@@ -68,12 +68,12 @@ export default function DailyLogSection() {
       ) : null}
 
       {data && !current ? (
-        <Text className="text-xs text-muted-foreground">{"You aren't on an active project yet, so there's nothing to log."}</Text>
+        <Text className="text-xs text-secondary-foreground">{"You aren't on an active project yet, so there's nothing to log."}</Text>
       ) : null}
 
       {current ? (
         <View style={{ gap: 12 }}>
-          <Text className="text-xs text-muted-foreground">What you worked on today. Your homeowner and contractor can read it.</Text>
+          <Text className="text-xs text-secondary-foreground">What you worked on today. Your homeowner and contractor can read it.</Text>
           {projects.length > 1 ? (
             <ChipPicker label="Project" options={projects.map(label)} value={label(current)} onChange={pick} />
           ) : (
