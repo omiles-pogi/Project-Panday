@@ -10,7 +10,6 @@ use App\Models\User;
 use App\Services\WorkerService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 class WorkerController extends Controller
 {
@@ -45,12 +44,6 @@ class WorkerController extends Controller
 
     public function rate(RateWorkerRequest $request, User $worker): JsonResponse
     {
-        try {
-            $rating = $this->workers->rate($worker, $request->user(), $request->validated());
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
-
-        return response()->json($rating, 201);
+        return $this->attempt(fn () => $this->workers->rate($worker, $request->user(), $request->validated()), 201);
     }
 }

@@ -10,17 +10,19 @@ use Illuminate\Database\Seeder;
  *
  *   php artisan db:seed --class=SupplierSheetSeeder
  *
- * - Creates the supplier "Tripple R" (location: San Fabian) with every material on the sheet. The handwritten
- *   prices are used as written; a material left blank on the sheet is added too, but inactive with no
- *   price (it stays out of the buyer catalog until Tripple R prices it and turns it on).
- * - Gives every other approved supplier the whole list as well, so the blanks are priced by them. Their
- *   prices are deliberately different from Tripple R's and from each other's (priced from the sheet's
- *   figure, or from a market estimate where the sheet had none), so no one shop is always cheapest.
+ * - Creates the suppliers "Tripple R" and "SLD Hardware" (both San Fabian) with every material on the
+ *   sheet, each using its own handwritten prices as submitted. A material a supplier left blank is added
+ *   too, but inactive with no price (it stays out of the buyer catalog until that supplier prices it).
+ * - Gives every other approved supplier the whole list as well, so the remaining blanks are priced by
+ *   them. Their prices are deliberately different from Tripple R's and from each other's (priced from
+ *   the sheet's figure, or from a market estimate where the sheet had none), so no one shop is always
+ *   cheapest. SLD Hardware's prices don't feed this synthetic fill — it's a real submitted sheet, not a
+ *   market baseline.
  *
  * Materials that a supplier already lists under the older demo names (e.g. "Portland Cement Type I
- * (40kg)") are left exactly as they are rather than duplicated. Safe to re-run: Tripple R's priced
- * listings and the other suppliers' sheet listings are updated by name; anything already set up by
- * hand (a legacy listing, or a blank Tripple R has since priced) is never overwritten.
+ * (40kg)") are left exactly as they are rather than duplicated. Safe to re-run: both sheet suppliers'
+ * priced listings and the other suppliers' sheet listings are updated by name; anything already set up
+ * by hand (a legacy listing, or a blank a sheet supplier has since priced) is never overwritten.
  */
 class SupplierSheetSeeder extends Seeder
 {
@@ -31,6 +33,63 @@ class SupplierSheetSeeder extends Seeder
         'email' => 'trippler@panday.test',
         'business' => 'Tripple R',
         'location' => 'San Fabian',
+    ];
+
+    private const SLD_SUPPLIER = [
+        'name' => 'SLD Hardware',
+        'email' => 'sldhardware@panday.test',
+        'business' => 'SLD Hardware & Construction Supply',
+        'location' => 'San Fabian',
+    ];
+
+    /**
+     * SLD Hardware's own submitted prices, by the material name used in self::MATERIALS. A name missing
+     * here was left blank on SLD's sheet (added inactive with no price, same as a blank Tripple R price).
+     */
+    private const SLD_PRICES = [
+        'Portland Cement Type I (40kg)' => 215,
+        'Washed Sand' => 1700,
+        'Gravel 3/4"' => 1700,
+        'Ready-Mix Concrete' => 160,
+        'Deformed Steel Bar 10mm x 6m' => 215,
+        'Deformed Steel Bar 12mm x 6m' => 215,
+        'Deformed Steel Bar 16mm x 6m' => 350,
+        'Deformed Steel Bar 20mm x 6m' => 480,
+        'G.I. Tie Wire #16' => 90,
+        'Marine / Phenolic Plywood' => 560,
+        'Formwork Lumber' => 27,
+        'Common Wire Nails 3"' => 100,
+        'CHB 4" Hollow Block' => 14,
+        'Welded Wire Mesh' => 160,
+        'Masonry Nails' => 100,
+        'Steel Angle Bar' => 350,
+        'C-Purlin 2" x 3"' => 645,
+        'Tubular Steel 2" x 2"' => 300,
+        'Welding Rod' => 100,
+        'Flashing / Gutter' => 280,
+        'Metal Primer / Rust Inhibitor' => 160,
+        'Door Hinges' => 150,
+        'Door Lockset / Doorknob' => 270,
+        'Silicone Sealant' => 160,
+        'PVC Pressure Pipe 1/2"' => 90,
+        'PVC Elbow 1/2"' => 20,
+        'PVC Tee / Wye 1/2"' => 25,
+        'PVC Solvent Cement' => 100,
+        'PPR Water Pipe' => 220,
+        'Faucet / Tap' => 120,
+        'Floor Drain' => 120,
+        'THHN / THWN Copper Wire' => 45,
+        'Electrical Junction / Utility Box' => 65,
+        'Panel Board / Load Center' => 650,
+        'Circuit Breaker' => 480,
+        'Light Switch' => 225,
+        'Tile Grout' => 120,
+        'Skim Coat / Wall Putty' => 300,
+        'Sandpaper' => 25,
+        'Paint Thinner' => 65,
+        'Paint Brush' => 50,
+        'Paint Roller / Tray' => 65,
+        'Expansion / Anchor Bolts' => 50,
     ];
 
     private const SECTIONS = [
@@ -152,11 +211,14 @@ class SupplierSheetSeeder extends Seeder
     public function run(): void
     {
         $sheetSupplier = $this->sheetSupplier();
+        $sldSupplier = $this->sldSupplier();
         $others = User::query()->where('role', 'supplier')->where('approval_status', 'approved')
-            ->where('id', '!=', $sheetSupplier->id)->orderBy('id')->get();
+            ->whereNotIn('id', [$sheetSupplier->id, $sldSupplier->id])->orderBy('id')->get();
 
         $listed = 0;
         $blank = 0;
+        $sldListed = 0;
+        $sldBlank = 0;
         foreach (self::MATERIALS as $section => $rows) {
             foreach ($rows as [, $name, $category, $unit, $sheetPrice, $market, $legacy]) {
                 $description = self::SECTIONS[$section];
@@ -177,6 +239,22 @@ class SupplierSheetSeeder extends Seeder
                     $listed++;
                 }
 
+                $sldPrice = self::SLD_PRICES[$name] ?? null;
+                if ($sldPrice === null) {
+                    $sldSupplier->supplierProducts()->firstOrCreate(['name' => $name], [
+                        'category' => $category, 'unit' => $unit, 'price' => 0, 'stock' => 0,
+                        'min_order' => 1, 'description' => $description, 'is_active' => false,
+                    ]);
+                    $sldBlank++;
+                } else {
+                    $sldSupplier->supplierProducts()->updateOrCreate(['name' => $name], [
+                        'category' => $category, 'unit' => $unit, 'price' => $sldPrice,
+                        'stock' => $this->stock($sldSupplier->email, $name, $sldPrice),
+                        'min_order' => $this->minOrder($sldPrice), 'description' => $description, 'is_active' => true,
+                    ]);
+                    $sldListed++;
+                }
+
                 foreach ($others as $supplier) {
                     $price = $this->otherPrice($supplier->email, $name, $sheetPrice, $market ?? $sheetPrice);
                     $attributes = [
@@ -195,8 +273,29 @@ class SupplierSheetSeeder extends Seeder
             }
         }
 
-        $this->command?->info("Tripple R: {$listed} priced + {$blank} left blank (inactive); {$others->count()} other supplier(s) now list all ".($listed + $blank).' materials.');
+        $this->command?->info("Tripple R: {$listed} priced + {$blank} left blank (inactive); SLD Hardware: {$sldListed} priced + {$sldBlank} left blank (inactive); {$others->count()} other supplier(s) now list all ".($listed + $blank).' materials.');
         $this->command?->line('  Tripple R login: '.self::SHEET_SUPPLIER['email'].' / '.self::PASSWORD);
+        $this->command?->line('  SLD Hardware login: '.self::SLD_SUPPLIER['email'].' / '.self::PASSWORD);
+    }
+
+    private function sldSupplier(): User
+    {
+        $supplier = User::query()->updateOrCreate(
+            ['email' => self::SLD_SUPPLIER['email']],
+            [
+                'name' => self::SLD_SUPPLIER['name'],
+                'password' => self::PASSWORD,
+                'role' => 'supplier',
+                'approval_status' => 'approved',
+                'business_name' => self::SLD_SUPPLIER['business'],
+                'license_number' => 'DEMO-SUP-'.crc32(self::SLD_SUPPLIER['email']),
+            ],
+        );
+
+        // Only a starting point: once SLD Hardware edits its profile, a re-run leaves it alone.
+        $supplier->supplierProfile()->firstOrCreate([], ['location' => self::SLD_SUPPLIER['location']]);
+
+        return $supplier;
     }
 
     private function sheetSupplier(): User

@@ -8,7 +8,6 @@ use App\Services\ScheduleAlertService;
 use App\Services\TimelineService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 class ProjectTimelineController extends Controller
 {
@@ -19,15 +18,13 @@ class ProjectTimelineController extends Controller
 
     public function show(Request $request, Project $project): JsonResponse
     {
-        try {
+        return $this->attempt(function () use ($request, $project) {
             $timeline = $this->timeline->timelineFor($project, $request->user());
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
 
-        // Opening the calendar also checks for a slip, so alerts still go out where no scheduler runs.
-        $this->alerts->evaluate($project, $timeline['overall']);
+            // Opening the calendar also checks for a slip, so alerts still go out where no scheduler runs.
+            $this->alerts->evaluate($project, $timeline['overall']);
 
-        return response()->json($timeline);
+            return $timeline;
+        });
     }
 }

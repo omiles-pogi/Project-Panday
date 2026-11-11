@@ -11,7 +11,6 @@ use App\Models\Project;
 use App\Services\ChatService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 class ConversationController extends Controller
 {
@@ -33,61 +32,33 @@ class ConversationController extends Controller
         $contractorId = $request->validated('contractor_id');
         $workerId = $request->validated('worker_id');
 
-        try {
-            $conversation = $this->chat->start(
-                $request->user(),
-                $project,
-                $contractorId !== null ? (int) $contractorId : null,
-                $workerId !== null ? (int) $workerId : null,
-            );
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
-
-        return response()->json($conversation);
+        return $this->attempt(fn () => $this->chat->start(
+            $request->user(),
+            $project,
+            $contractorId !== null ? (int) $contractorId : null,
+            $workerId !== null ? (int) $workerId : null,
+        ));
     }
 
     public function show(Request $request, Conversation $conversation): JsonResponse
     {
-        try {
-            return response()->json($this->chat->show($conversation, $request->user()));
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
+        return $this->attempt(fn () => $this->chat->show($conversation, $request->user()));
     }
 
     public function messages(ListMessagesRequest $request, Conversation $conversation): JsonResponse
     {
         $afterId = $request->validated('after_id');
 
-        try {
-            $messages = $this->chat->messagesFor($conversation, $request->user(), $afterId !== null ? (int) $afterId : null);
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
-
-        return response()->json($messages);
+        return $this->attempt(fn () => $this->chat->messagesFor($conversation, $request->user(), $afterId !== null ? (int) $afterId : null));
     }
 
     public function send(SendMessageRequest $request, Conversation $conversation): JsonResponse
     {
-        try {
-            $message = $this->chat->send($conversation, $request->user(), $request->validated('body'), $request->validated('client_key'));
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
-
-        return response()->json($message, 201);
+        return $this->attempt(fn () => $this->chat->send($conversation, $request->user(), $request->validated('body'), $request->validated('client_key')), 201);
     }
 
     public function markRead(Request $request, Conversation $conversation): JsonResponse
     {
-        try {
-            $count = $this->chat->markRead($conversation, $request->user());
-        } catch (ValidationException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
-
-        return response()->json(['marked' => $count]);
+        return $this->attempt(fn () => ['marked' => $this->chat->markRead($conversation, $request->user())]);
     }
 }
