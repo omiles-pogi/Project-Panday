@@ -6,6 +6,7 @@ import type {
   CompletionState,
   DashboardData,
   DashboardProject,
+  FinalizedProject,
   HiringWageData,
   MyProject,
   PhaseTask,
@@ -16,13 +17,13 @@ import type {
 } from "@/types/project";
 import type { ContractorInviteDetails, ContractorRequest, WorkerInviteDetails, WorkerRequest } from "@/types/notification";
 
-export async function createProject(plan: ConstructionPlan): Promise<DashboardProject> {
+export async function createProject(plan: ConstructionPlan, finalizationKey?: string): Promise<FinalizedProject> {
   const data = await apiFetch("/api/projects", {
     method: "POST",
-    body: JSON.stringify(plan),
+    body: JSON.stringify({ ...plan, finalization_key: finalizationKey }),
   });
 
-  return data as DashboardProject;
+  return data as FinalizedProject;
 }
 
 /** "New Project": adds a "not started yet" placeholder to the homeowner's projects right away (or
@@ -34,12 +35,12 @@ export async function createDraftProject(): Promise<ProjectSummary & { created: 
 
 /** Approves an AI plan into a "not started yet" placeholder — fills it in and starts it, instead
  * of creating a second project (createProject) next to it. */
-export async function startProjectFromPlan(projectId: number, plan: ConstructionPlan): Promise<DashboardProject> {
+export async function startProjectFromPlan(projectId: number, plan: ConstructionPlan, finalizationKey?: string): Promise<FinalizedProject> {
   const data = await apiFetch(`/api/projects/${projectId}/plan`, {
     method: "POST",
-    body: JSON.stringify(plan),
+    body: JSON.stringify({ ...plan, finalization_key: finalizationKey }),
   });
-  return data as DashboardProject;
+  return data as FinalizedProject;
 }
 
 export async function fetchDashboard(projectId?: number): Promise<DashboardData> {

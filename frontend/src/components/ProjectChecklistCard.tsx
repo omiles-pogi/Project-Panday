@@ -12,6 +12,7 @@ import {
   uncheckAllTasks,
 } from "@/services/api/projects";
 import type { DashboardPhase, DashboardProject } from "@/types/project";
+import { useTheme } from "@/context/ThemeContext";
 
 function PhaseChecklist({
   projectId,
@@ -24,6 +25,9 @@ function PhaseChecklist({
   phase: DashboardPhase;
   onChanged: () => Promise<void>;
 }) {
+  const { chrome, mode } = useTheme();
+  const secondaryText = mode === "light" ? chrome.mutedForeground : chrome.secondaryForeground;
+  const completedColor = mode === "light" ? "#047857" : "#34d399";
   const [newTask, setNewTask] = useState("");
   const [adding, setAdding] = useState(false);
   const [busyTaskId, setBusyTaskId] = useState<number | null>(null);
@@ -120,9 +124,9 @@ function PhaseChecklist({
 
   return (
     <View className="px-3 py-3 rounded-xl bg-muted" style={{ gap: 8 }}>
-      <View className="flex-row justify-between items-center">
-        <Text className="text-xs font-semibold text-foreground">{phase.name}</Text>
-        <Text className="text-xs" style={{ color: phase.progressPct === 100 ? "#10b981" : "#f59e0b" }}>
+      <View className="flex-row justify-between items-center" style={{ gap: 8 }}>
+        <Text className="text-xs font-semibold" style={{ color: chrome.foreground, flex: 1 }}>{phase.name}</Text>
+        <Text className="text-xs" style={{ color: chrome.foreground }}>
           {phase.progressPct}%
         </Text>
       </View>
@@ -155,32 +159,35 @@ function PhaseChecklist({
           <Ionicons
             name={task.isDone ? "checkbox" : "square-outline"}
             size={18}
-            color={task.isDone ? "#10b981" : "#9ca3af"}
+            color={task.isDone ? completedColor : secondaryText}
           />
           <Text
             className="flex-1 text-xs"
-            style={{ color: task.isDone ? "#10b981" : "#e8eaed", textDecorationLine: task.isDone ? "line-through" : "none" }}
+            // Keep text readable on both surfaces; the green checkbox/strike still indicate completion.
+            style={{ color: chrome.foreground, textDecorationLine: task.isDone ? "line-through" : "none" }}
           >
             {task.description}
           </Text>
           {editable && (
             <Pressable onPress={(event) => { event.stopPropagation(); void removeTask(task.id); }} disabled={busy} accessibilityLabel={`Delete ${task.description}`} hitSlop={8}>
-              <Ionicons name="close" size={14} color="#6b7280" />
+              <Ionicons name="close" size={14} color={secondaryText} />
             </Pressable>
           )}
         </Pressable>
       ))}
 
-      {phase.tasks.length === 0 && <Text className="text-xs text-muted-foreground">No checklist items yet.</Text>}
+      {phase.tasks.length === 0 && <Text className="text-xs" style={{ color: secondaryText }}>No checklist items yet.</Text>}
 
       {editable && (
-        <View className="flex-row gap-2 mt-1">
+        <View className="flex-row gap-2 mt-1" style={{ alignItems: "center" }}>
           <View className="flex-1">
             <Field
               label=""
               value={newTask}
               onChangeText={setNewTask}
               placeholder="e.g. Land filling"
+              placeholderTextColor={secondaryText}
+              style={{ minHeight: 44, backgroundColor: chrome.card, borderColor: secondaryText }}
               onSubmitEditing={addTask}
               returnKeyType="done"
             />
@@ -188,8 +195,9 @@ function PhaseChecklist({
           <Pressable
             onPress={addTask}
             disabled={adding}
+            accessibilityRole="button" accessibilityLabel={`Add task to ${phase.name}`}
             className="px-3 items-center justify-center rounded-xl bg-primary"
-            style={{ opacity: adding ? 0.6 : 1 }}
+            style={{ opacity: adding ? 0.6 : 1, height: 44, flexShrink: 0 }}
           >
             <Ionicons name="add" size={16} color="#0f1117" />
           </Pressable>
@@ -213,6 +221,8 @@ export default function ProjectChecklistCard({
   project: DashboardProject;
   onChanged: () => Promise<void>;
 }) {
+  const { chrome, mode } = useTheme();
+  const secondaryText = mode === "light" ? chrome.mutedForeground : chrome.secondaryForeground;
   const [busyAction, setBusyAction] = useState<"finish" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const { ask, dialog } = useConfirmDialog();
@@ -252,12 +262,12 @@ export default function ProjectChecklistCard({
       <View className="px-3 py-3 rounded-xl bg-muted" style={{ gap: 8 }}>
         <View className="flex-row items-center justify-between">
           <Text className="text-xs font-bold text-foreground">Project progress</Text>
-          <Text className="text-xs font-bold" style={{ color: checklist.pct === 100 ? "#10b981" : "#f59e0b" }}>
+          <Text className="text-xs font-bold" style={{ color: chrome.foreground }}>
             {checklist.pct}%
           </Text>
         </View>
         <ProgressBar pct={checklist.pct} color={checklist.pct === 100 ? "#10b981" : "#f59e0b"} height={10} />
-        <Text className="text-xs text-muted-foreground">
+        <Text className="text-xs" style={{ color: secondaryText }}>
           {checklist.doneTasks} of {checklist.totalTasks} {checklist.totalTasks === 1 ? "task" : "tasks"} completed
         </Text>
       </View>
@@ -276,7 +286,7 @@ export default function ProjectChecklistCard({
             onPress={confirmFinish}
           />
           {!project.canSubmitCompletion && (
-            <Text className="text-xs text-muted-foreground">
+            <Text className="text-xs" style={{ color: secondaryText }}>
               {checklist.totalTasks === 0
                 ? "Add checklist tasks to be able to finish this project."
                 : "Complete every checklist task to enable this button."}

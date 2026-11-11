@@ -35,12 +35,24 @@ class ProjectService
      */
     public function createFromPlan(User $user, array $plan): Project
     {
-        $project = $user->projects()->create($this->planAttributes($plan) + [
-            'status' => 'active',
-            'started_at' => Carbon::today(),
-        ]);
+        return DB::transaction(function () use ($user, $plan) {
+            $key = $plan['finalization_key'] ?? null;
+            if ($key !== null) {
+                // Serialize this account's keyed creations; a retry after a lost response
+                // returns the original project and never duplicates its phases or tasks.
+                User::whereKey($user->id)->lockForUpdate()->firstOrFail();
+                $existing = $user->projects()->where('approved_plan->_finalizationKey', $key)->first();
+                if ($existing) {
+                    return $existing->load('phases.tasks');
+                }
+            }
+            $project = $user->projects()->create($this->planAttributes($plan) + [
+                'status' => 'active',
+                'started_at' => Carbon::today(),
+            ]);
 
-        return $this->addPlanPhases($project, $plan);
+            return $this->addPlanPhases($project, $plan);
+        });
     }
 
     /**
@@ -74,17 +86,21 @@ class ProjectService
     {
         $this->authorizeOwner($project, $actingUser);
 
-        if ($project->status !== 'not_started') {
-            throw ValidationException::withMessages(['project_id' => 'This project has already been started.']);
-        }
-
         return DB::transaction(function () use ($project, $plan) {
-            $project->update($this->planAttributes($plan) + [
+            $locked = Project::whereKey($project->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== 'not_started') {
+                $key = $plan['finalization_key'] ?? null;
+                if ($key !== null && ($locked->approved_plan['_finalizationKey'] ?? null) === $key) {
+                    return $locked->load('phases.tasks');
+                }
+                throw ValidationException::withMessages(['project_id' => 'This project has already been started.']);
+            }
+            $locked->update($this->planAttributes($plan) + [
                 'status' => 'active',
                 'started_at' => Carbon::today(),
             ]);
 
-            return $this->addPlanPhases($project, $plan);
+            return $this->addPlanPhases($locked, $plan);
         });
     }
 
@@ -94,6 +110,8 @@ class ProjectService
      */
     private function planAttributes(array $plan): array
     {
+        $finalizationKey = $plan['finalization_key'] ?? null;
+        unset($plan['finalization_key']);
         // A client can edit the proposal. Recheck supplier links at approval too, so a forged
         // supplier name or a now-unavailable listing never becomes a verified saved price.
         $plan = $this->plans->applySupplierData($plan, $this->plans->normalizeSelections($plan['supplierSelections'] ?? []));
@@ -115,6 +133,9 @@ class ProjectService
                 'location' => (string) ($plan['location'] ?? ''),
                 'totalEstimate' => $total,
                 'materials' => $materials ?? [],
+                // Server-owned workflow metadata reuses the existing JSON, not a second title field.
+                '_projectNamePending' => true,
+                '_finalizationKey' => $finalizationKey,
             ]),
         ];
     }
@@ -884,15 +905,21 @@ class ProjectService
     /**
      * @return array<string, mixed>
      */
-    public function dashboardFor(User $user, ?int $projectId = null): array
+    public function dashboardFor(User $user, ?int $projectId = null, bool $homeDashboardOnly = false): array
     {
         $query = $user->projects()->with(['phases.tasks', 'workers.workerProfile', 'contractors.contractorProfile']);
+        if ($homeDashboardOnly) {
+            $query->visibleOnHomeDashboard();
+        }
 
         // A specific project the homeowner picked from their list; falls back to the most
         // recently started one (and silently ignores an id that isn't theirs, same as "none").
-        $project = $projectId
-            ? $query->whereKey($projectId)->first()
-            : $query->latest('started_at')->latest('id')->first();
+        $project = $projectId ? (clone $query)->whereKey($projectId)->first() : null;
+        // Home can have a stale selected/deep-linked ID after removal on another session.
+        // Its fallback is another visible project, while other callers keep their existing behavior.
+        if (! $project && ($homeDashboardOnly || ! $projectId)) {
+            $project = $query->latest('started_at')->latest('id')->first();
+        }
 
         return [
             'project' => $project ? $this->present($project, $user) : null,
@@ -918,9 +945,14 @@ class ProjectService
      *
      * @return Collection<int, array<string, mixed>>
      */
-    public function listFor(User $user): Collection
+    public function listFor(User $user, bool $homeDashboardOnly = false): Collection
     {
-        return $user->projects()
+        $query = $user->projects();
+        if ($homeDashboardOnly) {
+            $query->visibleOnHomeDashboard();
+        }
+
+        return $query
             ->latest('started_at')
             ->latest('id')
             ->get()
@@ -1028,6 +1060,7 @@ class ProjectService
             'totalEstimate' => $adjustment['adjustedEstimate'] ?? $project->total_estimate,
             // What the AI estimated at the start, before anything was added to it.
             'planEstimate' => $project->total_estimate,
+            'projectNamePending' => $viewer && $project->isOwnedBy($viewer) ? $project->projectNamePending() : null,
             'estimateAdjustment' => $adjustment,
             'timelineValue' => $project->timeline_value,
             'timelineUnit' => $project->timeline_unit,

@@ -1,4 +1,5 @@
-import { Pressable } from "react-native";
+import type { ReactNode } from "react";
+import { Pressable, View } from "react-native";
 import { router } from "expo-router";
 import { Drawer, DrawerToggleButton } from "expo-router/drawer";
 import { Ionicons } from "@expo/vector-icons";
@@ -11,6 +12,8 @@ export interface RoleDrawerPage {
   title: string;
   /** Opened from a list (a chat, a request): shows Back instead of the menu button. */
   detail?: boolean;
+  /** Nested sections provide their own header without stacking a second drawer header. */
+  headerShown?: boolean;
 }
 
 /**
@@ -19,9 +22,9 @@ export interface RoleDrawerPage {
  * menu button — or Back, for detail pages. `backBehavior="history"` makes Back return to
  * whichever page the user came from.
  */
-export default function RoleDrawer({ role, items, pages }: { role: Role; items: DrawerNavItem[]; pages: RoleDrawerPage[] }) {
+export default function RoleDrawer({ role, items, pages, footer }: { role: Role; items: DrawerNavItem[]; pages: RoleDrawerPage[]; footer?: ReactNode }) {
   const { chrome } = useTheme();
-  return (
+  const drawer = (
     <Drawer
       backBehavior="history"
       screenOptions={{
@@ -39,6 +42,7 @@ export default function RoleDrawer({ role, items, pages }: { role: Role; items: 
           name={p.name}
           options={{
             title: p.title,
+            headerShown: p.headerShown ?? true,
             ...(p.detail
               ? {
                   headerLeft: () => (
@@ -58,4 +62,6 @@ export default function RoleDrawer({ role, items, pages }: { role: Role; items: 
       ))}
     </Drawer>
   );
+  // Only callers supplying a footer reserve its height; existing role layouts keep their original tree.
+  return footer ? <View style={{ flex: 1 }}><View style={{ flex: 1 }}>{drawer}</View>{footer}</View> : drawer;
 }

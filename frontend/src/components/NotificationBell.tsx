@@ -6,10 +6,8 @@ import { useTheme } from "@/context/ThemeContext";
 import { useNotifications } from "@/context/NotificationContext";
 import NotificationsPanel from "@/components/NotificationsPanel";
 
-/** Fixed to the top-right, just left of the light/dark toggle, on every homeowner/worker
- * screen (see NotificationProvider's role gate — it only polls for those two roles, so the
- * badge is otherwise always 0 and this never need render for other roles). */
-export default function NotificationBell() {
+/** The same notification action/panel in a header row, or its existing floating placement elsewhere. */
+export default function NotificationBell({ inline = false }: { inline?: boolean } = {}) {
   const { chrome } = useTheme();
   const { unreadCount, refresh, dismissPopup } = useNotifications();
   const insets = useSafeAreaInsets();
@@ -24,11 +22,11 @@ export default function NotificationBell() {
           setOpen(true);
         }}
         accessibilityLabel="Notifications"
+        accessibilityRole="button"
         hitSlop={8}
         style={{
-          position: "absolute",
-          top: insets.top + 8,
-          right: 60,
+          // Landing headers lay out this same control in their right-hand flex group.
+          ...(!inline && { position: "absolute" as const, top: insets.top + 8, right: 60, zIndex: 999 }),
           width: 36,
           height: 36,
           borderRadius: 18,
@@ -37,7 +35,6 @@ export default function NotificationBell() {
           backgroundColor: chrome.card,
           borderWidth: 1,
           borderColor: chrome.border,
-          zIndex: 999,
           elevation: 6,
           shadowColor: "#000",
           shadowOpacity: 0.2,

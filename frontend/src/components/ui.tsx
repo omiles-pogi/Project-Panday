@@ -255,7 +255,7 @@ export function Button({
 }) {
   const { chrome } = useTheme();
   const bg = variant === "primary" ? "#f59e0b" : variant === "tint" ? `${color}20` : chrome.muted;
-  const fg = variant === "primary" ? "#0f1117" : variant === "tint" ? color : chrome.mutedForeground;
+  const fg = variant === "primary" ? "#0f1117" : variant === "tint" ? color : chrome.foreground;
   return (
     <PressScale
       onPress={disabled ? undefined : onPress}
@@ -277,16 +277,18 @@ export function SubmitButton({ label, onPress }: { label: string; onPress: () =>
   );
 }
 
-export function Field({ label, multiline, ...props }: { label: string } & TextInputProps) {
+export function Field({ label, multiline, style, placeholderTextColor, ...props }: { label: string } & TextInputProps) {
+  const { chrome } = useTheme();
   return (
     <View>
-      <Text className="text-xs font-medium mb-2 text-secondary-foreground">{label}</Text>
+      {/* An unlabeled inline input must not reserve an empty label row above its adjacent action. */}
+      {!!label && <Text className="text-xs font-medium mb-2 text-secondary-foreground">{label}</Text>}
       <TextInput
         {...props}
         multiline={multiline}
-        placeholderTextColor="#4b5563"
+        placeholderTextColor={placeholderTextColor ?? chrome.secondaryForeground}
         className="px-3 py-2.5 rounded-xl text-sm bg-muted border border-border text-foreground"
-        style={multiline ? { minHeight: 90, textAlignVertical: "top" } : undefined}
+        style={[{ color: chrome.foreground }, multiline && { minHeight: 90, textAlignVertical: "top" }, style]}
       />
     </View>
   );

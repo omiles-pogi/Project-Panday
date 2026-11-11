@@ -37,3 +37,10 @@ test('chat and project invitation notifications retain their existing destinatio
   assert.equal(notificationRoute(notification('worker_invite', { requestId: 9 }), 'worker'), '/worker/invite/9');
   assert.equal(notificationRoute(notification('contractor_invite', { requestId: 9 }), 'contractor'), '/contractor/invite/9');
 });
+
+test('project updates explicitly open details while other roles retain their original project routes', () => {
+  const update = notification('project_completion_submitted', { projectId: 7 });
+  assert.equal(notificationRoute(update, 'homeowner'), '/homeowner/project-overview?projectId=7');
+  assert.equal(notificationRoute(update, 'contractor'), '/contractor/projects?projectId=7');
+  assert.equal(notificationRoute(update, 'worker'), '/worker/assignments?projectId=7');
+});

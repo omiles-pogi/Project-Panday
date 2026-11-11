@@ -3,10 +3,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/context/ThemeContext";
 
-/** Floating button, fixed to the top-right of the screen across the whole app (rendered once at
- * the root) — icon shows what tapping switches TO: a sun while dark (tap for light), a moon
- * while light (tap for dark). */
-export default function ThemeToggle() {
+/** Defaults to the existing root placement; landing headers opt into inline layout.
+ * The icon shows the mode tapping switches to: sun for light, moon for dark. */
+export default function ThemeToggle({ inline = false }: { inline?: boolean } = {}) {
   const { mode, chrome, toggleTheme } = useTheme();
   const insets = useSafeAreaInsets();
   const isDark = mode === "dark";
@@ -15,11 +14,10 @@ export default function ThemeToggle() {
     <Pressable
       onPress={toggleTheme}
       accessibilityLabel={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      accessibilityRole="button"
       hitSlop={8}
       style={{
-        position: "absolute",
-        top: insets.top + 8,
-        right: 16,
+        ...(!inline && { position: "absolute" as const, top: insets.top + 8, right: 16, zIndex: 999 }),
         width: 36,
         height: 36,
         borderRadius: 18,
@@ -28,7 +26,6 @@ export default function ThemeToggle() {
         backgroundColor: chrome.card,
         borderWidth: 1,
         borderColor: chrome.border,
-        zIndex: 999,
         elevation: 6,
         shadowColor: "#000",
         shadowOpacity: 0.2,

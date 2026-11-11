@@ -110,6 +110,8 @@ export interface CompletionState {
 export interface DashboardProject {
   id: number;
   title: string;
+  /** Owner-only: null/absent for legacy plans; true until the post-finalization name is saved. */
+  projectNamePending?: boolean | null;
   location: string | null;
   status: ProjectStatus;
   /** Absent only on the bare record returned when a project is first created. */
@@ -146,6 +148,19 @@ export interface DashboardProject {
 export interface DashboardStats {
   active: number;
   completed: number;
+}
+
+export interface FinalizedProject {
+  id: number;
+  title: string;
+  status: ProjectStatus;
+  projectNamePending: boolean | null;
+}
+
+export interface SavedProjectName {
+  projectId: number;
+  title: string;
+  pending: boolean;
 }
 
 export interface DashboardData {

@@ -32,7 +32,7 @@ export function notificationRoute(n: AppNotification, role: UserRole): string | 
 
   const projectId = n.data.projectId;
   if (!projectId) return null;
-  if (role === "homeowner") return `/homeowner?projectId=${projectId}`;
+  if (role === "homeowner") return `/homeowner/project-overview?projectId=${projectId}`;
   if (role === "worker") return `/worker/assignments?projectId=${projectId}`;
   if (role === "contractor") return `/contractor/projects?projectId=${projectId}`;
   return null;

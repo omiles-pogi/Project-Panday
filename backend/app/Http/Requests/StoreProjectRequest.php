@@ -20,6 +20,8 @@ class StoreProjectRequest extends FormRequest
     {
         return [
             'projectTitle' => ['required', 'string', 'max:255'],
+            // A persisted conversation retry key, scoped to the authenticated account.
+            'finalization_key' => ['sometimes', 'string', 'min:16', 'max:80', 'regex:/^[A-Za-z0-9_-]+$/D'],
             'location' => ['nullable', 'string', 'max:255'],
             'budget' => ['required', 'numeric', 'min:0'],
             'totalEstimate' => ['required', 'numeric', 'min:0'],

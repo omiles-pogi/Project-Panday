@@ -24,15 +24,13 @@ export default function Pricing() {
   const [stockFilter, setStockFilter] = useState("All");
   const [editing, setEditing] = useState<Product | null>(null);
   const [restocking, setRestocking] = useState<Product | null>(null);
-  const [addingManually, setAddingManually] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
 
-  // The Dashboard's "+ Add Material" lands here with ?add=1, which opens the form; closing it
+  // Dashboard and bottom navigation actions use ?add=1 to open the form; closing it
   // clears the param so returning to this (already-mounted) tab later doesn't reopen it.
   const { add } = useLocalSearchParams<{ add?: string }>();
-  const adding = addingManually || add === "1";
+  const adding = add === "1";
   const closeAdd = () => {
-    setAddingManually(false);
     if (add) router.setParams({ add: undefined });
   };
 
@@ -55,10 +53,6 @@ export default function Pricing() {
 
       <InventoryStats products={products} />
 
-      <View className="flex-row">
-        <Button label="+ Add Material" onPress={() => setAddingManually(true)} />
-      </View>
-
       <Field label="Search" value={search} onChangeText={setSearch} placeholder="Search your materials by name" />
       <ChipPicker label="Category" options={["All", ...CATEGORIES]} value={category} onChange={setCategory} />
       <ChipPicker label="Stock" options={STOCK_FILTERS} value={stockFilter} onChange={setStockFilter} />
@@ -79,7 +73,7 @@ export default function Pricing() {
       ) : products.length === 0 ? (
         <Card>
           <Text className="text-sm text-center text-muted-foreground py-6">
-            No materials listed yet. Tap “+ Add Material” to list your first item.
+            No materials listed yet. Tap “Add Product” in the bottom navigation to list your first item.
           </Text>
         </Card>
       ) : shown.length === 0 ? (

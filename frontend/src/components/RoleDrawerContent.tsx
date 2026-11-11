@@ -18,6 +18,8 @@ export interface DrawerNavItem {
   icon: keyof typeof Ionicons.glyphMap;
   /** Shows the unread chat count next to this item. */
   chatBadge?: boolean;
+  /** Keep a section highlighted while its nested read-only detail screen is open. */
+  matchChildren?: boolean;
 }
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -76,7 +78,7 @@ export default function RoleDrawerContent({
 
       <ScrollView className="flex-1 px-3 py-3">
         {items.map((item) => {
-          const active = pathname === item.href;
+          const active = pathname === item.href || (item.matchChildren && pathname.startsWith(`${item.href}/`));
           return (
             <Pressable
               key={item.href}

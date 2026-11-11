@@ -1,9 +1,10 @@
 import RoleTabs from "@/components/RoleTabs";
 
-// Four main tabs, like the homeowner app; sign-out and the tour live in the side menu.
+// Keep all existing routes; the supplier drawer supplies one floating footer for these and its secondary pages.
 export default function SupplierTabsLayout() {
   return (
     <RoleTabs
+      hideBar
       tabs={[
         { name: "index", title: "Supplier Dashboard", label: "Home", icon: "home-outline" },
         { name: "pricing", title: "Inventory", label: "Inventory", icon: "layers-outline" },

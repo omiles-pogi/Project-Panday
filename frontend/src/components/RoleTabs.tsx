@@ -17,10 +17,11 @@ export interface RoleTab {
 
 // Shared bottom-tab shell for the contractor, supplier, and worker apps, styled like the
 // homeowner tabs: the header's left button opens the role's side menu (RoleDrawer).
-export default function RoleTabs({ tabs }: { tabs: RoleTab[] }) {
+export default function RoleTabs({ tabs, hideBar = false }: { tabs: RoleTab[]; hideBar?: boolean }) {
   const { chrome } = useTheme();
   return (
     <Tabs
+      tabBar={hideBar ? () => null : undefined}
       screenOptions={{
         headerStyle: { backgroundColor: chrome.card },
         headerTintColor: chrome.foreground,

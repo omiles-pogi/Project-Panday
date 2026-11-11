@@ -24,7 +24,7 @@ const LABEL: Record<string, string> = {
 /** One in-flow shell reserves the entire floating silhouette, keeping screen controls clear. */
 export default function FloatingTabBar({ state, descriptors, emitter, navigateToTab, insets }: BottomTabBarProps) {
   const { chrome, mode } = useTheme();
-  const { openMostRecent, ready } = usePlan();
+  const { ready } = usePlan();
   const { width } = useWindowDimensions();
   const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
   const focusedRoute = state.routes[state.index];
@@ -40,10 +40,10 @@ export default function FloatingTabBar({ state, descriptors, emitter, navigateTo
   // AI conversation. Keyboard visibility never makes this bar reappear inside chat.
   if (focusedRoute?.name === AI_ROUTE) return null;
 
-  const press = (route: BottomTabBarProps["state"]["routes"][number], ai = false) => {
+  const press = (route: BottomTabBarProps["state"]["routes"][number]) => {
     const event = emitter.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
     if (event.defaultPrevented) return;
-    if (ai) openMostRecent();
+    // AI opens the conversation already selected in PlanContext; never substitute global recency.
     // Retain the navigator's own route keys, parameters, history and tab-press behavior.
     if (focusedRoute?.key !== route.key) navigateToTab(route.key);
   };
@@ -78,7 +78,7 @@ export default function FloatingTabBar({ state, descriptors, emitter, navigateTo
           <View style={styles.side}>{LEFT.map(regular)}</View>
           <View style={[styles.center, { width: centerWidth }]}>
             {ai && <AiButton size={circleSize} ringColor={chrome.card} color={inactiveColor} fontSize={fontSize}
-              disabled={!ready} onPress={() => press(ai, true)} onLongPress={() => longPress(ai.key)} />}
+              disabled={!ready} onPress={() => press(ai)} onLongPress={() => longPress(ai.key)} />}
           </View>
           <View style={styles.side}>{RIGHT.map(regular)}</View>
         </View>
@@ -97,7 +97,7 @@ function AiButton({ size, ringColor, color, fontSize, disabled, onPress, onLongP
   }).start();
   return (
     // The hit target includes the raised circle, not just the portion inside the pill.
-    <Pressable accessibilityRole="button" accessibilityLabel="AI Construction Planner, resume latest conversation"
+    <Pressable accessibilityRole="button" accessibilityLabel="AI Construction Planner, selected project conversation"
       accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} onLongPress={onLongPress}
       onPressIn={() => animate(true)} onPressOut={() => animate(false)} style={styles.aiItem}>
       <Animated.View pointerEvents="none" style={[styles.circle, { width: size, height: size, borderRadius: size / 2, transform: [{ scale }] }]}>

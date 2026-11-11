@@ -15,10 +15,14 @@ use App\Http\Controllers\Api\MaterialRequestController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProjectCompletionController;
 use App\Http\Controllers\Api\ProjectController;
+use App\Http\Controllers\Api\ProjectDashboardController;
+use App\Http\Controllers\Api\ProjectHistoryController;
+use App\Http\Controllers\Api\ProjectNamingController;
 use App\Http\Controllers\Api\ProjectPhaseTaskController;
 use App\Http\Controllers\Api\ProjectRatingController;
 use App\Http\Controllers\Api\ProjectTimelineController;
 use App\Http\Controllers\Api\SupplierFulfillmentController;
+use App\Http\Controllers\Api\SupplierHistoryController;
 use App\Http\Controllers\Api\SupplierProductController;
 use App\Http\Controllers\Api\SupplierProfileController;
 use App\Http\Controllers\Api\WorkerActivityController;
@@ -44,6 +48,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/projects/draft', [ProjectController::class, 'storeDraft'])->middleware('role:homeowner');
     Route::post('/projects/{project}/plan', [ProjectController::class, 'activate'])->middleware('role:homeowner');
     Route::get('/projects', [ProjectController::class, 'index']);
+    Route::middleware('role:homeowner')->group(function () {
+        Route::get('/project-history', [ProjectHistoryController::class, 'index']);
+        Route::get('/project-history/{projectId}', [ProjectHistoryController::class, 'show'])->whereNumber('projectId');
+        Route::patch('/projects/{project}/name', [ProjectNamingController::class, 'update'])->whereNumber('project');
+        Route::patch('/projects/{project}/hide-from-dashboard', [ProjectDashboardController::class, 'hide'])->whereNumber('project');
+        Route::get('/home-dashboard', [ProjectDashboardController::class, 'overview']);
+    });
     Route::get('/projects/available', [ProjectController::class, 'available']);
     Route::get('/projects/available-for-contractors', [ProjectController::class, 'availableForContractors']);
     Route::delete('/projects/{project}', [ProjectController::class, 'destroy']);
@@ -179,6 +190,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/supplier-fulfillments/{supplierOrder}/decline-prices', [MaterialRequestController::class, 'declinePrices']);
     });
     Route::middleware('role:supplier')->group(function () {
+        Route::get('/supplier-history', [SupplierHistoryController::class, 'index']);
+        Route::get('/supplier-history/{projectId}', [SupplierHistoryController::class, 'show'])->whereNumber('projectId');
         Route::get('/supplier-fulfillments', [SupplierFulfillmentController::class, 'index']);
         Route::get('/supplier-fulfillments/{supplierOrder}', [SupplierFulfillmentController::class, 'show']);
         Route::post('/supplier-fulfillments/{supplierOrder}/confirm', [SupplierFulfillmentController::class, 'confirm']);

@@ -4,6 +4,9 @@ import { DrawerToggleButton } from "expo-router/drawer";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/context/ThemeContext";
 import FloatingTabBar from "@/components/FloatingTabBar";
+import HomeDashboardTitle from "@/components/HomeDashboardTitle";
+import HomeownerHeader from "@/components/HomeownerHeader";
+import PlannerTitle from "@/components/PlannerTitle";
 
 const TAB_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   index: "home-outline",
@@ -48,7 +51,9 @@ export default function HomeownerTabsLayout() {
     >
       <Tabs.Screen
         name="index"
-        options={{ title: TAB_TITLE.index, tabBarIcon: tabIcon("index"), tabBarLabel: TAB_TITLE.index }}
+        options={{ title: TAB_TITLE.index, tabBarIcon: tabIcon("index"), tabBarLabel: TAB_TITLE.index,
+          header: () => <HomeownerHeader title={<HomeDashboardTitle />} />,
+        }}
       />
       <Tabs.Screen
         name="progress"
@@ -58,6 +63,8 @@ export default function HomeownerTabsLayout() {
         name="project-chat"
         options={{
           title: "AI Construction Planner",
+          // Reuse the same safe-area flex row as Home/History, including its inline actions.
+          header: () => <HomeownerHeader title={<PlannerTitle />} />,
           tabBarIcon: tabIcon("project-chat"),
           tabBarLabel: TAB_TITLE["project-chat"],
           // FloatingTabBar removes itself for this entire route, with or without a keyboard.

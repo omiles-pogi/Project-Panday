@@ -24,6 +24,9 @@ logs/
 # Database exports — contain real user data (names, emails, hashed passwords).
 /backups/
 
+# Local database dump: contains account and authentication data.
+/backend/database/buildai_seed.sql
+
 # Platform-managed agentplat state, not project source. In the
 # client-initiated single-repo workspace layout (make's `Path: "."` spec) the
 # repo root IS the workspace root, so these land inside this repo rather than

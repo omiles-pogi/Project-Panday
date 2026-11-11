@@ -594,7 +594,7 @@ export default function FindWorkers() {
                 <SkillTag key={skill} skill={skill} onRemove={() => setSkills((prev) => prev.filter((s) => s !== skill))} />
               ))}
             </View>
-            <View className="flex-row gap-2">
+            <View className="flex-row gap-2" style={{ alignItems: "center" }}>
               <View className="flex-1">
                 <Field
                   label=""
@@ -603,9 +603,12 @@ export default function FindWorkers() {
                   placeholder={mode === "workers" ? "e.g. Concrete Work" : "e.g. Project Management"}
                   onSubmitEditing={addSkill}
                   returnKeyType="done"
+                  style={{ minHeight: 44 }}
                 />
               </View>
-              <Pressable onPress={addSkill} className="px-4 items-center justify-center rounded-xl bg-primary">
+              <Pressable onPress={addSkill} accessibilityRole="button" accessibilityLabel={mode === "workers" ? "Add skill" : "Add service"}
+                className="items-center justify-center rounded-xl bg-primary"
+                style={{ width: 44, height: 44, flexShrink: 0, alignSelf: "center" }}>
                 <Ionicons name="add" size={18} color="#0f1117" />
               </Pressable>
             </View>

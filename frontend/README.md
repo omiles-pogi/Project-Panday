@@ -70,11 +70,28 @@ php artisan migrate
 Every screen runs on the real backend — there is no sample-data screen left in the app.
 
 - **Homeowner** — AI planner chat (`ProjectChat` → `PlanContext` → `/api/ai/plan`) that builds a
-  timeline, budget and materials, with a supplier picker per category; project dashboard with "not
-  started yet" projects and the project calendar (AI-proposed schedule vs actual progress); Progress,
+  timeline, budget and materials, with a supplier picker per category; Home landing dashboard with a
+  bundled house banner, actual ongoing projects and recorded recent activity (`GET /api/home-dashboard`).
+  Home preserves the selected project's context. Explicit project links open the retained Project Overview
+  (`/homeowner/project-overview?projectId=...`) with its project calendar (AI-proposed schedule vs actual progress); Progress,
   Budget Monitor (with the team on site, and the plan and budget as a PDF), Find Your Team, Material
-  Approvals, Supplier Catalog, Messages, and a
-  private Profile (location, contact number, project counts).
+  Approvals, Supplier Catalog, Messages, History (completed-project cards with read-only details), and a
+  private Profile (location, contact number, project counts). After plan finalization, an in-chat naming
+  step saves the project title for the associated team, supplier fulfillments, and completed History records.
+  Completed project chips in Project Overview offer **Remove from Dashboard**: the project stays in History and remains available
+  to its team and suppliers. This uses the backend's additive dashboard-visibility migration.
+  Home's banner and empty-state actions share the existing New Project confirmation/draft-resumption workflow.
+  Only `active` projects appear in Home's ongoing section; planning and pending completion review retain their
+  existing lifecycle. Recent Activity shows up to eight recorded creation/completion, team-membership, and
+  checklist events; missing timestamps are omitted. No separate AI-generation event or project photos are stored.
+  Home and History use one safe-area flex header with the existing drawer, notification panel, and theme action.
+  History has a Completed Projects banner, owner-only completion-date-ordered cards, and no statistics, search,
+  filter chips, or floating tab bar. Its bottom spacing includes only the system safe area and normal padding.
+  The center AI action opens the currently selected project's conversation, never a globally recent chat.
+  The selected ID survives app restarts. Each account's messages, plan, approval stage, title, and retry key
+  remain keyed by project ID in the existing on-device AsyncStorage; uncreated drafts use unique keys and
+  move to their saved project only on finalization. These histories are local to this device, not server-synced.
+  The planner header identifies the selected project, and its existing recent-project chooser can switch chats.
 - **Contractor** — browse and apply to projects, My Projects (the checklist, with Check All / Uncheck All on each phase and
   "Mark Project as Finished" at the bottom, which sends it to the homeowner to confirm or send back; plus the team's
   attendance and daily logs), a dashboard with each project's calendar, Material Requests (draft → homeowner approval → supplier
@@ -82,8 +99,14 @@ Every screen runs on the real backend — there is no sample-data screen left in
 - **Worker** — a dashboard that holds Attendance (check in / out), the Daily Work Log and Earnings (days worked ×
   day rate) next to the assignments, plus browse and apply to projects, skills profile, Messages.
 - **Supplier** — dashboard, inventory (listings and stock), material orders (confirm / decline / deliver),
-  and a shop Profile (location, contact number,
+  History (actual received supplies grouped by homeowner project, read-only project details and supplied-item
+  breakdowns), and a shop Profile (location, contact number,
   about — shown to buyers on the catalog).
+  History is in the existing drawer at `/supplier/history`; its detail/item routes preserve the current
+  supplier tabs and use no transaction-status filter chips. Dates group by the device's local calendar day.
+  The read-only `/api/supplier-history` endpoints use final line-price snapshots, not current inventory prices.
+  Each received line counts once; repeated materials on different receipts remain separate. Unknown legacy
+  receipt dates/final prices stay unknown. History does not require the construction project to be completed.
 
 **PDF export** is built on the phone (`src/utils/pdf.ts`, `expo-print` + `expo-sharing`) and works in Expo Go.
 

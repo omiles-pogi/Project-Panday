@@ -25,7 +25,7 @@ class ProjectController extends Controller
     {
         $project = $this->projects->createFromPlan($request->user(), $request->validated());
 
-        return response()->json($project, 201);
+        return response()->json($project->toArray() + ['projectNamePending' => $project->projectNamePending()], $project->wasRecentlyCreated ? 201 : 200);
     }
 
     /** "New Project": adds a "not started yet" placeholder (or returns the one already waiting). */
@@ -54,14 +54,14 @@ class ProjectController extends Controller
             return response()->json(['error' => $e->getMessage()], 422);
         }
 
-        return response()->json($project);
+        return response()->json($project->toArray() + ['projectNamePending' => $project->projectNamePending()]);
     }
 
     public function dashboard(Request $request): JsonResponse
     {
         $projectId = $request->query('project_id');
 
-        return response()->json($this->projects->dashboardFor($request->user(), $projectId ? (int) $projectId : null));
+        return response()->json($this->projects->dashboardFor($request->user(), $projectId ? (int) $projectId : null, $request->boolean('dashboard_only')));
     }
 
     /** Adds to the homeowner's budget — for when the estimate has gone past it. */
@@ -78,7 +78,7 @@ class ProjectController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        return response()->json($this->projects->listFor($request->user()));
+        return response()->json($this->projects->listFor($request->user(), $request->boolean('dashboard_only')));
     }
 
     public function available(Request $request): JsonResponse

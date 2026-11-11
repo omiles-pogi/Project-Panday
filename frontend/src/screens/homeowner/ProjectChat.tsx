@@ -30,6 +30,7 @@ import ExportPdfButton from "@/components/ExportPdfButton";
 import { planPdfHtml, sharePdf } from "@/utils/pdf";
 import { timeAgo } from "@/utils/chatTime";
 import * as Clipboard from "expo-clipboard";
+import ProjectNamePrompt from "@/components/ProjectNamePrompt";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -479,7 +480,7 @@ const STAGE_TEXT: Record<ResolvedStage, (p: ConstructionPlan) => string> = {
       : `Budget breakdown ready. Your budget of ${yours} is below my ${estimate} estimate — you may want to adjust the scope or the budget.`;
   },
   materials: () => "Material estimates below. Linked items use saved supplier prices; other prices and all proposed quantities are estimates.",
-  summary: (p) => `All sections approved. Your construction plan for ${p.projectTitle} is ready — next, find contractors who'll receive it.`,
+  summary: (p) => `All sections approved. Your construction plan for ${p.projectTitle} has been finalized.`,
 };
 
 const STAGE_ORDER: ResolvedStage[] = ["plan", "budget", "materials", "summary"];
@@ -612,11 +613,13 @@ export default function ProjectChat() {
     ready,
     activeProjectKey,
     restoredVersion,
-    resumeLatestRequested,
     selectProject,
     linkToProject,
     send,
     updatePlan,
+    getFinalizationKey,
+    projectNaming,
+    syncProjectNaming,
   } = usePlan();
   const [editorTab, setEditorTab] = useState<PlanEditorTab | null>(null);
   // The planner has no bottom bar. Preserve its single existing keyboard animation for
@@ -632,6 +635,7 @@ export default function ProjectChat() {
   const [recentProjects, setRecentProjects] = useState<ProjectSummary[]>([]);
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const operationRef = useRef(0);
+  const finalizationInFlight = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -667,6 +671,7 @@ export default function ProjectChat() {
     setInput("");
     setEditorTab(null);
     setBusy(false);
+    return () => { operationRef.current += 1; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, activeProjectKey, restoredVersion]);
 
@@ -674,26 +679,27 @@ export default function ProjectChat() {
     if (!ready) return;
     let cancelled = false;
     const projectId = /^\d+$/.test(activeProjectKey) ? Number(activeProjectKey) : undefined;
-    // A deliberate unsaved draft must not be replaced by the latest saved project.
-    // An empty-history AI shortcut stays empty; retain explicit project refreshes and
-    // the existing project picker/history instead of substituting a default project.
-    if (!projectId && (resumeLatestRequested || plan || planMessages.length > 0)) return;
+    // Without a selected ID, leave the welcome/project chooser intact. Never fetch a default project.
+    if (!projectId) return;
     fetchDashboard(projectId)
       .then(({ project }) => {
         if (cancelled) return;
         setSyncError(null);
-        if (project) selectProject(project.id, project.approvedPlan);
+        if (project?.id === projectId) {
+          selectProject(project.id, project.approvedPlan, project.title);
+          syncProjectNaming({ id: project.id, title: project.title, status: project.status, projectNamePending: project.projectNamePending ?? null });
+        }
         else if (projectId) setSyncError("This project is no longer available. Select a project from Home.");
       })
       .catch((err) => {
         if (!cancelled) setSyncError(err instanceof Error ? err.message : "Could not refresh project data.");
       });
     return () => { cancelled = true; };
-  }, [ready, activeProjectKey, plan, planMessages.length, selectProject, resumeLatestRequested]));
+  }, [ready, activeProjectKey, selectProject, syncProjectNaming]));
 
   useEffect(() => {
     scrollRef.current?.scrollToEnd({ animated: true });
-  }, [messages]);
+  }, [messages, projectNaming?.projectId, projectNaming?.pending]);
 
   // onFocus alone only scrolled the first time the keyboard opened this screen. Tying it to the
   // keyboard's own visibility instead catches every later open too — but the keyboard's own
@@ -774,7 +780,7 @@ export default function ProjectChat() {
   };
 
   const advance = async () => {
-    if (!plan || busy) return;
+    if (!plan || busy || finalizationInFlight.current) return;
     const currentIndex = STAGE_ORDER.indexOf(stage as ResolvedStage);
     const next = STAGE_ORDER[currentIndex + 1];
     if (!next) return;
@@ -782,26 +788,33 @@ export default function ProjectChat() {
     const label = NEXT_LABEL[stage as ResolvedStage];
 
     if (next === "summary") {
+      // Lock synchronously (before React rerenders) and persist one retry key before any POST.
+      finalizationInFlight.current = true;
       setBusy(true);
       // A chat that belongs to a project already (the "not started yet" one New Project created)
       // fills that project in; only a chat with no project yet creates a new one.
       const placeholderId = /^\d+$/.test(activeProjectKey) ? Number(activeProjectKey) : null;
       try {
-        if (placeholderId !== null) await startProjectFromPlan(placeholderId, plan);
-        else {
-          const created = await createProject(plan);
-          if (operation !== operationRef.current) return;
-          setApprovalStage("summary");
-          linkToProject(created.id);
-        }
-      } catch (err) {
+        const key = await getFinalizationKey();
         if (operation !== operationRef.current) return;
-        const message = err instanceof Error ? err.message : "Could not save the project.";
-        setMessages((previous) => [...previous, { id: nextId(), role: "ai", text: `Your plan was not saved. ${message} Please try again.`, createdAt: now() }]);
-        setBusy(false);
-        return;
+        const saved = placeholderId !== null ? await startProjectFromPlan(placeholderId, plan, key) : await createProject(plan, key);
+        if (operation !== operationRef.current) return;
+        setApprovalStage("summary");
+        linkToProject(saved.id, saved.projectNamePending == null ? undefined : { projectId: saved.id, title: saved.title, pending: saved.projectNamePending });
+        setMessages((previous) => [...previous,
+          { id: nextId(), role: "user", text: label, createdAt: now() },
+          { id: nextId(), role: "ai", text: STAGE_TEXT.summary({ ...plan, projectTitle: saved.title }), card: "summary", createdAt: now() },
+        ]);
+        setStage("summary");
+      } catch {
+        if (operation === operationRef.current) setMessages((previous) => [...previous, {
+          id: nextId(), role: "ai", text: "I couldn't confirm that your plan was saved. Check your connection and try again; the retry will reuse the same project.", createdAt: now(),
+        }]);
+      } finally {
+        finalizationInFlight.current = false;
+        if (operation === operationRef.current) setBusy(false);
       }
-      if (operation !== operationRef.current) return;
+      return;
     }
 
     setMessages((p) => [...p, { id: nextId(), role: "user", text: label, createdAt: now() }]);
@@ -877,7 +890,7 @@ export default function ProjectChat() {
                     <RecentProjectCard
                       key={p.id}
                       project={p}
-                      onPress={() => router.push(`/homeowner?projectId=${p.id}` as never)}
+                      onPress={() => selectProject(p.id, undefined, p.title)}
                     />
                   ))}
                 </ScrollView>
@@ -916,6 +929,7 @@ export default function ProjectChat() {
             <UserBubble key={msg.id} msg={msg} />
           )
         )}
+        {projectNaming && <ProjectNamePrompt key={projectNaming.projectId} naming={projectNaming} onSaved={syncProjectNaming} />}
       </ScrollView>
 
       {plan && editorTab && (

@@ -4,11 +4,13 @@ namespace App\Models;
 
 use App\Support\Wage;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 #[Fillable(['user_id', 'title', 'location', 'status', 'budget', 'total_estimate', 'timeline_value', 'timeline_unit', 'started_at', 'ai_materials', 'approved_plan', 'materials_reviewed_at', 'materials_reviewed_by', 'auto_approve_materials', 'finished_at', 'finished_by', 'completion_confirmed_at', 'corrections_requested_at', 'corrections_note'])]
 class Project extends Model
@@ -25,6 +27,23 @@ class Project extends Model
     /** The AI's own duration-math convention (see ConstructionPlanService's system prompt). */
     public const WEEKS_PER_MONTH = 4.3;
 
+    /** Opt in only for Home queries: never a global scope that could hide History/team records. */
+    public function scopeVisibleOnHomeDashboard(Builder $query): void
+    {
+        if (Schema::hasColumn('projects', 'is_hidden_from_dashboard')) {
+            $query->where('is_hidden_from_dashboard', false);
+        }
+    }
+
+    /** Null identifies legacy plans, which must not suddenly be treated as unnamed. */
+    public function projectNamePending(): ?bool
+    {
+        $plan = $this->approved_plan;
+
+        return is_array($plan) && array_key_exists('_projectNamePending', $plan)
+            ? (bool) $plan['_projectNamePending'] : null;
+    }
+
     protected function casts(): array
     {
         return [
@@ -33,6 +52,7 @@ class Project extends Model
             'approved_plan' => 'array',
             'materials_reviewed_at' => 'datetime',
             'auto_approve_materials' => 'boolean',
+            'is_hidden_from_dashboard' => 'boolean',
             'finished_at' => 'datetime',
             'completion_confirmed_at' => 'datetime',
             'corrections_requested_at' => 'datetime',
