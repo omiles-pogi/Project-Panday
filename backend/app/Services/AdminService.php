@@ -24,6 +24,8 @@ class AdminService
             ->groupBy('approval_status')->pluck('total', 'approval_status');
         $byRole = $managed()->select('role', DB::raw('count(*) as total'))
             ->groupBy('role')->pluck('total', 'role');
+        // Legacy pending homeowners are eligible without review; listing must not change records.
+        $pendingHomeowners = $managed()->where('role', 'homeowner')->where('approval_status', 'pending')->count();
 
         $days = collect(range(13, 0))->map(fn (int $ago) => Carbon::today()->subDays($ago));
         $signupCounts = $managed()
@@ -45,8 +47,8 @@ class AdminService
         return [
             'totals' => [
                 'users' => $managed()->count(),
-                'pending' => (int) ($byStatus['pending'] ?? 0),
-                'approved' => (int) ($byStatus['approved'] ?? 0),
+                'pending' => (int) ($byStatus['pending'] ?? 0) - $pendingHomeowners,
+                'approved' => (int) ($byStatus['approved'] ?? 0) + $pendingHomeowners,
                 'rejected' => (int) ($byStatus['rejected'] ?? 0),
                 'active_7d' => $activeUsers,
                 'new_7d' => $managed()->where('created_at', '>=', now()->subDays(7))->count(),
@@ -112,14 +114,28 @@ class AdminService
     {
         return User::query()
             ->whereIn('role', self::MANAGED_ROLES)
-            ->when($status, fn ($q) => $q->where('approval_status', $status))
+            ->when($status, function ($q) use ($status) {
+                if ($status === 'approved') {
+                    return $q->where(fn ($w) => $w->where('approval_status', 'approved')
+                        ->orWhere(fn ($h) => $h->where('role', 'homeowner')->where('approval_status', 'pending')));
+                }
+
+                return $q->where('approval_status', $status)
+                    ->when($status === 'pending', fn ($w) => $w->where('role', '!=', 'homeowner'));
+            })
             ->when($role, fn ($q) => $q->where('role', $role))
             ->when($search, fn ($q) => $q->where(fn ($w) => $w
                 ->where('name', 'like', "%{$search}%")
                 ->orWhere('email', 'like', "%{$search}%")))
             ->latest()
             ->limit(200)
-            ->get(['id', 'name', 'email', 'role', 'approval_status', 'business_name', 'license_number', 'created_at']);
+            ->get(['id', 'name', 'email', 'role', 'approval_status', 'business_name', 'license_number', 'created_at'])
+            ->each(function (User $user) {
+                // Present the access policy consistently until a credential-checked login upgrades the row.
+                if ($user->role === 'homeowner' && $user->approval_status === 'pending') {
+                    $user->approval_status = 'approved';
+                }
+            });
     }
 
     public function setApproval(User $user, string $status): User

@@ -36,7 +36,6 @@ class SupplierProfileService
         $counts = $supplier->supplierProducts()
             ->selectRaw('count(*) as total')
             ->selectRaw('coalesce(sum(case when is_active = 1 then 1 else 0 end), 0) as active')
-            ->selectRaw('coalesce(sum(case when is_active = 1 and stock > reserved then 1 else 0 end), 0) as in_stock')
             ->first();
 
         return [
@@ -53,7 +52,7 @@ class SupplierProfileService
             'listings' => [
                 'total' => (int) $counts->total,
                 'active' => (int) $counts->active,
-                'inStock' => (int) $counts->in_stock,
+                'inStock' => $supplier->supplierProducts()->availableForSupply()->count(),
             ],
         ];
     }

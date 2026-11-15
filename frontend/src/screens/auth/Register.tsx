@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Text, TextInput, View, Pressable } from "react-native";
+import { useRef, useState } from "react";
+import { ActivityIndicator, Text, View, Pressable } from "react-native";
 import KeyboardView from "@/components/KeyboardView";
 import KeyboardAwareScrollView from "@/components/KeyboardAwareScrollView";
 import { Link } from "expo-router";
@@ -9,7 +9,9 @@ import { useTheme } from "@/context/ThemeContext";
 import Logo from "@/components/Logo";
 import { roleColors } from "@/theme/colors";
 import type { Role } from "@/types/auth";
-import { isValidRegisterForm, VERIFICATION_FIELDS } from "@/validators/auth";
+import { confirmationState, isValidRegisterForm, passwordState, VERIFICATION_FIELDS } from "@/validators/auth";
+import { RecoveryField as Field } from "@/components/auth/PasswordRecoveryUI";
+import PasswordRequirements, { PasswordConfirmation } from "@/components/auth/PasswordValidation";
 
 const ROLE_OPTIONS: { id: Role; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { id: "homeowner", label: "Homeowner", icon: "home-outline" },
@@ -30,6 +32,10 @@ export default function Register() {
   const [licenseNumber, setLicenseNumber] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [attempted, setAttempted] = useState(false);
+  const [passwordEdited, setPasswordEdited] = useState(false);
+  const [confirmationEdited, setConfirmationEdited] = useState(false);
+  const requestInFlight = useRef(false);
 
   const verification = VERIFICATION_FIELDS[role];
 
@@ -44,7 +50,11 @@ export default function Register() {
     }) && !submitting;
 
   const handleSubmit = async () => {
+    if (requestInFlight.current) return;
+    setAttempted(true);
     if (!canSubmit) return;
+    // State updates alone cannot block a second tap before React's next render.
+    requestInFlight.current = true;
     setError(null);
     setSubmitting(true);
     try {
@@ -64,13 +74,14 @@ export default function Register() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to register.");
     } finally {
+      requestInFlight.current = false;
       setSubmitting(false);
     }
   };
 
   return (
     <KeyboardView className="flex-1 bg-background">
-      <KeyboardAwareScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView focusBottomOffset={192} contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
         <View className="px-6 py-10">
           <View className="items-center mb-8">
             <View className="mb-4">
@@ -87,6 +98,7 @@ export default function Register() {
               return (
                 <Pressable
                   key={opt.id}
+                  disabled={submitting}
                   onPress={() => setRole(opt.id)}
                   className="rounded-xl px-4 py-3 flex-row items-center gap-2 border"
                   style={{
@@ -108,15 +120,16 @@ export default function Register() {
           </View>
 
           <View className="gap-3">
-            <Field label="Name" value={name} onChangeText={setName} />
-            <Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-            <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry />
-            <Field
-              label="Confirm password"
-              value={passwordConfirmation}
-              onChangeText={setPasswordConfirmation}
-              secureTextEntry
-            />
+            <Field label="Name" placeholder="Full name" value={name} onChangeText={setName} autoComplete="name" autoCapitalize="words" editable={!submitting} maxLength={255} />
+            <Field label="Email" placeholder="Registered email" value={email} onChangeText={setEmail} keyboardType="email-address" autoComplete="email" editable={!submitting} maxLength={255} />
+            <View>
+              <Field label="Password" value={password} onChangeText={value => { setPassword(value); setPasswordEdited(true); }} secureTextEntry autoComplete="new-password" editable={!submitting} validationState={passwordState(password, attempted || passwordEdited)} />
+              <PasswordRequirements password={password} attempted={attempted || passwordEdited} />
+            </View>
+            <View>
+              <Field label="Confirm password" value={passwordConfirmation} onChangeText={value => { setPasswordConfirmation(value); setConfirmationEdited(true); }} secureTextEntry autoComplete="new-password" editable={!submitting} validationState={confirmationState(password, passwordConfirmation, attempted || confirmationEdited)} onSubmitEditing={() => void handleSubmit()} />
+              <PasswordConfirmation password={password} confirmation={passwordConfirmation} attempted={attempted || confirmationEdited} />
+            </View>
           </View>
 
           {verification ? (
@@ -125,7 +138,7 @@ export default function Register() {
                 Verification — an admin reviews these before your account is approved
               </Text>
               {verification.businessLabel ? (
-                <Field label={verification.businessLabel} value={businessName} onChangeText={setBusinessName} />
+                <Field label={verification.businessLabel} value={businessName} onChangeText={setBusinessName} editable={!submitting} />
               ) : null}
               <Field
                 label={verification.licenseLabel}
@@ -133,6 +146,7 @@ export default function Register() {
                 onChangeText={setLicenseNumber}
                 placeholder={verification.licenseHint}
                 autoCapitalize="characters"
+                editable={!submitting}
               />
             </View>
           ) : null}
@@ -140,12 +154,16 @@ export default function Register() {
           {error && <Text className="text-danger text-sm mt-4 text-center">{error}</Text>}
 
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Create Account"
+            accessibilityState={{ disabled: !canSubmit, busy: submitting }}
             onPress={handleSubmit}
             disabled={!canSubmit}
-            className="mt-6 py-3.5 rounded-xl items-center bg-primary"
-            style={{ opacity: canSubmit ? 1 : 0.6 }}
+            className="mt-6 py-3.5 rounded-xl items-center flex-row justify-center gap-2"
+            style={{ backgroundColor: canSubmit ? "#f59e0b" : chrome.muted, minHeight: 48 }}
           >
-            <Text className="font-bold text-sm text-primary-foreground">
+            {submitting && <ActivityIndicator size="small" color={chrome.mutedForeground} />}
+            <Text className="font-bold text-sm" style={{ color: canSubmit ? "#0f1117" : chrome.mutedForeground }}>
               {submitting ? "Creating account…" : "Create Account"}
             </Text>
           </Pressable>
@@ -161,42 +179,5 @@ export default function Register() {
         </View>
       </KeyboardAwareScrollView>
     </KeyboardView>
-  );
-}
-
-function Field(props: {
-  label: string;
-  value: string;
-  onChangeText: (t: string) => void;
-  secureTextEntry?: boolean;
-  keyboardType?: "email-address";
-  autoCapitalize?: "none" | "characters";
-  placeholder?: string;
-}) {
-  const { label, secureTextEntry, ...inputProps } = props;
-  const [hidden, setHidden] = useState(true);
-  return (
-    <View>
-      <Text className="text-xs font-medium text-muted-foreground mb-1.5">{label}</Text>
-      <View className="flex-row items-center rounded-xl bg-card border border-border">
-        <TextInput
-          {...inputProps}
-          secureTextEntry={secureTextEntry && hidden}
-          placeholderTextColor="#6b7280"
-          className="flex-1 px-4 py-3 text-sm text-foreground"
-        />
-        {secureTextEntry ? (
-          <Pressable
-            onPress={() => setHidden((h) => !h)}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={hidden ? "Show password" : "Hide password"}
-            className="px-4 py-3"
-          >
-            <Text className="text-xs font-semibold text-muted-foreground">{hidden ? "Show" : "Hide"}</Text>
-          </Pressable>
-        ) : null}
-      </View>
-    </View>
   );
 }

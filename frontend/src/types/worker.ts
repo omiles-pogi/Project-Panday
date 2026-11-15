@@ -7,6 +7,7 @@ export interface WorkerProfile {
 }
 
 export interface WorkerSearchResult {
+  photoUrl?: string | null;
   id: number;
   name: string;
   email: string;
@@ -30,6 +31,7 @@ export interface WorkerRatingEntry {
 }
 
 export interface WorkerPublicProfile {
+  photoUrl?: string | null;
   id: number;
   name: string;
   trade: string | null;

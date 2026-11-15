@@ -18,7 +18,7 @@ export default function SupplierHistory() {
     contentContainerStyle={{ ...spacing, gap: undefined }}
     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void reload()} tintColor={chrome.foreground} />}
     ListHeaderComponent={<View style={{ gap: 16, marginBottom: 16 }}>
-      <Text style={{ color: chrome.secondaryForeground, fontSize: 13, lineHeight: 20 }}>Record of homeowner projects that availed products from your shop.</Text>
+      <Text style={{ color: chrome.secondaryForeground, fontSize: 13, lineHeight: 20 }}>Completed homeowner projects that selected your shop. Material values are saved estimates, not confirmed purchases.</Text>
       {error && <SupplyHistoryFeedback title="History unavailable" message={error} retry={() => void reload()} />}
     </View>}
     renderSectionHeader={({ section }) => <Text style={{ color: chrome.foreground, fontSize: 16, fontWeight: "700", marginBottom: 12 }}>{section.title}</Text>}
@@ -26,6 +26,6 @@ export default function SupplierHistory() {
     ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
     renderItem={({ item }) => <SupplierProjectSummary project={item} onPress={() => router.push(`/supplier/history/${item.id}` as never)} />}
     ListEmptyComponent={loading ? <ActivityIndicator accessibilityLabel="Loading supplier history" color={chrome.foreground} /> : error ? undefined :
-      <SupplyHistoryFeedback title="No project history yet" message="Homeowner projects that receive materials from your shop will appear here." />}
+      <SupplyHistoryFeedback title="No project history yet" message="Completed homeowner projects that selected your shop during material estimation will appear here." />}
   />;
 }

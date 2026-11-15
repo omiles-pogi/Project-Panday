@@ -1,6 +1,5 @@
 import type { ColorValue } from "react-native";
 import { Tabs } from "expo-router";
-import { DrawerToggleButton } from "expo-router/drawer";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/context/ThemeContext";
 import FloatingTabBar from "@/components/FloatingTabBar";
@@ -46,7 +45,7 @@ export default function HomeownerTabsLayout() {
       screenOptions={{
         headerStyle: { backgroundColor: chrome.card },
         headerTintColor: chrome.foreground,
-        headerLeft: () => <DrawerToggleButton tintColor={chrome.mutedForeground} />,
+        header: ({ options, route }) => <HomeownerHeader title={options.title ?? TAB_TITLE[route.name] ?? route.name} />,
       }}
     >
       <Tabs.Screen
@@ -82,9 +81,8 @@ export default function HomeownerTabsLayout() {
       <Tabs.Screen
         name="marketplace"
         options={{
-          // FindWorkers draws its own PageHeader/Screen exactly as it did as a plain drawer
-          // screen — keep that rather than stacking a second header on top of it here.
-          headerShown: false,
+          title: TAB_TITLE.marketplace,
+          header: () => <HomeownerHeader title="Workers" subtitle="Manage your construction team" />,
           tabBarIcon: tabIcon("marketplace"),
           tabBarLabel: TAB_TITLE.marketplace,
         }}

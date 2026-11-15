@@ -1,10 +1,14 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Product, ProductInput } from "@/data/supplier";
 import {
   createSupplierProduct,
   deleteSupplierProduct,
   fetchMySupplierProducts,
   updateSupplierProduct,
+  setAllSupplierProductsActive,
+  confirmSupplierStock,
+  type StockConfirmationResult,
+  type BulkActivationResult,
   type SupplierProductDto,
   type SupplierProductInput,
 } from "@/services/api/supplierProducts";
@@ -28,6 +32,8 @@ interface SupplierContextValue {
   addProduct: (product: ProductInput) => Promise<void>;
   updateProduct: (id: number, patch: Partial<ProductInput>) => Promise<void>;
   removeProduct: (id: number) => Promise<void>;
+  setAllProductsActive: (active: boolean) => Promise<BulkActivationResult>;
+  confirmStock: (reviewToken: string) => Promise<StockConfirmationResult>;
 }
 
 const SupplierContext = createContext<SupplierContextValue | null>(null);
@@ -46,6 +52,12 @@ function toProduct(dto: SupplierProductDto): Product {
     minOrder: dto.min_order,
     isActive: dto.is_active,
     stockStatus: dto.stock_status,
+    activationEligible: dto.activation_eligible,
+    activationBlockReason: dto.activation_block_reason,
+    stockConfirmed: dto.stock_confirmed,
+    stockConfirmedAt: dto.stock_confirmed_at,
+    stockConfirmedBy: dto.stock_confirmed_by,
+    stockConfirmedQuantity: dto.stock_confirmed_quantity,
   };
 }
 
@@ -69,14 +81,18 @@ export function SupplierProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [productsError, setProductsError] = useState<string | null>(null);
+  const productsRevision = useRef(0);
+  const availabilityInFlight = useRef(false);
 
   const fetchProducts = useCallback(() => {
+    const revision = ++productsRevision.current;
     fetchMySupplierProducts()
       .then((dtos) => {
+        if (revision !== productsRevision.current) return;
         setProducts(dtos.map(toProduct));
         setProductsError(null);
       })
-      .catch((err) => setProductsError(err instanceof Error ? err.message : "Failed to load inventory."))
+      .catch((err) => { if (revision === productsRevision.current) setProductsError(err instanceof Error ? err.message : "Failed to load inventory."); })
       .finally(() => setProductsLoading(false));
   }, []);
 
@@ -114,18 +130,80 @@ export function SupplierProvider({ children }: { children: ReactNode }) {
   );
 
   const addProduct = useCallback<SupplierContextValue["addProduct"]>(async (product) => {
-    const dto = await createSupplierProduct(toInput(product) as SupplierProductInput);
-    setProducts((list) => [toProduct(dto), ...list]);
+    if (availabilityInFlight.current) throw new Error("An inventory update is already running.");
+    availabilityInFlight.current = true;
+    productsRevision.current++;
+    try {
+      const dto = await createSupplierProduct(toInput(product) as SupplierProductInput);
+      productsRevision.current++;
+      setProducts((list) => [toProduct(dto), ...list]);
+    } finally {
+      availabilityInFlight.current = false;
+    }
   }, []);
 
   const updateProduct = useCallback<SupplierContextValue["updateProduct"]>(async (id, patch) => {
-    const dto = await updateSupplierProduct(id, toInput(patch));
-    setProducts((list) => list.map((p) => (p.id === id ? toProduct(dto) : p)));
+    if (availabilityInFlight.current) throw new Error("An inventory availability update is already running.");
+    availabilityInFlight.current = true;
+    productsRevision.current++;
+    try {
+      const dto = await updateSupplierProduct(id, toInput(patch));
+      productsRevision.current++;
+      setProducts((list) => list.map((p) => (p.id === id ? toProduct(dto) : p)));
+    } finally {
+      availabilityInFlight.current = false;
+    }
   }, []);
 
+  const applyInventory = useCallback((dtos: SupplierProductDto[]) => {
+    productsRevision.current++;
+    const server = new Map(dtos.map((dto) => [dto.id, toProduct(dto)]));
+    setProducts((current) => {
+      const known = new Set(current.map((p) => p.id));
+      return [...current.filter((p) => server.has(p.id)).map((p) => server.get(p.id)!),
+        ...dtos.filter((p) => !known.has(p.id)).map(toProduct)];
+    });
+    setProductsError(null);
+  }, []);
+
+  const setAllProductsActive = useCallback<SupplierContextValue["setAllProductsActive"]>(async (active) => {
+    if (availabilityInFlight.current) throw new Error("An inventory availability update is already running.");
+    availabilityInFlight.current = true;
+    productsRevision.current++;
+    try {
+      const result = await setAllSupplierProductsActive(active);
+      // Preserve visible row order and filters; reconcile only after server confirmation.
+      applyInventory(result.products);
+      return result;
+    } finally {
+      availabilityInFlight.current = false;
+    }
+  }, [applyInventory]);
+
+  const confirmStock = useCallback<SupplierContextValue["confirmStock"]>(async (reviewToken) => {
+    if (availabilityInFlight.current) throw new Error("An inventory availability update is already running.");
+    availabilityInFlight.current = true;
+    productsRevision.current++;
+    try {
+      const result = await confirmSupplierStock(reviewToken);
+      applyInventory(result.products);
+      return result;
+    } finally {
+      availabilityInFlight.current = false;
+    }
+  }, [applyInventory]);
+
   const removeProduct = useCallback<SupplierContextValue["removeProduct"]>(async (id) => {
-    await deleteSupplierProduct(id);
-    setProducts((list) => list.filter((p) => p.id !== id));
+    if (availabilityInFlight.current) throw new Error("An inventory update is already running.");
+    availabilityInFlight.current = true;
+    productsRevision.current++;
+    try {
+      await deleteSupplierProduct(id);
+      productsRevision.current++;
+      setProducts((list) => list.filter((p) => p.id !== id));
+    } finally {
+      availabilityInFlight.current = false;
+    }
   }, []);
 
   const value = useMemo(
@@ -142,6 +220,8 @@ export function SupplierProvider({ children }: { children: ReactNode }) {
       addProduct,
       updateProduct,
       removeProduct,
+      setAllProductsActive,
+      confirmStock,
     }),
     [
       fulfillments,
@@ -156,6 +236,8 @@ export function SupplierProvider({ children }: { children: ReactNode }) {
       addProduct,
       updateProduct,
       removeProduct,
+      setAllProductsActive,
+      confirmStock,
     ]
   );
 

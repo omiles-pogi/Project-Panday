@@ -3,17 +3,15 @@ import {
   adminLogin,
   fetchProjects,
   fetchStats,
-  fetchUsers,
   getToken,
   logout,
-  setApproval,
   setToken,
   UnauthorizedError,
   type AdminProject,
-  type AdminUser,
   type ApprovalStatus,
   type Stats,
 } from "./api";
+import { useAccounts } from "./useAccounts";
 
 const STATUS_COLOR: Record<ApprovalStatus, string> = {
   pending: "#f59e0b",
@@ -507,31 +505,7 @@ function Accounts({ onError, onPendingCount }: { onError: (e: unknown) => void; 
   const [status, setStatus] = useState("pending");
   const [role, setRole] = useState("");
   const [q, setQ] = useState("");
-  const [users, setUsers] = useState<AdminUser[] | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    fetchUsers({ status, role, q })
-      .then(setUsers)
-      .catch(onError);
-    fetchStats().then((s) => onPendingCount(s.totals.pending)).catch(onError);
-  }, [status, role, q, onError, onPendingCount]);
-
-  useEffect(() => {
-    const id = setTimeout(load, q ? 250 : 0);
-    return () => clearTimeout(id);
-  }, [load, q]);
-
-  const decide = async (user: AdminUser, next: ApprovalStatus) => {
-    setMessage(null);
-    try {
-      await setApproval(user.id, next);
-      load();
-    } catch (err) {
-      onError(err);
-      setMessage(err instanceof Error ? err.message : "Update failed.");
-    }
-  };
+  const { users, refreshError, message, busy, decide } = useAccounts({ status, role, q }, onError, onPendingCount);
 
   return (
     <div>
@@ -563,7 +537,8 @@ function Accounts({ onError, onPendingCount }: { onError: (e: unknown) => void; 
         />
       </div>
 
-      {message && <p className="text-sm mb-3" style={{ color: "#ef4444" }}>{message}</p>}
+      {message && <p role={message.success ? "status" : "alert"} className="text-sm mb-3" style={{ color: message.success ? "#10b981" : "#ef4444" }}>{message.text}</p>}
+      {refreshError && <p role="alert" className="text-sm mb-3" style={{ color: "#ef4444" }}>{refreshError}</p>}
 
       <div className="rounded-2xl overflow-x-auto" style={card}>
         <table className="w-full text-sm">
@@ -580,7 +555,7 @@ function Accounts({ onError, onPendingCount }: { onError: (e: unknown) => void; 
           </thead>
           <tbody>
             {users === null && (
-              <tr><td colSpan={7} className="px-4 py-6 text-center" style={{ color: "var(--color-muted-foreground)" }}>Loading…</td></tr>
+              <tr><td colSpan={7} className="px-4 py-6 text-center" style={{ color: "var(--color-muted-foreground)" }}>{refreshError ? "Accounts unavailable. Retrying automatically…" : "Loading…"}</td></tr>
             )}
             {users?.length === 0 && (
               <tr><td colSpan={7} className="px-4 py-6 text-center" style={{ color: "var(--color-muted-foreground)" }}>No accounts match.</td></tr>
@@ -601,12 +576,12 @@ function Accounts({ onError, onPendingCount }: { onError: (e: unknown) => void; 
                 </td>
                 <td className="px-4 py-3 text-right whitespace-nowrap">
                   {u.approval_status !== "approved" && (
-                    <button onClick={() => decide(u, "approved")} className="px-3 py-1.5 rounded-lg text-xs font-semibold mr-2" style={{ background: "#10b98120", color: "#10b981" }}>
-                      Approve
+                    <button disabled={busy} onClick={() => decide(u, "approved")} className="px-3 py-1.5 rounded-lg text-xs font-semibold mr-2 disabled:opacity-50" style={{ background: "#10b98120", color: "#10b981" }}>
+                      {u.role === "homeowner" ? "Restore access" : "Approve"}
                     </button>
                   )}
                   {u.approval_status !== "rejected" && (
-                    <button onClick={() => decide(u, "rejected")} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "#ef444420", color: "#ef4444" }}>
+                    <button disabled={busy} onClick={() => decide(u, "rejected")} className="px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50" style={{ background: "#ef444420", color: "#ef4444" }}>
                       {u.approval_status === "approved" ? "Revoke" : "Reject"}
                     </button>
                   )}

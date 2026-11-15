@@ -5,7 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Card, PageHeader, ProgressBar, Screen, StatGrid, StatTile } from "@/components/ui";
 import { ProgressRing } from "@/components/charts";
 import TeamActivity from "@/components/TeamActivity";
-import { fetchDashboard, fetchProjectActivityLog } from "@/services/api/projects";
+import { fetchActiveDashboard, fetchProjectActivityLog } from "@/services/api/projects";
 import type { ActivityLogDay, DashboardProject } from "@/types/project";
 import { usePlan } from "@/context/PlanContext";
 import { useFocusedResource } from "@/hooks/useFocusedResource";
@@ -22,13 +22,15 @@ function dayLabel(dateStr: string): string {
 }
 
 export default function ProgressMonitor() {
-  const { activeProjectKey, ready } = usePlan();
+  const { activeProjectKey, ready, refreshProjectSelection } = usePlan();
   const load = useCallback(async (): Promise<{ project: DashboardProject | null; log: ActivityLogDay[] }> => {
     const id = /^\d+$/.test(activeProjectKey) ? Number(activeProjectKey) : undefined;
-    const dashboard = await fetchDashboard(id);
+    if (!id) return { project: null, log: [] };
+    const dashboard = await fetchActiveDashboard(id);
+    if (!dashboard.project) void refreshProjectSelection();
     const project = dashboard.project?.status === "not_started" ? null : dashboard.project;
     return { project, log: project ? await fetchProjectActivityLog(project.id) : [] };
-  }, [activeProjectKey]);
+  }, [activeProjectKey, refreshProjectSelection]);
   const { data, loading, error, refresh } = useFocusedResource(load, ready);
   const project = data?.project ?? null;
   const log = data?.log ?? [];

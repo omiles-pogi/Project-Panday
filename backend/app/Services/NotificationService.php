@@ -6,6 +6,7 @@ use App\Models\AppNotification;
 use App\Models\ProjectContractorRequest;
 use App\Models\ProjectWorkerRequest;
 use App\Models\User;
+use App\Support\ProfilePhotoVisibility;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
@@ -156,7 +157,17 @@ class NotificationService
         $modelClass = self::ACTIONABLE_REQUEST_MODEL[$n->type] ?? null;
 
         if ($requestId && $modelClass) {
-            $data['requestStatus'] = $modelClass::find($requestId)?->status;
+            $request = $modelClass::find($requestId);
+            $data['requestStatus'] = $request?->status;
+            if (in_array($n->type, ['worker_application', 'contractor_application'], true)) {
+                // Notifications contain historical JSON. Resolve the applicant's current photo
+                // from the real owned request so replacements show without rewriting history.
+                $data['applicantPhotoUrl'] = null;
+                if ($request && $request->project?->user_id === $n->user_id) {
+                    $person = $n->type === 'worker_application' ? $request->worker : $request->contractor;
+                    $data['applicantPhotoUrl'] = $person ? ProfilePhotoVisibility::directoryUrl($person) : null;
+                }
+            }
         }
 
         return $data;

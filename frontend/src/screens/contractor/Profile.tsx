@@ -1,77 +1,74 @@
 import { useEffect, useState } from "react";
 import { Text, View, Pressable, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Badge, Card, Field, PageHeader, Screen, SubmitButton } from "@/components/ui";
+import { Badge, Card, PageHeader, Screen } from "@/components/ui";
+import { ProfileEditActions, ProfileEditButton, ProfileField } from "@/components/ProfileEditControls";
+import { useProfileEdit } from "@/hooks/useProfileEdit";
 import NameCard from "@/components/NameCard";
+import ProfilePhoto from "@/components/ProfilePhoto";
+import AccountManagement from "@/components/AccountManagement";
 import { useAuth } from "@/context/AuthContext";
 import { fetchContractorProfile, updateMyContractorProfile } from "@/services/api/contractors";
 
 export default function Profile() {
   const { user } = useAuth();
-  const [companyName, setCompanyName] = useState("");
-  const [specialization, setSpecialization] = useState("");
-  const [yearsExperience, setYearsExperience] = useState("");
-  const [bio, setBio] = useState("");
-  const [skills, setSkills] = useState<string[]>([]);
+  const form = useProfileEdit({ companyName: "", specialization: "", yearsExperience: "", bio: "", skills: [] as string[] });
+  const { companyName, specialization, yearsExperience, bio, skills } = form.draft;
+  const { editing, saving, saved, error, load } = form;
   const [skillInput, setSkillInput] = useState("");
   const [averageRating, setAverageRating] = useState<number | null>(null);
   const [ratingCount, setRatingCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const userId = user?.id;
 
   useEffect(() => {
-    if (!user) return;
-    fetchContractorProfile(user.id)
+    if (!userId) return;
+    let cancelled = false;
+    fetchContractorProfile(userId)
       .then((profile) => {
-        setCompanyName(profile.companyName ?? "");
-        setSpecialization(profile.specialization ?? "");
-        setYearsExperience(profile.yearsExperience != null ? String(profile.yearsExperience) : "");
-        setBio(profile.bio ?? "");
-        setSkills(profile.skills);
+        if (cancelled) return;
+        load({ companyName: profile.companyName ?? "", specialization: profile.specialization ?? "",
+          yearsExperience: profile.yearsExperience != null ? String(profile.yearsExperience) : "",
+          bio: profile.bio ?? "", skills: profile.skills });
         setAverageRating(profile.averageRating);
         setRatingCount(profile.ratingCount);
       })
-      .catch(() => undefined)
-      .finally(() => setLoading(false));
-  }, [user]);
+      .catch((err) => { if (!cancelled) setLoadError(err instanceof Error ? err.message : "Failed to load profile."); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [userId, load]);
 
   const addSkill = () => {
+    if (!editing || saving) return;
     const trimmed = skillInput.trim();
     if (!trimmed || skills.some((s) => s.toLowerCase() === trimmed.toLowerCase())) {
       setSkillInput("");
       return;
     }
-    setSkills((prev) => [...prev, trimmed]);
+    form.change("skills", [...skills, trimmed]);
     setSkillInput("");
   };
 
   const removeSkill = (skill: string) => {
-    setSkills((prev) => prev.filter((s) => s !== skill));
+    form.change("skills", skills.filter((s) => s !== skill));
   };
 
   const canSave = specialization.trim().length > 0 && yearsExperience.trim().length > 0 && skills.length > 0 && !saving;
 
   const save = async () => {
     if (!canSave) return;
-    setSaving(true);
-    setError(null);
-    setSaved(false);
-    try {
-      await updateMyContractorProfile({
+    await form.save(async () => {
+      const confirmed = await updateMyContractorProfile({
         company_name: companyName.trim() || undefined,
         specialization: specialization.trim(),
         years_experience: Number(yearsExperience) || 0,
         bio: bio.trim() || undefined,
         skills,
       });
-      setSaved(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save profile.");
-    } finally {
-      setSaving(false);
-    }
+      return { companyName: confirmed.company_name ?? "", specialization: confirmed.specialization,
+        yearsExperience: String(confirmed.years_experience), bio: confirmed.bio ?? "", skills: confirmed.skills.map((s) => s.skill) };
+    });
   };
 
   if (loading) {
@@ -85,12 +82,6 @@ export default function Profile() {
   }
 
   const name = user?.name ?? "Contractor";
-  const initials = name
-    .split(" ")
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
 
   return (
     <Screen>
@@ -101,11 +92,7 @@ export default function Profile() {
 
       <Card>
         <View className="flex-row gap-4 items-center">
-          <View className="w-16 h-16 rounded-2xl items-center justify-center" style={{ backgroundColor: "#10b98120" }}>
-            <Text className="text-2xl font-bold" style={{ color: "#10b981" }}>
-              {initials}
-            </Text>
-          </View>
+          <ProfilePhoto name={name} />
           <View className="flex-1" style={{ gap: 4 }}>
             <Text className="text-lg font-bold text-foreground">{companyName || name}</Text>
             <Text className="text-xs text-secondary-foreground">{specialization || "No specialization set yet"}</Text>
@@ -123,28 +110,28 @@ export default function Profile() {
         </View>
       </Card>
 
-      <NameCard hint="Your own name. Your company name, if you have one, is set below." />
+      <NameCard requireEdit hint="Your own name. Your company name, if you have one, is set below." />
 
-      <Card title="Edit profile">
+      <Card title="Profile details" right={<ProfileEditButton editing={editing} disabled={!form.ready} section="profile details" onPress={() => { setSkillInput(""); form.begin(); }} />}>
         <View style={{ gap: 12 }}>
-          <Field label="Company name (optional)" value={companyName} onChangeText={setCompanyName} placeholder="e.g. RCG Construction" />
-          <Field
+          <ProfileField editing={editing} saving={saving} label="Company name (optional)" value={companyName} onChangeText={(text) => form.change("companyName", text)} placeholder="e.g. RCG Construction" />
+          <ProfileField editing={editing} saving={saving}
             label="Specialization"
             value={specialization}
-            onChangeText={setSpecialization}
+            onChangeText={(text) => form.change("specialization", text)}
             placeholder="e.g. Residential Renovation, Commercial Build"
           />
-          <Field
+          <ProfileField editing={editing} saving={saving}
             label="Years of experience"
             value={yearsExperience}
-            onChangeText={(t) => setYearsExperience(t.replace(/[^0-9]/g, ""))}
+            onChangeText={(t) => form.change("yearsExperience", t.replace(/[^0-9]/g, ""))}
             placeholder="e.g. 10"
             keyboardType="number-pad"
           />
-          <Field
+          <ProfileField editing={editing} saving={saving}
             label="Bio (optional)"
             value={bio}
-            onChangeText={setBio}
+            onChangeText={(text) => form.change("bio", text)}
             placeholder="A short description of your company"
             multiline
           />
@@ -155,6 +142,7 @@ export default function Profile() {
               {skills.map((skill) => (
                 <Pressable
                   key={skill}
+                  disabled={!editing || saving}
                   onPress={() => removeSkill(skill)}
                   className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
                   style={{ backgroundColor: "#10b98120" }}
@@ -162,14 +150,14 @@ export default function Profile() {
                   <Text className="text-xs font-medium" style={{ color: "#10b981" }}>
                     {skill}
                   </Text>
-                  <Ionicons name="close" size={12} color="#10b981" />
+                  {editing && <Ionicons name="close" size={12} color="#10b981" />}
                 </Pressable>
               ))}
               {skills.length === 0 && <Text className="text-xs text-muted-foreground">No services added yet</Text>}
             </View>
-            <View className="flex-row gap-2">
+            {editing && <View className="flex-row gap-2">
               <View className="flex-1">
-                <Field
+                <ProfileField editing={editing} saving={saving}
                   label=""
                   value={skillInput}
                   onChangeText={setSkillInput}
@@ -178,18 +166,20 @@ export default function Profile() {
                   returnKeyType="done"
                 />
               </View>
-              <Pressable onPress={addSkill} className="px-4 items-center justify-center rounded-xl bg-primary">
+              <Pressable disabled={saving} onPress={addSkill} accessibilityLabel="Add service" className="px-4 items-center justify-center rounded-xl bg-primary">
                 <Ionicons name="add" size={18} color="#0f1117" />
               </Pressable>
-            </View>
+            </View>}
           </View>
 
           {error && <Text className="text-xs text-danger">{error}</Text>}
+          {loadError && <Text className="text-xs text-danger">{loadError}</Text>}
           {saved && <Badge label="Saved" color="#10b981" />}
 
-          <SubmitButton label={saving ? "Saving…" : "Save Profile"} onPress={save} />
+          {editing && <ProfileEditActions saving={saving} canSave={canSave} onSave={save} onCancel={() => { form.cancel(); setSkillInput(""); }} />}
         </View>
       </Card>
+      <AccountManagement accountInformation />
     </Screen>
   );
 }

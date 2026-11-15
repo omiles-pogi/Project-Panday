@@ -1,8 +1,8 @@
 import { Tabs } from "expo-router";
-import { DrawerToggleButton } from "expo-router/drawer";
 import type { Ionicons } from "@expo/vector-icons";
 import RoleFloatingTabBar from "@/components/RoleFloatingTabBar";
 import { useTheme } from "@/context/ThemeContext";
+import HomeownerHeader from "@/components/HomeownerHeader";
 
 export interface RoleTab {
   name: string;
@@ -22,7 +22,7 @@ export default function RoleTabs({ tabs, hideBar = false }: { tabs: RoleTab[]; h
       screenOptions={{
         headerStyle: { backgroundColor: chrome.card },
         headerTintColor: chrome.foreground,
-        headerLeft: () => <DrawerToggleButton tintColor={chrome.mutedForeground} />,
+        header: ({ options, route }) => <HomeownerHeader title={options.title ?? route.name} />,
       }}
     >
       {/* `href: null` would also hide a tab from RoleFloatingTabBar's default linking, but it also

@@ -17,7 +17,7 @@ class AuthService
             'email' => $data['email'],
             'password' => Hash::make($data['password']),
             'role' => $data['role'],
-            'approval_status' => 'pending',
+            'approval_status' => $data['role'] === 'homeowner' ? 'approved' : 'pending',
             // Only the roles that need verifying keep these; homeowners never store them.
             'business_name' => in_array($data['role'], ['contractor', 'supplier'], true) ? ($data['business_name'] ?? null) : null,
             'license_number' => in_array($data['role'], User::VERIFIED_ROLES, true) ? ($data['license_number'] ?? null) : null,
@@ -38,6 +38,14 @@ class AuthService
 
         if (! $user || ! Hash::check($password, $user->password)) {
             return null;
+        }
+
+        // Upgrade legacy pending homeowners only after checking credentials. The conditional
+        // write cannot undo an admin rejection/revocation made while this request was running.
+        if ($user->role === 'homeowner' && $user->approval_status === 'pending') {
+            User::whereKey($user->id)->where('role', 'homeowner')->where('approval_status', 'pending')
+                ->update(['approval_status' => 'approved']);
+            $user->refresh();
         }
 
         return $user;

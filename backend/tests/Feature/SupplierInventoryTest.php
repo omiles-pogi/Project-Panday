@@ -49,7 +49,8 @@ class SupplierInventoryTest extends TestCase
             ->assertJsonPath('description', '40kg bag, general purpose.')
             ->assertJsonPath('stock', 120)
             ->assertJsonPath('stock_status', 'in_stock')
-            ->assertJsonPath('is_active', true);
+            ->assertJsonPath('is_active', false)
+            ->assertJsonPath('stock_confirmed', false);
         $this->assertDatabaseHas('supplier_products', ['supplier_id' => $supplier->id, 'name' => 'Portland Cement Type I']);
     }
 
@@ -175,6 +176,10 @@ class SupplierInventoryTest extends TestCase
 
         Sanctum::actingAs($supplier);
         $this->patchJson("/api/supplier-products/{$product->id}", ['stock' => 0])->assertStatus(200);
+
+        // A manual recount requires explicit verification before it is shown as confirmed stock.
+        $review = $this->getJson('/api/supplier-products/stock-confirmation')->assertOk()->json('review_token');
+        $this->patchJson('/api/supplier-products/stock-confirmation', ['confirmed' => true, 'review_token' => $review])->assertOk();
 
         Sanctum::actingAs($this->user('homeowner'));
         $this->getJson("/api/materials/{$product->id}")

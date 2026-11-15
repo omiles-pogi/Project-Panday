@@ -5,7 +5,8 @@ import { RecoveryButton, RecoveryError, RecoveryField, RecoveryScreen, useRecove
 import { usePasswordRecovery } from "@/context/PasswordRecoveryContext";
 import { resetPasswordRequest } from "@/services/api/auth";
 import { ApiError } from "@/services/api/client";
-import { isValidPassword } from "@/validators/auth";
+import { confirmationState, isValidPassword, passwordState } from "@/validators/auth";
+import PasswordRequirements, { PasswordConfirmation } from "@/components/auth/PasswordValidation";
 
 export default function CreateNewPassword() {
   const { recovery, clear } = usePasswordRecovery();
@@ -13,6 +14,9 @@ export default function CreateNewPassword() {
   const [confirmation, setConfirmation] = useState("");
   const [invalid, setInvalid] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [attempted, setAttempted] = useState(false);
+  const [passwordEdited, setPasswordEdited] = useState(false);
+  const [confirmationEdited, setConfirmationEdited] = useState(false);
   const { run, submitting, error } = useRecoveryAction();
   const remaining = useSecondsRemaining(recovery.authorization?.expiresAt ?? 0);
   // A direct/deep link or app restart has no in-memory server grant. The backend also
@@ -22,10 +26,10 @@ export default function CreateNewPassword() {
   if (leaving) return null;
   if (!recovery.authorization) return <Redirect href="/forgot-password" />;
   const expired = remaining === 0 || invalid;
-  const mismatched = confirmation.length > 0 && password !== confirmation;
   const valid = isValidPassword(password) && password === confirmation && !expired;
 
   const reset = () => {
+    setAttempted(true);
     if (!valid) return;
     void run(async (isActive) => {
       try {
@@ -47,11 +51,16 @@ export default function CreateNewPassword() {
   return (
     <RecoveryScreen title="Create new password" description="Your code is verified. Set your new password below.">
       <View className="gap-4">
-        <RecoveryField label="New password" value={password} onChangeText={setPassword} secureTextEntry autoComplete="new-password" textContentType="newPassword" editable={!submitting && !expired} />
-        <RecoveryField label="Confirm new password" value={confirmation} onChangeText={setConfirmation} secureTextEntry autoComplete="new-password" textContentType="newPassword" editable={!submitting && !expired} />
+        <View>
+          <RecoveryField label="New password" value={password} onChangeText={value => { setPassword(value); setPasswordEdited(true); }} secureTextEntry autoComplete="new-password" textContentType="newPassword" editable={!submitting && !expired} validationState={passwordState(password, attempted || passwordEdited)} />
+          <PasswordRequirements password={password} attempted={attempted || passwordEdited} />
+        </View>
+        <View>
+          <RecoveryField label="Confirm new password" value={confirmation} onChangeText={value => { setConfirmation(value); setConfirmationEdited(true); }} secureTextEntry autoComplete="new-password" textContentType="newPassword" editable={!submitting && !expired} validationState={confirmationState(password, confirmation, attempted || confirmationEdited)} onSubmitEditing={reset} />
+          <PasswordConfirmation password={password} confirmation={confirmation} attempted={attempted || confirmationEdited} />
+        </View>
       </View>
-      <Text className="text-xs text-muted-foreground mt-3">Use at least 8 characters.</Text>
-      <RecoveryError message={expired ? "Reset authorization has expired or is no longer valid. Request a new code." : error ?? (mismatched ? "Passwords do not match." : null)} />
+      <RecoveryError message={expired ? "Reset authorization has expired or is no longer valid. Request a new code." : error} />
       <RecoveryButton label={submitting ? "Resetting..." : "Reset Password"} busy={submitting} disabled={!valid} onPress={reset} />
       {expired && <Pressable onPress={() => { clear(); router.replace("/forgot-password"); }} className="mt-5 items-center"><Text className="text-primary font-semibold">Request a new code</Text></Pressable>}
       <Pressable accessibilityRole="link" disabled={submitting} onPress={() => { setLeaving(true); clear(); router.replace("/login"); }} className="mt-6 items-center" style={{ minHeight: 44, justifyContent: "center" }}>

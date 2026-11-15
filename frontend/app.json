@@ -36,6 +36,7 @@
         }
       ],
       "expo-sharing",
+      ["expo-image-picker", { "cameraPermission": "Use your camera to take a Project Panday profile photo.", "photosPermission": "Choose a photo for your Project Panday profile.", "microphonePermission": false }],
       "expo-notifications",
       "expo-secure-store",
       "expo-splash-screen"

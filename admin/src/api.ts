@@ -107,11 +107,11 @@ export async function adminLogin(email: string, password: string): Promise<strin
   return token;
 }
 
-export const fetchStats = () => request<Stats>("/api/admin/stats");
+export const fetchStats = (signal?: AbortSignal) => request<Stats>("/api/admin/stats", { signal });
 
-export const fetchUsers = (params: { status?: string; role?: string; q?: string }) => {
+export const fetchUsers = (params: { status?: string; role?: string; q?: string }, signal?: AbortSignal) => {
   const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]);
-  return request<AdminUser[]>(`/api/admin/users?${qs}`);
+  return request<AdminUser[]>(`/api/admin/users?${qs}`, { signal });
 };
 
 export const fetchProjects = (params: { status?: string; q?: string } = {}) => {

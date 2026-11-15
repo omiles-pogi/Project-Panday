@@ -30,11 +30,11 @@ function text(node) {
   if (Array.isArray(node)) return node.map(text).join(' ');
   return typeof node === 'object' ? text(node.props?.children) : String(node);
 }
-const project = { id: 7, title: 'Recorded house', homeownerName: 'Recorded owner', lastReceivedAt: '2026-11-11T02:00:00Z',
-  receiptCount: 2, lineCount: 2, totalAmount: 4300, knownSubtotal: 4300, missingPriceCount: 0 };
+const project = { id: 7, title: 'Recorded house', homeownerName: 'Recorded owner', completedAt: '2026-11-11T02:00:00Z',
+  associationType: 'selected_estimate', selectedCategories: ['Construction Materials'], lineCount: 2, totalAmount: 4300, knownSubtotal: 4300, missingPriceCount: 0 };
 const details = { ...project, projectType: '2-storey house', location: 'Dagupan', description: 'Private construction description', items: [
-  { id: 1, fulfillmentId: 10, materialRequestId: 20, receivedAt: project.lastReceivedAt, name: 'Recorded cement', quantity: 10, unit: 'bag', unitPrice: 280, lineTotal: 2800 },
-  { id: 2, fulfillmentId: 11, materialRequestId: 21, receivedAt: '2026-11-10T02:00:00Z', name: 'Recorded cement', quantity: 5, unit: 'bag', unitPrice: 300, lineTotal: 1500 },
+  { id: 'estimate-0', selectedCategory: 'Construction Materials', priceSource: 'supplier_listing', name: 'Recorded cement', quantity: 10, unit: 'bag', unitPrice: 280, lineTotal: 2800 },
+  { id: 'estimate-1', selectedCategory: 'Construction Materials', priceSource: 'saved_estimate', name: 'Recorded cement', quantity: 5, unit: 'bag', unitPrice: 300, lineTotal: 1500 },
 ] };
 
 test('supplier History API is GET-only, rejects invalid IDs before requests and sanitizes backend errors', async () => {
@@ -46,16 +46,16 @@ test('supplier History API is GET-only, rejects invalid IDs before requests and 
   assert.deepEqual(calls, [['/api/supplier-history'], ['/api/supplier-history/7']]);
   for (const id of [0, -1, NaN, 1.5]) await assert.rejects(api.fetchSupplierHistoryDetails(id), /invalid/);
   assert.equal(calls.length, 2); fail = true;
-  await assert.rejects(api.fetchSupplierHistory(), (error) => /Couldn't load supply history/.test(error.message) && !/SQLSTATE|credential/.test(error.message));
+  await assert.rejects(api.fetchSupplierHistory(), (error) => /Couldn't load project history/.test(error.message) && !/SQLSTATE|credential/.test(error.message));
 });
 
-test('receipt grouping uses device-local calendar days and does not invent dates or prices', () => {
+test('completion grouping uses device-local calendar days and does not invent dates or prices', () => {
   const today = new Date(2026, 0, 1, 12);
   const projects = [
-    { ...project, id: 1, lastReceivedAt: new Date(2026, 0, 1, 1).toISOString() },
-    { ...project, id: 2, lastReceivedAt: new Date(2025, 11, 31, 23).toISOString() },
-    { ...project, id: 3, lastReceivedAt: new Date(2025, 11, 20, 12).toISOString() },
-    { ...project, id: 4, lastReceivedAt: null },
+    { ...project, id: 1, completedAt: new Date(2026, 0, 1, 1).toISOString() },
+    { ...project, id: 2, completedAt: new Date(2025, 11, 31, 23).toISOString() },
+    { ...project, id: 3, completedAt: new Date(2025, 11, 20, 12).toISOString() },
+    { ...project, id: 4, completedAt: null },
   ];
   const groups = utils.supplyHistorySections(projects, today);
   assert.equal(groups[0].title, 'Today'); assert.equal(groups[1].title, 'Yesterday');
@@ -91,9 +91,10 @@ test('supplier list supports true empty/loading/retry states and opens the actua
   for (const mode of ['light', 'dark']) {
     app.mode(mode); let tree = app.render();
     assert.equal(tree.type, 'SectionList'); assert.equal(tree.props.ListEmptyComponent.props.title, 'No project history yet');
-    assert.equal(tree.props.ListEmptyComponent.props.message, 'Homeowner projects that receive materials from your shop will appear here.');
+    assert.equal(tree.props.ListEmptyComponent.props.message, 'Completed homeowner projects that selected your shop during material estimation will appear here.');
     assert.equal(nodes(tree.props.ListHeaderComponent, 'TextInput').length, 0);
-    assert.doesNotMatch(text(tree.props.ListHeaderComponent), /Pending|Active|Completed|All filter|Description/);
+    assert.doesNotMatch(text(tree.props.ListHeaderComponent), /Pending|Active|All filter|Description/);
+    assert.match(text(tree.props.ListHeaderComponent), /saved estimates, not confirmed purchases/);
     app.resource.loading = true; tree = app.render(); assert.equal(tree.props.ListEmptyComponent.type, 'ActivityIndicator');
     app.resource.loading = false; app.resource.error = 'Offline'; tree = app.render();
     nodes(tree.props.ListHeaderComponent, 'SupplyHistoryFeedback')[0].props.retry(); await tick(); app.resource.error = null;
@@ -104,36 +105,39 @@ test('supplier list supports true empty/loading/retry states and opens the actua
   list.props.refreshControl.props.onRefresh(); await tick(); assert.equal(app.refreshed(), 3);
 });
 
-test('project details omit construction descriptions and preserve the supplied-items destination and counting rule', async () => {
+test('project details retain layout and routes while clearly identifying saved estimates and selected categories', async () => {
   const app = screen('src/screens/supplier/HistoryDetails.tsx', details);
   for (const mode of ['light', 'dark']) {
     app.mode(mode); const tree = app.render();
     const rows = nodes(tree, 'SupplyRow');
     assert.equal(rows.find((row) => row.props.label === 'Project Type').props.value, '2-storey house');
     assert.equal(rows.find((row) => row.props.label === 'Location').props.value, 'Dagupan');
-    assert.equal(rows.find((row) => row.props.label === 'Supplied line items').props.value, '2');
+    assert.equal(rows.find((row) => row.props.label === 'Estimated line items').props.value, '2');
+    assert.equal(rows.find((row) => row.props.label === 'Selected Categories').props.value, 'Construction Materials');
     assert.doesNotMatch(text(tree), /Description|Private construction/);
-    assert.match(text(tree), /Each line on each receipt counts once/);
+    assert.match(text(tree), /do not establish purchases or deliveries/);
     nodes(tree, 'Pressable')[0].props.onPress();
   }
   assert.deepEqual(app.pushes, ['/supplier/history/7/items', '/supplier/history/7/items']);
   assert.equal((await app.load()).id, 7);
 });
 
-test('supplied lines preserve repeated materials and distinct historical prices, and unknown totals remain unknown', () => {
+test('estimate lines preserve repeats and saved prices and do not pretend to be purchases', () => {
   const app = screen('src/screens/supplier/SuppliesProvided.tsx', details);
   let tree = app.render(); let list = nodes(tree, 'FlatList')[0];
   assert.equal(list.props.data.length, 2);
   assert.equal(nodes(tree, 'StackScreen')[0].props.options.header().props.subtitle, 'Recorded house');
   const first = list.props.renderItem({ item: details.items[0] }); const second = list.props.renderItem({ item: details.items[1] });
-  assert.equal(nodes(first, 'SupplyRow').find((row) => row.props.label === 'Quantity').props.value, '10 bag');
-  assert.match(nodes(first, 'SupplyRow').find((row) => row.props.label === 'Recorded unit price').props.value, /280\.00/);
-  assert.match(nodes(second, 'SupplyRow').find((row) => row.props.label === 'Recorded unit price').props.value, /300\.00/);
+  assert.equal(nodes(first, 'SupplyRow').find((row) => row.props.label === 'Estimated quantity').props.value, '10 bag');
+  assert.match(nodes(first, 'SupplyRow').find((row) => row.props.label === 'Saved estimated unit price').props.value, /280\.00/);
+  assert.match(nodes(second, 'SupplyRow').find((row) => row.props.label === 'Saved estimated unit price').props.value, /300\.00/);
+  assert.match(text(first), /Saved supplier listing price/); assert.match(text(second), /not a confirmed supplier quote/);
+  assert.doesNotMatch(text(first), /Fulfillment #/);
   assert.match(nodes(list.props.ListFooterComponent, 'SupplyRow')[0].props.value, /4,300\.00/);
   app.resource.data = { ...details, totalAmount: null, knownSubtotal: 2800, missingPriceCount: 1 };
   tree = app.render(); list = nodes(tree, 'FlatList')[0];
   assert.equal(nodes(list.props.ListFooterComponent, 'SupplyRow')[0].props.value, 'Not recorded');
-  assert.match(text(list.props.ListFooterComponent), /No estimated or current inventory price is substituted/);
+  assert.match(text(list.props.ListFooterComponent), /No current inventory price is substituted/);
   assert.equal(nodes(first, 'Pressable').length, 0);
 });
 
@@ -156,6 +160,20 @@ test('only supplier accounts can enter all three History routes and existing sup
   assert.deepEqual([...drawer.props.items].map((item) => item.label), ['Dashboard', 'Inventory', 'Material Fulfillment', 'History', 'Profile']);
   assert.equal(drawer.props.items.find((item) => item.label === 'History').matchChildren, true);
   assert.equal(drawer.props.pages.find((page) => page.name === 'history').headerShown, false);
+});
+
+test('an explicitly selected category with no saved materials stays visible without inventing zero costs', () => {
+  const empty = { ...details, selectedCategories: ['Electrical and Plumbing'], lineCount: 0, items: [], totalAmount: null, knownSubtotal: 0 };
+  const detail = screen('src/screens/supplier/HistoryDetails.tsx', empty).render();
+  assert.match(text(detail), /No material estimate lines were saved/);
+  assert.equal(nodes(detail, 'SupplyRow').find(row => row.props.label === 'Total estimated material cost').props.value, 'Not recorded');
+  const items = screen('src/screens/supplier/SuppliesProvided.tsx', empty).render();
+  const list = nodes(items, 'FlatList')[0];
+  assert.equal(list.props.data.length, 0);
+  assert.match(list.props.ListEmptyComponent.props.message, /Other suppliers' estimates are private/);
+  const withheld = screen('src/screens/supplier/HistoryDetails.tsx', { ...empty, unverifiedSourceCount: 1 }).render();
+  assert.match(text(withheld), /quoted sources can be verified/);
+  assert.doesNotMatch(text(withheld), /No material estimate lines were saved/);
 });
 
 test('supplier summaries adapt to narrow screens and the shared header uses existing back navigation', () => {

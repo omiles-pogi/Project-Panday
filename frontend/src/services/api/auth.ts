@@ -6,7 +6,7 @@ interface AuthResponse {
   token: string;
 }
 
-// Registration no longer returns a token: new accounts wait for admin approval.
+// Professional accounts wait for admin approval; homeowners receive AuthResponse immediately.
 export interface PendingResponse {
   user: AuthUser;
   message: string;

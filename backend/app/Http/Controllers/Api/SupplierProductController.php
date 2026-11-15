@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\BulkSupplierProductActivationRequest;
+use App\Http\Requests\ConfirmSupplierStockRequest;
 use App\Http\Requests\StoreSupplierProductRequest;
 use App\Http\Requests\UpdateSupplierProductRequest;
 use App\Models\SupplierProduct;
@@ -29,6 +31,21 @@ class SupplierProductController extends Controller
     public function update(UpdateSupplierProductRequest $request, SupplierProduct $supplierProduct): JsonResponse
     {
         return $this->attempt(fn () => $this->products->update($supplierProduct, $request->user(), $request->validated()));
+    }
+
+    public function bulkActivation(BulkSupplierProductActivationRequest $request): JsonResponse
+    {
+        return $this->attempt(fn () => $this->products->bulkActivation($request->user(), $request->boolean('is_active')));
+    }
+
+    public function stockConfirmationReview(Request $request): JsonResponse
+    {
+        return $this->attempt(fn () => $this->products->stockConfirmationReview($request->user()));
+    }
+
+    public function confirmStock(ConfirmSupplierStockRequest $request): JsonResponse
+    {
+        return $this->attempt(fn () => $this->products->confirmStock($request->user(), $request->validated('review_token')));
     }
 
     public function destroy(Request $request, SupplierProduct $supplierProduct): JsonResponse

@@ -24,11 +24,10 @@ class AuthTest extends TestCase
         $response->assertStatus(201)
             ->assertJsonPath('user.email', 'test@gmail.com')
             ->assertJsonPath('user.role', 'homeowner')
-            ->assertJsonPath('user.approval_status', 'pending')
-            ->assertJsonStructure(['user', 'message'])
-            ->assertJsonMissing(['token']);
+            ->assertJsonPath('user.approval_status', 'approved')
+            ->assertJsonStructure(['user', 'message', 'token']);
 
-        $this->assertDatabaseHas('users', ['email' => 'test@gmail.com', 'role' => 'homeowner', 'approval_status' => 'pending']);
+        $this->assertDatabaseHas('users', ['email' => 'test@gmail.com', 'role' => 'homeowner', 'approval_status' => 'approved']);
     }
 
     public function test_registration_rejects_an_undeliverable_email_domain(): void
@@ -107,6 +106,7 @@ class AuthTest extends TestCase
         User::factory()->create([
             'email' => 'test@example.com',
             'password' => Hash::make('password123'),
+            'role' => 'contractor',
             'approval_status' => 'pending',
         ]);
 

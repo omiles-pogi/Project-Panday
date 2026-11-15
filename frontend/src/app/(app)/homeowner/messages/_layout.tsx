@@ -1,5 +1,5 @@
 import { Stack } from "expo-router";
-import { DrawerToggleButton } from "expo-router/drawer";
+import HomeownerHeader from "@/components/HomeownerHeader";
 import { useTheme } from "@/context/ThemeContext";
 
 // Lets "Message Contractor" deep-link straight into a thread while Back still lands on the inbox.
@@ -11,9 +11,9 @@ export default function HomeownerMessagesLayout() {
     <Stack screenOptions={{ headerStyle: { backgroundColor: chrome.card }, headerTintColor: chrome.foreground }}>
       <Stack.Screen
         name="index"
-        options={{ title: "Messages", headerLeft: () => <DrawerToggleButton tintColor={chrome.mutedForeground} /> }}
+        options={{ title: "Messages", header: () => <HomeownerHeader title="Messages" /> }}
       />
-      <Stack.Screen name="[id]" options={{ title: "Chat" }} />
+      <Stack.Screen name="[id]" options={{ title: "Chat", header: () => <HomeownerHeader title="Chat" backTo="/homeowner/messages" /> }} />
     </Stack>
   );
 }

@@ -75,6 +75,33 @@ class HomeDashboardTest extends TestCase
         $this->getJson('/api/home-dashboard')->assertOk()->assertExactJson(['projects' => [], 'ongoingProjects' => [], 'recentActivity' => []]);
     }
 
+    public function test_owner_project_picker_provides_real_planning_metadata_without_exposing_other_owners(): void
+    {
+        $owner = $this->user();
+        $approved = $this->project($owner);
+        $approved->update(['approved_plan' => array_merge($approved->approved_plan, ['_finalizationKey' => 'owner-retry-identity'])]);
+        $draft = app(ProjectService::class)->startDraft($owner);
+        $private = $this->project($this->user(), 'Another homeowner');
+        DB::table('projects')->where('id', $draft->id)->update([
+            'created_at' => '2026-11-01 02:00:00', 'updated_at' => '2026-11-02 03:00:00',
+        ]);
+        Sanctum::actingAs($owner);
+
+        $response = $this->getJson('/api/projects')->assertOk()->assertJsonCount(2);
+        $projects = collect($response->json())->keyBy('id');
+        $this->assertFalse($projects->has($private->id));
+        $this->assertSame('not_started', $projects[$draft->id]['status']);
+        $this->assertFalse($projects[$draft->id]['hasApprovedPlan']);
+        $this->assertNull($projects[$draft->id]['projectNamePending']);
+        $this->assertSame($draft->fresh()->created_at->toIso8601String(), $projects[$draft->id]['createdAt']);
+        $this->assertSame($draft->fresh()->updated_at->toIso8601String(), $projects[$draft->id]['updatedAt']);
+        $this->assertTrue($projects[$approved->id]['hasApprovedPlan']);
+        $this->assertSame('owner-retry-identity', $projects[$approved->id]['finalizationKey']);
+        $this->assertNull($projects[$draft->id]['finalizationKey']);
+        $this->assertArrayNotHasKey('approved_plan', $projects[$approved->id]);
+        $this->assertArrayNotHasKey('messages', $projects[$approved->id]);
+    }
+
     public function test_recent_activity_uses_saved_membership_completion_and_checklist_timestamps(): void
     {
         $owner = $this->user();

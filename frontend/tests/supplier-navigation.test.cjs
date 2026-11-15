@@ -86,11 +86,13 @@ test('five targets remain centered, contained and readable across sizes, themes 
 test('existing Inventory Add Material sheet opens, closes and reopens from the center action without Inventory changes', () => {
   const app = bar(); let params = {}; const slots = []; let cursor = 0;
   const Pricing = load('src/screens/supplier/Pricing.tsx', {
-    react: { useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = initial; return [slots[i], (value) => { slots[i] = value; }]; } },
+    react: { useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = initial; return [slots[i], (value) => { slots[i] = value; }]; }, useRef(initial) { return slots[cursor++] ??= { current: initial }; } },
     'react/jsx-runtime': runtime, 'react-native': primitive(['ActivityIndicator', 'Pressable', 'Text', 'View']),
     'expo-router': { useLocalSearchParams: () => params, router: { setParams: (value) => { params = { ...params, ...value }; } } },
     '@expo/vector-icons': { Ionicons: 'Icon' }, '@/components/ui': primitive(['Badge', 'Button', 'Card', 'ChipPicker', 'Field', 'PageHeader', 'Screen', 'SubmitButton']),
     '@/components/Sheet': defaults('Sheet'), '@/components/StockBadge': defaults('StockBadge'),
+    '@/components/ConfirmDialog': { useConfirmDialog: () => ({ ask() {}, dialog: null }) },
+    '@/services/api/supplierProducts': {}, '@/utils/supplierStock': load('src/utils/supplierStock.ts'),
     '@/context/SupplierContext': { useSupplier: () => ({ products: [], productsLoading: false, productsError: null }) },
     '@/context/ThemeContext': { useTheme: () => ({ chrome: colors.lightChrome }) },
     '@/data/supplier': { CATEGORIES: [], CAT_COLORS: {}, UNITS: [] }, '@/utils/currency': {}, './InventoryStats': defaults('InventoryStats'),
@@ -113,6 +115,7 @@ test('Contractor/Worker retain the incoming floating bar; only Supplier opts int
     '@expo/vector-icons': { Ionicons: 'Icon' }, '@/context/ThemeContext': { useTheme: () => ({ chrome: colors.lightChrome }) },
     '@/components/RoleDrawerContent': defaults('DrawerContent'),
     '@/components/RoleFloatingTabBar': defaults('RoleFloatingTabBar'),
+    '@/components/HomeownerHeader': defaults('HomeownerHeader'),
   };
   const RoleDrawer = load('src/components/RoleDrawer.tsx', shared).default;
   for (const role of ['contractor', 'worker']) assert.equal(RoleDrawer({ role, items: [], pages: [] }).type, Drawer);

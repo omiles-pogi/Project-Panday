@@ -13,14 +13,14 @@ import { usePlan, type ApprovalStage } from "@/context/PlanContext";
 import { useTheme } from "@/context/ThemeContext";
 import type { ChatHistoryMessage } from "@/services/ai/client";
 import type { ConstructionPlan, SupplierCategory, SupplierOption, SupplierSelections } from "@/types/plan";
-import SupplierPicker, { selectionsOf } from "@/components/SupplierPicker";
+import SupplierPicker from "@/components/SupplierPicker";
 import BudgetCategoryBreakdown from "@/components/BudgetCategoryBreakdown";
 import { CountUp } from "@/components/charts";
 import { peso, pesoCompact } from "@/utils/currency";
 import { compareBudget } from "@/utils/budget";
 import { timelineLabel } from "@/utils/timeline";
 import { garageLabel } from "@/utils/garage";
-import { createProject, fetchDashboard, fetchMyHomeownerProjects, startProjectFromPlan } from "@/services/api/projects";
+import { createProject, fetchActiveDashboard, fetchMyHomeownerProjects, startProjectFromPlan } from "@/services/api/projects";
 import type { ProjectSummary } from "@/types/project";
 import Mascot from "@/components/Mascot";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
@@ -31,6 +31,7 @@ import { planPdfHtml, sharePdf } from "@/utils/pdf";
 import { timeAgo } from "@/utils/chatTime";
 import * as Clipboard from "expo-clipboard";
 import ProjectNamePrompt from "@/components/ProjectNamePrompt";
+import { EMPTY_REVIEW, materialApprovalKey, restorePlanningMessages, samePlanningData, type PlanningReview } from "@/utils/planningState";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -38,13 +39,16 @@ type MsgRole = "user" | "ai";
 type CardType = "plan" | "budget" | "materials" | "summary";
 
 interface ChatMessage {
-  id: number;
+  id: number | string;
   role: MsgRole;
   text: string;
   card?: CardType;
   quickReplies?: string[];
   typing?: boolean;
   createdAt: string;
+  planSnapshot?: ConstructionPlan;
+  reviewSnapshot?: PlanningReview;
+  failed?: boolean;
 }
 
 let uid = 100;
@@ -100,11 +104,11 @@ function CardHeader({ children }: { children: React.ReactNode }) {
 }
 
 /* PLAN OVERVIEW CARD */
-function PlanCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: () => void; onEdit: () => void }) {
+function PlanCard({ plan, onNext, onEdit, review, onReview }: { plan: ConstructionPlan; onNext: () => void; onEdit: () => void; review: PlanningReview; onReview: (changes: Partial<PlanningReview>) => void }) {
   const { chrome } = useTheme();
   // Every item starts approved — tapping a tile disapproves it (and tapping again re-approves),
   // so "what's left to review" is whatever the homeowner has actively flagged, not everything.
-  const [disapproved, setDisapproved] = useState<Record<string, boolean>>({});
+  const disapproved = review.planFlags;
   const cmp = compareBudget(plan.budget, plan.totalEstimate);
   const materialsTotal = plan.materials.reduce((s, m) => s + m.qty * m.unitPrice, 0);
   const phaseNames = plan.phases.map((p) => p.name);
@@ -140,7 +144,7 @@ function PlanCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: ()
   const disapprovedItems = items.filter((i) => disapproved[i.title]);
   const allApproved = disapprovedItems.length === 0;
 
-  const toggle = (title: string) => setDisapproved((p) => ({ ...p, [title]: !p[title] }));
+  const toggle = (title: string) => onReview({ planFlags: { ...disapproved, [title]: !disapproved[title] } });
 
   return (
     <CardShell>
@@ -211,7 +215,7 @@ function PlanCard({ plan, onNext, onEdit }: { plan: ConstructionPlan; onNext: ()
           </Pressable>
         ) : (
           <Pressable
-            onPress={() => setDisapproved({})}
+            onPress={() => onReview({ planFlags: {} })}
             className="py-2 rounded-xl items-center flex-row justify-center gap-1.5 bg-muted border border-border"
           >
             <Ionicons name="checkmark" size={15} color={chrome.mutedForeground} />
@@ -283,15 +287,17 @@ function MaterialsCard({
   onEdit,
   onChooseSupplier,
   busy,
+  review, onReview,
 }: {
   plan: ConstructionPlan;
   onNext: () => void;
   onEdit: () => void;
   onChooseSupplier: (category: SupplierCategory, supplier: SupplierOption | null) => void;
   busy: boolean;
+  review: PlanningReview; onReview: (changes: Partial<PlanningReview>) => void;
 }) {
   const { chrome } = useTheme();
-  const [approved, setApproved] = useState<Record<number, boolean>>({});
+  const approved = Object.fromEntries(plan.materials.map((material, index) => [index, !!review.materialsApproved[materialApprovalKey(material, index, plan.materials)]]));
   const total = plan.materials.reduce((s, m) => s + m.qty * m.unitPrice, 0);
   const allApproved = plan.materials.every((_, i) => approved[i]);
 
@@ -326,7 +332,7 @@ function MaterialsCard({
                 {peso(m.qty * m.unitPrice)}
               </Text>
               <Pressable
-                onPress={() => setApproved((p) => ({ ...p, [i]: !p[i] }))}
+                onPress={() => onReview({ materialsApproved: { ...review.materialsApproved, [materialApprovalKey(m, i, plan.materials)]: !approved[i] } })}
                 className="px-2 py-1 rounded"
                 style={{ backgroundColor: approved[i] ? "#10b98120" : chrome.muted }}
               >
@@ -359,7 +365,7 @@ function MaterialsCard({
         </Pressable>
         <View className="flex-row gap-2">
           <Pressable
-            onPress={() => setApproved(Object.fromEntries(plan.materials.map((_, i) => [i, true])))}
+            onPress={() => onReview({ materialsApproved: { ...review.materialsApproved, ...Object.fromEntries(plan.materials.map((material, i) => [materialApprovalKey(material, i, plan.materials), true])) } })}
             className="flex-1 py-2.5 rounded-xl items-center flex-row justify-center gap-1.5"
             style={{ backgroundColor: allApproved ? chrome.muted : "#f59e0b15", borderWidth: 1, borderColor: "#f59e0b30" }}
           >
@@ -504,21 +510,15 @@ function reconstructMessages(
   history: ChatHistoryMessage[],
   stage: ApprovalStage | null
 ): ChatMessage[] {
-  if (history.length === 0) {
-    return [];
-  }
-  const rebuilt: ChatMessage[] = [];
-  history.forEach((m, i) => {
-    const isLastAssistantTurn = m.role === "assistant" && i === history.length - 1;
-    rebuilt.push({
-      id: nextId(),
+  return restorePlanningMessages(plan, history, stage, (card, saved) => STAGE_TEXT[card](saved)).map((m, i) => ({
+      id: m.id ?? `saved-message-${i}`,
       role: m.role === "user" ? "user" : "ai",
       text: m.content,
-      createdAt: now(),
-      card: isLastAssistantTurn && plan ? stage ?? "plan" : undefined,
-    });
-  });
-  return rebuilt;
+      createdAt: m.createdAt ?? "",
+      card: m.card,
+      planSnapshot: m.planSnapshot,
+      reviewSnapshot: m.reviewSnapshot,
+    }));
 }
 
 function AIBubble({
@@ -529,6 +529,7 @@ function AIBubble({
   onEdit,
   onChooseSupplier,
   busy,
+  readOnly = false, review = EMPTY_REVIEW, onReview = () => {},
 }: {
   msg: ChatMessage;
   plan: ConstructionPlan | null;
@@ -537,6 +538,7 @@ function AIBubble({
   onEdit: (tab: PlanEditorTab) => void;
   onChooseSupplier: (category: SupplierCategory, supplier: SupplierOption | null) => void;
   busy: boolean;
+  readOnly?: boolean; review?: PlanningReview; onReview?: (changes: Partial<PlanningReview>) => void;
 }) {
   const { chrome } = useTheme();
   const [copied, setCopied] = useState(false);
@@ -563,22 +565,26 @@ function AIBubble({
               <Pressable onPress={copyText} hitSlop={8}>
                 <Ionicons name={copied ? "checkmark" : "copy-outline"} size={13} color={chrome.mutedForeground} />
               </Pressable>
-              <Text className="text-xs text-muted-foreground">{copied ? "Copied" : timeAgo(msg.createdAt)}</Text>
+              <Text className="text-xs text-muted-foreground">{copied ? "Copied" : msg.createdAt ? timeAgo(msg.createdAt) : "Saved planning message"}</Text>
             </View>
           </>
         )}
-        {!msg.typing && plan && msg.card === "plan" && <PlanCard plan={plan} onNext={onAdvance} onEdit={() => onEdit("details")} />}
-        {!msg.typing && plan && msg.card === "budget" && <BudgetCard plan={plan} onNext={onAdvance} onEdit={() => onEdit("budget")} />}
+        {readOnly && msg.card && <Text className="text-xs text-muted-foreground">Saved planning card · read-only</Text>}
+        <View pointerEvents={busy || readOnly ? "none" : "auto"}>
+        {!msg.typing && plan && msg.card === "plan" && <PlanCard plan={plan} onNext={readOnly ? () => {} : onAdvance} onEdit={() => { if (!readOnly) onEdit("details"); }} review={review} onReview={readOnly ? () => {} : onReview} />}
+        {!msg.typing && plan && msg.card === "budget" && <BudgetCard plan={plan} onNext={readOnly ? () => {} : onAdvance} onEdit={() => { if (!readOnly) onEdit("budget"); }} />}
         {!msg.typing && plan && msg.card === "materials" && (
           <MaterialsCard
             plan={plan}
-            onNext={onAdvance}
-            onEdit={() => onEdit("materials")}
-            onChooseSupplier={onChooseSupplier}
+            onNext={readOnly ? () => {} : onAdvance}
+            onEdit={() => { if (!readOnly) onEdit("materials"); }}
+            onChooseSupplier={(category, supplier) => { if (!readOnly) onChooseSupplier(category, supplier); }}
             busy={busy}
+            review={review} onReview={readOnly ? () => {} : onReview}
           />
         )}
         {!msg.typing && plan && msg.card === "summary" && <SummaryCard plan={plan} />}
+        </View>
         {!msg.typing && msg.quickReplies && (
           <View className="flex-row flex-wrap gap-2">
             {msg.quickReplies.map((r) => (
@@ -597,7 +603,7 @@ function UserBubble({ msg }: { msg: ChatMessage }) {
       <View className="rounded-2xl px-4 py-3 bg-primary" style={{ maxWidth: "80%" }}>
         <Text className="text-sm leading-relaxed text-primary-foreground">{msg.text}</Text>
       </View>
-      <Text className="text-xs mt-1 mr-1 text-muted-foreground">{timeAgo(msg.createdAt)}</Text>
+      <Text className="text-xs mt-1 mr-1 text-muted-foreground">{msg.createdAt ? timeAgo(msg.createdAt) : "Saved message"}</Text>
     </View>
   );
 }
@@ -617,9 +623,13 @@ export default function ProjectChat() {
     linkToProject,
     send,
     updatePlan,
+    setSupplierSelection,
     getFinalizationKey,
     projectNaming,
     syncProjectNaming,
+    refreshProjectSelection,
+    loading: planLoading,
+    review = EMPTY_REVIEW, setReview = () => {}, pendingTurn = null, error: plannerError,
   } = usePlan();
   const [editorTab, setEditorTab] = useState<PlanEditorTab | null>(null);
   // The planner has no bottom bar. Preserve its single existing keyboard animation for
@@ -636,6 +646,18 @@ export default function ProjectChat() {
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const operationRef = useRef(0);
   const finalizationInFlight = useRef(false);
+  const sending = useRef(false);
+
+  // A request may finish while this screen is away. Read its durable result on return,
+  // without interrupting the live local stream or replacing the conversation's identity.
+  useEffect(() => {
+    if (!ready || busy || planLoading) return;
+    // Hydrate local chat presentation from the external conversation store after an async save
+    // or stream finishes; do not replace a live reply while this screen owns an active operation.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMessages(reconstructMessages(plan, planMessages, approvalStage));
+    setStage(approvalStage ?? (plan ? "plan" : "idle"));
+  }, [ready, plan, planMessages, approvalStage, planLoading, busy]);
 
   useFocusEffect(
     useCallback(() => {
@@ -643,7 +665,7 @@ export default function ProjectChat() {
       let cancelled = false;
       fetchMyHomeownerProjects()
         .then((list) => {
-          if (!cancelled) setRecentProjects(list.slice(0, 6));
+          if (!cancelled) setRecentProjects(list.filter(p => p.status !== "completed").slice(0, 6));
         })
         .catch(() => {});
       return () => {
@@ -681,7 +703,7 @@ export default function ProjectChat() {
     const projectId = /^\d+$/.test(activeProjectKey) ? Number(activeProjectKey) : undefined;
     // Without a selected ID, leave the welcome/project chooser intact. Never fetch a default project.
     if (!projectId) return;
-    fetchDashboard(projectId)
+    fetchActiveDashboard(projectId)
       .then(({ project }) => {
         if (cancelled) return;
         setSyncError(null);
@@ -689,13 +711,13 @@ export default function ProjectChat() {
           selectProject(project.id, project.approvedPlan, project.title);
           syncProjectNaming({ id: project.id, title: project.title, status: project.status, projectNamePending: project.projectNamePending ?? null });
         }
-        else if (projectId) setSyncError("This project is no longer available. Select a project from Home.");
+        else if (projectId) { setSyncError("This project is no longer active. Select a project from Home."); void refreshProjectSelection(); }
       })
       .catch((err) => {
         if (!cancelled) setSyncError(err instanceof Error ? err.message : "Could not refresh project data.");
       });
     return () => { cancelled = true; };
-  }, [ready, activeProjectKey, selectProject, syncProjectNaming]));
+  }, [ready, activeProjectKey, selectProject, syncProjectNaming, refreshProjectSelection]));
 
   useEffect(() => {
     scrollRef.current?.scrollToEnd({ animated: true });
@@ -719,17 +741,19 @@ export default function ProjectChat() {
     };
   }, [keyboardVisible]);
 
-  const resolveTyping = (id: number, update: Partial<ChatMessage>) => {
+  const resolveTyping = (id: number | string, update: Partial<ChatMessage>) => {
     setMessages((p) => p.map((m) => (m.id === id ? { ...m, ...update, typing: false } : m)));
   };
 
   // Every message goes through here — the AI itself decides whether to just chat, ask a
   // clarifying question, or submit/update the plan, so there's one handler instead of three.
-  const handleSend = async (text: string, supplierSelections?: SupplierSelections) => {
-    if (!text.trim() || busy || !ready) return;
+  const handleSend = async (text: string, supplierSelections?: SupplierSelections, retry = false) => {
+    if (!text.trim() || busy || planLoading || !ready || sending.current) return;
+    sending.current = true;
     const operation = ++operationRef.current;
     const hadPlanBefore = !!plan;
-    setMessages((p) => [...p, { id: nextId(), role: "user", text: text.trim(), createdAt: now() }]);
+    if (retry) setMessages(previous => previous.filter(message => !message.failed));
+    else setMessages((p) => [...p, { id: nextId(), role: "user", text: text.trim(), createdAt: now() }]);
     setInput("");
 
     if (!hadPlanBefore) setStage("generating");
@@ -746,7 +770,7 @@ export default function ProjectChat() {
     };
 
     try {
-      const result = await send(text.trim(), onChunk, supplierSelections ? { supplierSelections } : undefined);
+      const result = await send(text.trim(), onChunk, retry ? { retry: true } : supplierSelections ? { supplierSelections } : undefined);
       if (operation !== operationRef.current) return;
 
       if (result.type === "chat") {
@@ -766,15 +790,16 @@ export default function ProjectChat() {
       // was looking at and show its refreshed card, instead of always jumping back to the overview.
       const cardStage: ResolvedStage =
         hadPlanBefore && stage !== "summary" && (STAGE_ORDER as string[]).includes(stage) ? (stage as ResolvedStage) : "plan";
-      resolveTyping(typingId, { text: STAGE_TEXT[cardStage](result.plan), card: cardStage });
+      resolveTyping(typingId, { text: STAGE_TEXT[cardStage](result.plan), card: cardStage, planSnapshot: result.plan });
       setStage(cardStage);
-      setApprovalStage(cardStage);
+      await setApprovalStage(cardStage);
     } catch (err) {
       if (operation !== operationRef.current) return;
       const message = err instanceof Error ? err.message : "Something went wrong.";
-      resolveTyping(typingId, { text: `Sorry: ${message}` });
+      resolveTyping(typingId, { text: message, failed: true });
       if (!hadPlanBefore) setStage("idle");
     } finally {
+      sending.current = false;
       if (operation === operationRef.current) setBusy(false);
     }
   };
@@ -799,7 +824,7 @@ export default function ProjectChat() {
         if (operation !== operationRef.current) return;
         const saved = placeholderId !== null ? await startProjectFromPlan(placeholderId, plan, key) : await createProject(plan, key);
         if (operation !== operationRef.current) return;
-        setApprovalStage("summary");
+        await setApprovalStage("summary", { userText: label, assistantText: STAGE_TEXT.summary({ ...plan, projectTitle: saved.title }) });
         linkToProject(saved.id, saved.projectNamePending == null ? undefined : { projectId: saved.id, title: saved.title, pending: saved.projectNamePending });
         setMessages((previous) => [...previous,
           { id: nextId(), role: "user", text: label, createdAt: now() },
@@ -821,23 +846,34 @@ export default function ProjectChat() {
     setBusy(true);
     const typingId = nextId();
     setMessages((p) => [...p, { id: typingId, role: "ai", text: "", typing: true, createdAt: now() }]);
-    setTimeout(() => {
+    setTimeout(async () => {
       if (operation !== operationRef.current) return;
-      resolveTyping(typingId, { text: STAGE_TEXT[next](plan), card: next });
-      setStage(next);
-      setApprovalStage(next);
-      setBusy(false);
+      try {
+        await setApprovalStage(next, { userText: label, assistantText: STAGE_TEXT[next](plan) });
+        if (operation !== operationRef.current) return;
+        resolveTyping(typingId, { text: STAGE_TEXT[next](plan), card: next, planSnapshot: plan, reviewSnapshot: review });
+        setStage(next);
+      } catch {
+        if (operation === operationRef.current) resolveTyping(typingId, { text: "Could not save this approval on your device. Your existing plan is preserved. Please retry.", failed: true });
+      } finally { if (operation === operationRef.current) setBusy(false); }
     }, 650);
   };
 
-  // Picking a supplier is a plan change like any other: the AI re-sources that category from the
-  // supplier's real listings, and the server checks every line it returns against them.
-  const handleChooseSupplier = (category: SupplierCategory, supplier: SupplierOption | null) => {
-    if (!plan) return;
-    handleSend(
-      supplier ? `Use ${supplier.name} as my supplier for ${category}.` : `Use the best-priced supplier for ${category}.`,
-      { ...selectionsOf(plan), [category]: supplier?.id ?? null }
-    );
+  // The existing picker saves preferences locally, independently of Groq. A preference is not
+  // a new quote, approval, order or stock reservation; explicit plan revisions remain available.
+  const handleChooseSupplier = async (category: SupplierCategory, supplier: SupplierOption | null) => {
+    if (!plan || sending.current || busy || planLoading) return;
+    sending.current = true;
+    const operation = operationRef.current;
+    setBusy(true); setSyncError(null);
+    try {
+      await setSupplierSelection(category, supplier?.id ?? null);
+    } catch (error) {
+      if (operation === operationRef.current) setSyncError(error instanceof Error ? error.message : "Could not save the supplier choice. Please retry.");
+    } finally {
+      sending.current = false;
+      if (operation === operationRef.current) setBusy(false);
+    }
   };
 
   const handleSaveEdit = (next: ConstructionPlan) => {
@@ -850,6 +886,8 @@ export default function ProjectChat() {
         role: "ai",
         text: "Got it — I've applied your changes. Everything above now reflects your edited plan, and I'll build on it from here.",
         createdAt: now(),
+        card: approvalStage ?? "plan",
+        planSnapshot: next,
       },
     ]);
   };
@@ -859,6 +897,7 @@ export default function ProjectChat() {
   };
 
   const showSuggestions = messages.length === 0;
+  const activeCardIndex = messages.reduce((last, message, index) => message.card === stage && samePlanningData(message.planSnapshot ?? plan, plan) ? index : last, -1);
 
   return (
     <View className="flex-1 bg-background">
@@ -913,17 +952,22 @@ export default function ProjectChat() {
             </View>
           </View>
         )}
-        {messages.map((msg) =>
+        {messages.map((msg, index) =>
           msg.role === "ai" ? (
             <AIBubble
               key={msg.id}
               msg={msg}
-              plan={plan}
+              plan={msg.planSnapshot ?? plan}
               onQuickReply={handleQuickReply}
               onAdvance={advance}
               onEdit={setEditorTab}
               onChooseSupplier={handleChooseSupplier}
-              busy={busy}
+              busy={busy || !!planLoading}
+              readOnly={!!msg.card && index !== activeCardIndex}
+              review={index === activeCardIndex ? review : msg.reviewSnapshot ?? (msg.card === "materials" && approvalStage === "summary" && samePlanningData(msg.planSnapshot ?? plan, plan) ? {
+                ...review, materialsApproved: Object.fromEntries((plan?.materials ?? []).map((material, at, all) => [materialApprovalKey(material, at, all), true])),
+              } : review)}
+              onReview={setReview}
             />
           ) : (
             <UserBubble key={msg.id} msg={msg} />
@@ -939,7 +983,11 @@ export default function ProjectChat() {
       {/* The bar never mounts in chat. Only protect the closed-keyboard composer from the
           system navigation inset; the existing keyboard animation remains the sole lift. */}
       <View className="px-4" style={{ paddingBottom: keyboardVisible ? 12 : 16 + insets.bottom, flexShrink: 0 }}>
-        {syncError && <Text className="text-xs mb-2 text-danger">{syncError}</Text>}
+        {(syncError || plannerError) && <Text accessibilityRole="alert" className="text-xs mb-2 text-danger">{syncError || plannerError}</Text>}
+        {planLoading && !busy && <Text className="text-xs mb-2 text-muted-foreground">PandAI is responding…</Text>}
+        {pendingTurn && !busy && !planLoading && <Pressable accessibilityRole="button" accessibilityLabel="Retry failed PandAI message" disabled={!ready} onPress={() => void handleSend(pendingTurn.text, undefined, true)} style={{ minHeight: 40, justifyContent: "center" }}>
+          <Text className="text-xs font-semibold text-primary">{pendingTurn.errorCode === "storage" ? "Retry saving message" : "Retry message"}</Text>
+        </Pressable>}
         <View className="flex-row gap-3 items-end rounded-2xl p-3 bg-card border border-border">
           <TextInput
             value={input}
@@ -953,13 +1001,13 @@ export default function ProjectChat() {
                   : "Describe your project or ask a question..."
             }
             placeholderTextColor={chrome.mutedForeground}
-            editable={!busy && ready}
+            editable={!busy && !planLoading && ready}
             className="flex-1 text-sm text-foreground"
             style={{ minHeight: 24, maxHeight: 120 }}
           />
           <Pressable
             onPress={() => handleSend(input)}
-            disabled={!input.trim() || busy || !ready}
+            disabled={!input.trim() || busy || !!planLoading || !ready}
             className="w-9 h-9 rounded-xl items-center justify-center"
             style={{ backgroundColor: input.trim() && !busy ? "#f59e0b" : chrome.muted }}
           >

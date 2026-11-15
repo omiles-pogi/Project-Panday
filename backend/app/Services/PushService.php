@@ -19,6 +19,13 @@ class PushService
 {
     public function notify(User $recipient, AppNotification $notification): void
     {
+        // Preferences gate remote delivery only. NotificationService always keeps the in-app record.
+        $preferences = AccountService::preferences($recipient->fresh());
+        $category = $notification->type === 'new_message' ? 'messages' : 'project_updates';
+        if (! $preferences['push_enabled'] || ! $preferences[$category]) {
+            return;
+        }
+
         $tokens = $recipient->deviceTokens()->pluck('token')->all();
         if ($tokens === []) {
             return;

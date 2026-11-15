@@ -12,7 +12,9 @@ function load(file, mocks, globals = {}) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
   });
   const exports = {};
-  vm.runInNewContext(outputText, { exports, ...globals, require(name) {
+  vm.runInNewContext(outputText, { exports, setInterval: () => 0, clearInterval: () => {}, ...globals, require(name) {
+    if (name === '@/utils/planningState') return load('src/utils/planningState.ts', {});
+    if (name === '@/utils/plannerError') return load('src/utils/plannerError.ts', {});
     if (name in mocks) return mocks[name];
     throw new Error(`Unexpected dependency: ${name}`);
   } }, { filename });
@@ -182,22 +184,32 @@ test('layout stays in flow, centered and contained across phone sizes, themes, i
 });
 
 const conversation = (content, updatedAt) => ({ plan: null, messages: content ? [{ role: 'user', content }] : [], approvalStage: null, clarificationRounds: 0, updatedAt });
+const reliabilityPlan = { projectTitle: 'House', location: 'Dagupan', areaSqm: 80, floors: 1, bedrooms: 2, bathrooms: 1, budget: 900000,
+  totalEstimate: 850000, timelineValue: 6, timelineUnit: 'months', phases: [], materials: [{ material: 'Cement', category: 'Foundation', qty: 10, unit: 'bag', unitPrice: 250, supplierProductId: 14 }],
+  budgetBreakdown: [{ category: 'Foundation', amount: 850000 }], supplierSelections: { Foundation: 14 } };
 async function provider(saved, options = {}) {
   const hook = hooks();
   const storage = options.storage ?? new Map([['panday_plan_conversations:42', JSON.stringify(saved)]]);
   if (options.active) storage.set('panday_plan_conversations:42:active', options.active);
   let requests = 0;
   const calls = [];
+  let projectList = options.projects ?? Array.from({ length: 100 }, (_, i) => ({ id: i + 1, title: 'Project ' + (i + 1), status: 'active' }));
+  let route = '/homeowner';
   const { PlanProvider } = load('src/context/PlanContext.tsx', {
     react: hook.react, 'react/jsx-runtime': runtime,
-    '@react-native-async-storage/async-storage': { getItem: async (key) => { if (options.readFailure) throw new Error('Disk unavailable'); return storage.get(key); }, setItem: async (key, value) => storage.set(key, value) },
+    'react-native': { AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } },
+    'expo-router': { usePathname: () => route },
+    '@/services/api/projects': { fetchMyHomeownerProjects: async () => options.fetchProjects ? options.fetchProjects() : projectList },
+    '@/utils/activeProject': load('src/utils/activeProject.ts'),
+    '@react-native-async-storage/async-storage': { getItem: async (key) => { if (options.readFailure) throw new Error('Disk unavailable'); return storage.get(key); }, setItem: async (key, value) => { if (options.write) await options.write(key, value); storage.set(key, value); } },
     '@/context/AuthContext': { useAuth: () => ({ user: { id: options.userId ?? 42 } }) },
-    '@/types/plan': { isChatReply: () => true, isClarificationNeeded: () => false },
+    '@/types/plan': { isChatReply: value => 'message' in value, isClarificationNeeded: value => 'questions' in value,
+      SUPPLIER_CATEGORIES: ['Construction Materials', 'Electrical and Plumbing', 'Finishing Works'] },
     '@/services/ai/client': { generateConstructionPlan: async (...args) => { requests++; calls.push(args); return options.generate ? options.generate(...args) : { message: 'Reply' }; } },
-    '@/utils/garage': {}, '@/utils/timeline': { normalizePlanTimeline: (value) => value, timelineLabel: () => '' },
+    '@/utils/garage': { garageLabel: () => '' }, '@/utils/timeline': { normalizePlanTimeline: (value) => value, timelineLabel: () => '' },
   });
   const render = async () => (await hook.settle(() => PlanProvider({ children: null }))).props.value;
-  return { render, api: await render(), storage, calls, requests: () => requests };
+  return { render, api: await render(), storage, calls, requests: () => requests, setProjects: value => { projectList = value; }, setRoute: value => { route = value; } };
 }
 
 test('hydration restores the selected ID instead of the latest history and preserves the other projects', async () => {
@@ -210,6 +222,221 @@ test('hydration restores the selected ID instead of the latest history and prese
   assert.equal(api.activeProjectKey, '1');
   assert.deepEqual(JSON.parse(app.storage.get('panday_plan_conversations:42')), saved);
   assert.equal(app.requests(), 0);
+});
+
+test('failed message preserves structured approvals and supplier selections; restart/retry uses exactly one user turn', async () => {
+  const key = 'panday_plan_conversations:42';
+  const review = { planFlags: { location: true }, materialsApproved: { cement: true } };
+  const original = { ...conversation('Saved plan', 100), plan: reliabilityPlan, approvalStage: 'materials', review };
+  const app = await provider({ 7: original }, { active: '7', generate: async () => { throw new Error('Connection interrupted'); } });
+  const backup = JSON.parse(app.storage.get(`${key}:before-planner-reliability`));
+  assert.deepEqual(JSON.parse(backup.conversations), { 7: original }); assert.equal(backup.active, '7');
+  await assert.rejects(app.api.send('Change the roof'), /Connection interrupted/);
+  let api = await app.render();
+  assert.equal(api.loading, false); assert.equal(api.pendingTurn.status, 'failed'); assert.equal(api.approvalStage, 'materials');
+  assert.deepEqual(JSON.parse(JSON.stringify(api.plan)), reliabilityPlan); assert.deepEqual(JSON.parse(JSON.stringify(api.review)), review);
+  const restarted = await provider({}, { storage: app.storage });
+  const result = await restarted.api.send('Change the roof', undefined, { retry: true });
+  assert.equal(result.type, 'chat'); api = await restarted.render(); assert.equal(api.pendingTurn, null);
+  const cached = JSON.parse(app.storage.get(key))['7'];
+  assert.equal(cached.messages.filter(message => message.content === 'Change the roof').length, 1);
+  assert.equal(cached.messages.filter(message => message.content === 'Reply').length, 1);
+  assert.deepEqual(cached.plan, reliabilityPlan); assert.deepEqual(cached.review, review);
+  assert.deepEqual(JSON.parse(app.storage.get(`${key}:before-planner-reliability`)), backup);
+});
+
+test('review choices, approval events, manual budget edits and returned plan cards survive hydration without regeneration', async () => {
+  const key = 'panday_plan_conversations:42';
+  const app = await provider({ 7: { ...conversation('Plan: House', 100), plan: reliabilityPlan, approvalStage: 'plan' } }, { active: '7' });
+  app.api.setReview({ planFlags: { bedrooms: true }, materialsApproved: { cement: true } });
+  let api = await app.render();
+  await api.setApprovalStage('budget', { userText: 'Approve plan', assistantText: 'Review the budget' });
+  api = await app.render();
+  api.updatePlan({ ...reliabilityPlan, budgetBreakdown: [{ category: 'Foundation', amount: 810000 }] });
+  api = await app.render();
+  const restarted = await provider({}, { storage: app.storage });
+  assert.equal(restarted.requests(), 0); assert.equal(restarted.api.plan.totalEstimate, 810000);
+  assert.equal(restarted.api.approvalStage, 'budget'); assert.equal(restarted.api.review.planFlags.bedrooms, true);
+  assert.equal(restarted.api.review.materialsApproved.cement, true);
+  const cached = JSON.parse(app.storage.get(key))['7'];
+  assert.equal(cached.messages.at(-1).planSnapshot.totalEstimate, 810000);
+  assert.equal(cached.messages.at(-1).card, 'budget');
+  assert.equal(cached.messages.filter(message => message.content === 'Approve plan').length, 1);
+});
+
+test('new provider plan is durably saved before send resolves and does not enter another draft', async () => {
+  const app = await provider({}, { generate: async () => reliabilityPlan });
+  const key = app.api.activeProjectKey;
+  await app.api.send('Build a home');
+  const cached = JSON.parse(app.storage.get('panday_plan_conversations:42'))[key];
+  assert.deepEqual(cached.plan, reliabilityPlan); assert.equal(cached.messages.at(-1).card, 'plan');
+  assert.equal(cached.messages.at(-1).planSnapshot.supplierSelections.Foundation, 14);
+  let api = await app.render(); api.reset(); api = await app.render();
+  assert.notEqual(api.activeProjectKey, key); assert.equal(api.plan, null); assert.equal(api.messages.length, 0);
+  const restarted = await provider({}, { storage: app.storage });
+  assert.equal(restarted.api.plan, null); assert.equal(restarted.requests(), 0);
+});
+
+test('supplier choices save per category without AI, preserve approved quotes and survive project switches and restart', async () => {
+  const original = { ...conversation('Saved estimate', 100), plan: reliabilityPlan, approvalStage: 'materials', review: { planFlags: { area: true }, materialsApproved: { cement: true } } };
+  const app = await provider({ 7: original, 8: original }, { active: '7', generate: async () => { throw new Error('Provider unavailable'); } });
+  await app.api.setSupplierSelection('Construction Materials', 14);
+  let api = await app.render();
+  await api.setSupplierSelection('Finishing Works', 17);
+  api = await app.render();
+  assert.equal(app.requests(), 0);
+  assert.equal(api.plan.supplierSelections['Construction Materials'], 14);
+  assert.equal(api.plan.supplierSelections['Finishing Works'], 17);
+  assert.deepEqual(JSON.parse(JSON.stringify(api.plan.materials)), reliabilityPlan.materials);
+  assert.deepEqual(JSON.parse(JSON.stringify(api.review)), original.review);
+  assert.equal(api.approvalStage, 'materials');
+  api.selectProject(8); api = await app.render();
+  assert.equal(api.plan.supplierSelections['Finishing Works'], undefined);
+  api.selectProject(7); api = await app.render();
+  const restarted = await provider({}, { storage: app.storage });
+  assert.equal(restarted.api.activeProjectKey, '7');
+  assert.equal(restarted.api.plan.supplierSelections['Finishing Works'], 17);
+  assert.equal(restarted.api.plan.supplierSelections['Construction Materials'], 14);
+  assert.equal(restarted.requests(), 0);
+  const restored = load('src/utils/planningState.ts', {}).restorePlanningMessages(restarted.api.plan,
+    [{ role: 'assistant', content: 'Plan', card: 'plan', planSnapshot: reliabilityPlan }, { role: 'assistant', content: 'Budget', card: 'budget', planSnapshot: reliabilityPlan }, ...restarted.api.messages], 'materials', card => card);
+  assert.equal(restored.filter(message => message.card === 'plan').length, 1);
+  assert.equal(restored.filter(message => message.card === 'budget').length, 1);
+  await assert.rejects(api.send('Explain these estimates'), /Provider unavailable/);
+  api = await app.render();
+  await api.setSupplierSelection('Electrical and Plumbing', 17);
+  api = await app.render();
+  assert.equal(api.pendingTurn.supplierSelections['Electrical and Plumbing'], 17);
+  const retry = await provider({}, { storage: app.storage });
+  await retry.api.send('Explain these estimates', undefined, { retry: true });
+  assert.equal(retry.calls[0][4]['Construction Materials'], 14);
+  assert.equal(retry.calls[0][4]['Finishing Works'], 17);
+  assert.equal(retry.calls[0][4]['Electrical and Plumbing'], 17);
+  const cached = JSON.parse(app.storage.get('panday_plan_conversations:42'))['7'];
+  assert.equal(cached.messages.filter(message => message.content === 'Explain these estimates').length, 1);
+});
+
+test('failed supplier preference storage does not call AI or replace the original saved plan', async () => {
+  const original = { ...conversation('Saved estimate', 100), plan: reliabilityPlan, approvalStage: 'materials' };
+  let fail = false;
+  const app = await provider({ 7: original }, { active: '7', write: async () => { if (fail) throw new Error('Disk unavailable'); } });
+  const savedBefore = app.storage.get('panday_plan_conversations:42');
+  fail = true;
+  await assert.rejects(app.api.setSupplierSelection('Finishing Works', 17), /Could not save your supplier choice/);
+  const api = await app.render();
+  assert.equal(app.requests(), 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(api.plan)), reliabilityPlan);
+  assert.equal(app.storage.get('panday_plan_conversations:42'), savedBefore);
+});
+
+test('request lock prevents double sends, and preflight storage failure makes no AI call', async () => {
+  let resolve; const pending = new Promise(done => { resolve = done; });
+  const app = await provider({}, { generate: () => pending });
+  const first = app.api.send('One request');
+  await assert.rejects(app.api.send('One request'), /already in progress/);
+  await new Promise(done => setImmediate(done)); assert.equal(app.requests(), 1);
+  resolve({ message: 'Done' }); await first;
+  let fail = false;
+  const blocked = await provider({ 7: conversation('Preserved', 100) }, { active: '7', write: async () => { if (fail) throw new Error('Device full'); } });
+  fail = true; await assert.rejects(blocked.api.send('Unsent'), /Device full/);
+  const api = await blocked.render(); assert.equal(blocked.requests(), 0); assert.equal(api.loading, false); assert.equal(api.pendingTurn.errorCode, 'storage');
+  assert.equal(api.messages[0].content, 'Preserved');
+});
+
+test('response storage retry saves the received result without requesting another AI response', async () => {
+  let fail = false; let writes = 0;
+  const app = await provider({}, { generate: async () => { fail = true; return { message: 'Already generated' }; }, write: async () => { if (fail) { writes++; throw new Error('Device unavailable'); } } });
+  await assert.rejects(app.api.send('Question'), /Device unavailable/);
+  let api = await app.render(); assert.equal(api.pendingTurn.errorCode, 'storage'); assert.ok(writes > 0);
+  fail = false; await api.send('Question', undefined, { retry: true }); api = await app.render();
+  assert.equal(app.requests(), 1); assert.equal(api.pendingTurn, null);
+  assert.equal(api.messages.filter(message => message.content === 'Question').length, 1);
+  assert.equal(api.messages.filter(message => message.content === 'Already generated').length, 1);
+});
+
+test('completed persisted selection moves to ongoing construction while completed conversations remain readable and unchanged', async () => {
+  const saved = { 1: conversation('Completed project messages', 200), 2: conversation('Other project messages', 100) };
+  const projects = [{ id: 1, title: 'test 2', status: 'completed' }, { id: 2, title: 'Ongoing residence', status: 'active' }];
+  const app = await provider(saved, { active: '1', projects });
+  assert.equal(app.api.activeProjectKey, '2'); assert.equal(app.api.messages[0].content, 'Other project messages');
+  assert.equal(app.api.getProjectMessages(1)[0].content, 'Completed project messages');
+  app.api.selectProject(1); let api = await app.render(); assert.equal(api.activeProjectKey, '2');
+  app.setRoute('/homeowner/history/1'); api = await app.render(); assert.equal(api.activeProjectKey, '2');
+  const cached = JSON.parse(app.storage.get('panday_plan_conversations:42'));
+  assert.equal(cached['1'].messages[0].content, 'Completed project messages');
+  const restarted = await provider({}, { storage: app.storage, projects });
+  assert.equal(restarted.api.activeProjectKey, '2'); assert.equal(restarted.api.getProjectMessages(1)[0].content, 'Completed project messages');
+});
+
+test('completing the last project leaves a fresh empty context across restarts without deleting any conversation', async () => {
+  const app = await provider({ 1: conversation('Preserve this final conversation', 100) }, { active: '1', projects: [{ id: 1, status: 'active' }] });
+  app.setProjects([{ id: 1, status: 'completed' }]); await app.api.refreshProjectSelection(); let api = await app.render();
+  assert.match(api.activeProjectKey, /^draft:/); assert.equal(api.messages.length, 0); assert.equal(api.plan, null);
+  assert.equal(api.getProjectMessages(1)[0].content, 'Preserve this final conversation');
+  const restarted = await provider({}, { storage: app.storage, projects: [{ id: 1, status: 'completed' }] });
+  assert.match(restarted.api.activeProjectKey, /^draft:/); assert.equal(restarted.api.messages.length, 0);
+  restarted.api.startFresh(3, 'New project'); api = await restarted.render();
+  // The authoritative list must also contain the newly created server project before it can render.
+  restarted.setProjects([{ id: 1, status: 'completed' }, { id: 3, status: 'not_started' }]);
+  restarted.api.startFresh(3, 'New project'); api = await restarted.render();
+  assert.equal(api.activeProjectKey, '3'); assert.equal(api.messages.length, 0); assert.equal(api.getProjectMessages(1).length, 1);
+});
+
+test('completion while mounted selects another ongoing project and discards a late AI response from the retired selection', async () => {
+  let resolve;
+  const response = new Promise(done => { resolve = done; });
+  const projects = [{ id: 1, title: 'Finishing project', status: 'active' }, { id: 2, title: 'Replacement project', status: 'active' }];
+  const app = await provider({ 1: conversation('Original completed conversation'), 2: conversation('Replacement conversation') }, { active: '1', projects, generate: () => response });
+  const sending = app.api.send('Request begun before completion');
+  await new Promise(done => setImmediate(done)); // The turn is persisted before opening the provider request.
+  app.setProjects([{ ...projects[0], status: 'completed' }, projects[1]]);
+  await app.api.refreshProjectSelection();
+  let api = await app.render();
+  assert.equal(api.activeProjectKey, '2'); assert.equal(api.messages[0].content, 'Replacement conversation');
+  resolve({ message: 'Late completed project response' });
+  await assert.rejects(sending, /selected project changed/);
+  api = await app.render();
+  assert.equal(api.messages[0].content, 'Replacement conversation');
+  assert.equal(api.getProjectMessages(1)[0].content, 'Original completed conversation');
+  assert.equal(api.getProjectMessages(1).some(message => message.content === 'Late completed project response'), false);
+});
+
+test('AI plan approval and pending construction confirmation remain eligible; explicit draft projects are preserved', async () => {
+  for (const status of ['active', 'pending_confirmation', 'not_started']) {
+    const cached = { ...conversation('Own approved plan', 100), plan: { projectTitle: 'Approved plan' }, approvalStage: 'summary' };
+    const app = await provider({ 7: cached }, { active: '7', projects: [{ id: 7, status, title: 'Approved plan' }] });
+    assert.equal(app.api.activeProjectKey, '7'); assert.equal(app.api.messages[0].content, 'Own approved plan'); assert.equal(app.api.approvalStage, 'summary');
+  }
+});
+
+test('a late lifecycle response cannot replace a newer explicit project selection', async () => {
+  const late = {}; late.promise = new Promise(resolve => { late.resolve = resolve; }); let slow = false;
+  const projects = [{ id: 1, status: 'active' }, { id: 2, status: 'active' }];
+  const app = await provider({ 1: conversation('First project'), 2: conversation('Second project') }, { active: '1', fetchProjects: () => slow ? late.promise : projects });
+  slow = true; const pending = app.api.refreshProjectSelection();
+  app.api.selectProject(2); slow = false; let api = await app.render();
+  late.resolve([{ id: 1, status: 'completed' }]); await pending; api = await app.render();
+  assert.equal(api.activeProjectKey, '2'); assert.equal(api.messages[0].content, 'Second project');
+});
+
+test('unverified lifecycle state stays hidden on tab changes and a retry restores only the selected history', async () => {
+  let offline = false;
+  const app = await provider({ 1: conversation('Never overwrite on network failure') }, { active: '1', fetchProjects: () => { if (offline) throw new Error('Offline'); return [{ id: 1, status: 'active' }]; } });
+  offline = true; app.setRoute('/homeowner/progress'); let api = await app.render();
+  assert.equal(api.ready, false); assert.equal(api.messages.length, 0); assert.match(api.projectSelectionError, /verify the active project/);
+  assert.equal(api.getProjectMessages(1)[0].content, 'Never overwrite on network failure');
+  offline = false; await api.refreshProjectSelection(); api = await app.render();
+  assert.equal(api.ready, true); assert.equal(api.activeProjectKey, '1'); assert.equal(api.messages[0].content, 'Never overwrite on network failure');
+});
+
+test('active dashboard reads cannot use a default project, completed record, or mismatched response', async () => {
+  const calls = []; let project = { id: 7, status: 'active' };
+  const api = load('src/services/api/projects.ts', { '@/services/api/client': { apiFetch: async path => { calls.push(path); return { project, stats: { active: 1, completed: 1 } }; } } });
+  for (const id of [undefined, 0, -1, NaN, 1.5]) await assert.rejects(api.fetchActiveDashboard(id));
+  assert.equal(calls.length, 0); assert.equal((await api.fetchActiveDashboard(7)).project.id, 7);
+  assert.equal(calls[0], '/api/dashboard?project_id=7&active_only=1');
+  project = { id: 7, status: 'completed' }; assert.equal((await api.fetchActiveDashboard(7)).project, null);
+  project = { id: 8, status: 'active' }; assert.equal((await api.fetchActiveDashboard(7)).project, null);
 });
 
 test('messages and approval state stay keyed to their project and selection survives an app restart', async () => {
@@ -283,6 +510,7 @@ test('switching project ignores delayed chunks and responses; stale send callbac
   let resolve; const reply = new Promise((done) => { resolve = done; }); const chunks = [];
   const app = await provider({ 1: conversation('Project A', 100), 2: conversation('Project B', 50) }, { active: '1', generate: () => reply });
   const sending = app.api.send('A request', (chunk) => chunks.push(chunk));
+  await new Promise(done => setImmediate(done));
   app.api.selectProject(2); let api = await app.render();
   app.calls[0][2]('Late text from A'); resolve({ message: 'Late A response' });
   await assert.rejects(sending, /selected project changed/); api = await app.render();
@@ -303,14 +531,19 @@ test('planner header names the active project and route isolates its local UI on
     '@/screens/homeowner/ProjectChat': { __esModule: true, default: 'Chat' },
   };
   const Title = load('src/components/PlannerTitle.tsx', deps).default;
+  deps['@/components/ActiveProjectGate'] = { __esModule: true, default: load('src/components/ActiveProjectGate.tsx', deps).default };
   const Route = load('src/app/(app)/homeowner/(tabs)/project-chat.tsx', deps).default;
   const title = Title(); assert.equal(nodes(title, 'Text')[0].props.children, 'PandAI');
   assert.equal(nodes(title, 'Text')[1].props.children, 'Cruz Residence');
-  assert.equal(Route().key, '2');
+  assert.equal(Route().props.children.key, '2');
   state = { ...state, activeProjectKey: '1', activeProjectTitle: 'Padlan House' };
-  assert.equal(Route().key, '1'); assert.equal(nodes(Title(), 'Text')[1].props.children, 'Padlan House');
+  assert.equal(Route().props.children.key, '1'); assert.equal(nodes(Title(), 'Text')[1].props.children, 'Padlan House');
+  const switchedGate = Route();
+  assert.equal(switchedGate.type(switchedGate.props).props.children[0].key, '1', 'Project switches also reset screen-local data');
   state = { ready: false, activeProjectKey: 'draft:test' };
-  assert.equal(nodes(Route(), 'Spinner').length, 1); assert.equal(nodes(Route(), 'Chat').length, 0);
+  assert.equal(nodes(Route(), 'Spinner').length, 1);
+  const gate = Route(); assert.equal(gate.type(gate.props).props.children[0].props.style.display, 'none');
+  assert.equal(nodes(Route(), 'Chat').length, 1, 'Keep keyboard hooks mounted while the cached view is hidden');
   state = { ...state, ready: true }; assert.equal(nodes(Title(), 'Text')[1].props.children, 'Select a project');
 });
 
@@ -327,7 +560,7 @@ test('planner refresh requests only the selected ID, ignores stale responses, an
     '@/context/PlanContext': { usePlan: () => context }, '@/context/ThemeContext': { useTheme: () => ({ chrome: {} }) },
     '@/components/SupplierPicker': {}, '@/components/BudgetCategoryBreakdown': {}, '@/components/charts': {},
     '@/utils/currency': {}, '@/utils/budget': {}, '@/utils/timeline': {}, '@/utils/garage': {}, '@/utils/chatTime': {},
-    '@/services/api/projects': { fetchMyHomeownerProjects: async () => [], fetchDashboard: (id) => {
+    '@/services/api/projects': { fetchMyHomeownerProjects: async () => [], fetchActiveDashboard: (id) => {
       requests.push(id); return new Promise((resolve) => pending.set(id, resolve));
     } },
     '@/components/Mascot': { __esModule: true, default: 'Mascot' }, '@/components/ProjectNamePrompt': { __esModule: true, default: 'Naming' },
@@ -372,7 +605,7 @@ test('chat keeps its existing single keyboard lift and only system-safe padding 
     '@/components/SupplierPicker': {}, '@/components/BudgetCategoryBreakdown': {}, '@/components/charts': {},
     '@/utils/currency': {}, '@/utils/budget': {}, '@/utils/timeline': {}, '@/utils/garage': {},
     '@/utils/chatTime': {},
-    '@/services/api/projects': { fetchMyHomeownerProjects: async () => [], fetchDashboard: async () => { defaultProjectFetches++; return {}; } },
+    '@/services/api/projects': { fetchMyHomeownerProjects: async () => [], fetchActiveDashboard: async () => { defaultProjectFetches++; return {}; } },
     '@/components/Mascot': { __esModule: true, default: 'Mascot' },
     'react-native-reanimated': { __esModule: true, default: { View: 'Animated' }, useAnimatedStyle: (fn) => fn() },
     'react-native-keyboard-controller': { useKeyboardState: () => visible, useReanimatedKeyboardAnimation: () => ({ height: { value: visible ? -300 : 0 } }) },
@@ -389,9 +622,135 @@ test('chat keeps its existing single keyboard lift and only system-safe padding 
     assert.equal(list.type, 'Scroll');
     assert.equal(composer.props.style.paddingBottom, open ? 12 : 40);
     assert.equal(composer.props.style.flexShrink, 0);
-    const input = composer.props.children[1].props.children[0];
+    const input = nodes(composer, 'Input')[0];
     assert.equal(input.props.multiline, true);
     assert.equal(input.props.style.maxHeight, 120);
   }
   assert.equal(defaultProjectFetches, 0, 'empty history is not silently replaced with a default project');
+});
+
+test('Home planning index restores all independent local/server drafts and preserves selected context through restarts', async () => {
+  const saved = {
+    'draft:one': conversation('First independent conversation', 100),
+    'draft:two': { ...conversation('Second independent conversation', 200), approvalStage: 'materials', plan: { projectTitle: 'Draft estimate', materials: [{ name: 'Saved cement' }], budgetBreakdown: [{ amount: 20 }] } },
+    4: conversation('Server placeholder conversation', 300),
+    5: conversation('Completed conversation retained', 400),
+    6: conversation('Ongoing construction retained', 500),
+  };
+  const projects = [{ id: 4, status: 'not_started', title: 'New Project' }, { id: 5, status: 'completed' }, { id: 6, status: 'active' }];
+  const app = await provider(saved, { active: '6', projects });
+  let api = await app.render();
+  assert.equal(api.activeProjectKey, '6'); assert.equal(api.planningSessionsReady, true);
+  assert.deepEqual(Array.from(api.planningSessions, session => session.key), ['4', 'draft:two', 'draft:one']);
+  assert.equal(api.resumePlanningSession('draft:two'), true); api = await app.render();
+  assert.equal(api.messages[0].content, 'Second independent conversation');
+  assert.equal(api.approvalStage, 'materials'); assert.equal(api.plan.materials[0].name, 'Saved cement');
+  assert.equal(api.planningSessions.find(session => session.key === 'draft:two').stages.budget, 'Approved');
+  const stamp = api.planningSessions.find(session => session.key === 'draft:two').savedAt;
+  assert.equal(stamp, new Date(200).toISOString(), 'Opening a draft must not invent a new save timestamp');
+  api.resumePlanningSession('draft:one'); api = await app.render();
+  assert.equal(api.messages[0].content, 'First independent conversation'); assert.equal(api.plan, null);
+  assert.equal(api.resumePlanningSession('5'), false); assert.equal(api.resumePlanningSession('999'), false);
+  const restarted = await provider({}, { storage: app.storage, projects });
+  assert.equal(restarted.api.activeProjectKey, 'draft:one');
+  assert.equal(restarted.api.planningSessions.length, 3);
+  restarted.api.resumePlanningSession('draft:two'); const restored = await restarted.render();
+  assert.equal(restored.approvalStage, 'materials'); assert.equal(restored.plan.projectTitle, 'Draft estimate');
+  assert.equal(restored.getProjectMessages(5)[0].content, 'Completed conversation retained');
+});
+
+test('starting and saving another draft preserves previous drafts, and another account cannot list or resume them', async () => {
+  const app = await provider({ 'draft:old': conversation('Original saved draft', 100) }, { active: 'draft:old', projects: [] });
+  app.api.reset(); let api = await app.render();
+  const newKey = api.activeProjectKey; assert.notEqual(newKey, 'draft:old');
+  assert.deepEqual(Array.from(api.planningSessions, session => session.key), ['draft:old'], 'Do not advertise empty automatic drafts');
+  await api.send('New independent draft'); api = await app.render();
+  assert.equal(api.planningSessions.length, 2);
+  assert.ok(api.planningSessions.find(session => session.key === newKey).savedAt);
+  api.resumePlanningSession('draft:old'); api = await app.render();
+  assert.equal(api.messages[0].content, 'Original saved draft');
+  const other = await provider({}, { storage: app.storage, userId: 43, projects: [] });
+  assert.equal(other.api.planningSessions.length, 0);
+  assert.equal(other.api.resumePlanningSession('draft:old'), false);
+  assert.equal(other.api.resumePlanningSession(newKey), false);
+  const loggedBackIn = await provider({}, { storage: app.storage, projects: [] });
+  assert.equal(loggedBackIn.api.planningSessions.length, 2);
+  loggedBackIn.api.resumePlanningSession(newKey); const continued = await loggedBackIn.render();
+  assert.equal(continued.messages[0].content, 'New independent draft');
+});
+
+test('legacy draft migration preserves an unselected conversation while saved construction stays selected', async () => {
+  const app = await provider({ draft: conversation('Legacy unfinished conversation', 100), 3: conversation('Selected construction', 200) },
+    { active: '3', projects: [{ id: 3, status: 'active' }] });
+  const api = await app.render(); assert.equal(api.activeProjectKey, '3');
+  assert.equal(api.planningSessions.length, 1);
+  const key = api.planningSessions[0].key; assert.ok(key.startsWith('draft:'));
+  api.resumePlanningSession(key); const resumed = await app.render();
+  assert.equal(resumed.messages[0].content, 'Legacy unfinished conversation');
+  assert.equal(resumed.getProjectMessages(3)[0].content, 'Selected construction');
+});
+
+test('planning statuses follow recorded approval stages and do not mistake approved/completed construction for drafts', () => {
+  const { resumablePlanningSessions } = load('src/utils/activeProject.ts');
+  for (const [stage, expected] of [
+    ['plan', ['Pending Approval', 'Not Started', 'Not Started']],
+    ['budget', ['Approved', 'Pending Approval', 'Not Started']],
+    ['materials', ['Approved', 'Approved', 'Pending Approval']],
+    ['summary', ['Approved', 'Approved', 'Approved']],
+  ]) {
+    const sessions = resumablePlanningSessions({ 'draft:one': { ...conversation('Saved', 100), plan: { projectTitle: 'Estimate' }, approvalStage: stage } }, []);
+    assert.deepEqual([sessions[0].stages.plan, sessions[0].stages.budget, sessions[0].stages.materials], expected);
+  }
+  const sessions = resumablePlanningSessions({
+    'draft:unknown': conversation('Legacy activity without timestamp'), 'draft:blank': conversation(''),
+    1: { ...conversation('Approved plan', 100), approvalStage: 'summary' },
+    2: { ...conversation('Finished work', 200), approvalStage: 'plan' },
+    3: { ...conversation('Renamed elsewhere', 300), projectNaming: { pending: true, title: 'Old name' } },
+    99: conversation('Deleted or foreign ID', 400),
+  }, [{ id: 1, status: 'active', hasApprovedPlan: true }, { id: 2, status: 'completed' },
+    { id: 3, status: 'active', projectNamePending: false }, { id: 4, status: 'not_started', createdAt: '2026-11-01T01:00:00Z' }]);
+  assert.deepEqual(Array.from(sessions, session => session.key).sort(), ['4', 'draft:unknown']);
+  assert.equal(sessions.find(session => session.key === 'draft:unknown').updatedAt, null);
+  assert.equal(sessions.find(session => session.key === '4').updatedAt, '2026-11-01T01:00:00.000Z');
+  assert.equal(sessions.find(session => session.key === '4').savedAt, null, 'A server placeholder timestamp is not a recorded chat-save event');
+});
+
+test('a lost finalization response recovers only the exact retry identity and resumes the saved naming step', async () => {
+  const original = { ...conversation('Original finalized draft conversation', 100), finalizationKey: 'draft-retry-identity',
+    plan: { projectTitle: 'Original proposal', materials: [{ name: 'Retained estimate' }], budgetBreakdown: [{ amount: 50 }] }, approvalStage: 'materials' };
+  const projects = [{ id: 9, title: 'Saved project', status: 'active', hasApprovedPlan: true, projectNamePending: true, finalizationKey: 'draft-retry-identity' }];
+  const app = await provider({ 'draft:lost-response': original }, { active: 'draft:lost-response', projects });
+  const api = await app.render();
+  assert.equal(api.activeProjectKey, '9'); assert.equal(api.messages[0].content, original.messages[0].content);
+  assert.equal(api.plan.materials[0].name, 'Retained estimate');
+  assert.equal(api.approvalStage, 'summary'); assert.equal(api.projectNaming.pending, true);
+  assert.deepEqual(Array.from(api.planningSessions, session => session.key), ['9']);
+  const cached = JSON.parse(app.storage.get('panday_plan_conversations:42'));
+  assert.equal(cached['9'].finalizationKey, original.finalizationKey);
+  assert.equal(cached['draft:lost-response'], undefined, 'The same conversation moves once, without duplication');
+  assert.equal(app.requests(), 0);
+});
+
+test('a detached finalized draft can never reactivate completed construction and its original messages remain readable', async () => {
+  const original = { ...conversation('Completed project original conversation', 100), finalizationKey: 'completed-retry-identity', plan: { budget: 80 } };
+  const projects = [{ id: 9, title: 'Finished home', status: 'completed', hasApprovedPlan: true, projectNamePending: false, finalizationKey: 'completed-retry-identity' }];
+  const app = await provider({ 'draft:detached': original }, { active: 'draft:detached', projects });
+  let api = await app.render();
+  assert.notEqual(api.activeProjectKey, '9'); assert.ok(api.activeProjectKey.startsWith('draft:'));
+  assert.equal(api.planningSessions.length, 0); assert.equal(api.messages.length, 0);
+  assert.equal(api.getProjectMessages(9)[0].content, original.messages[0].content);
+  assert.equal(JSON.parse(app.storage.get('panday_plan_conversations:42'))['9'].plan.budget, 80);
+  const restarted = await provider({}, { storage: app.storage, projects }); api = await restarted.render();
+  assert.notEqual(api.activeProjectKey, '9'); assert.equal(api.planningSessions.length, 0);
+  assert.equal(api.getProjectMessages(9)[0].content, original.messages[0].content);
+});
+
+test('finalization recovery never overwrites an existing saved conversation or exposes a duplicate draft', async () => {
+  const saved = { 'draft:recovery-copy': { ...conversation('Retained recovery copy', 100), finalizationKey: 'same-project-retry' }, 9: conversation('Existing saved conversation', 200) };
+  const app = await provider(saved, { active: 'draft:recovery-copy', projects: [{ id: 9, title: 'Existing project', status: 'active', projectNamePending: false, finalizationKey: 'same-project-retry' }] });
+  const api = await app.render(); assert.equal(api.activeProjectKey, '9'); assert.equal(api.planningSessions.length, 0);
+  assert.equal(api.messages[0].content, 'Existing saved conversation');
+  const cached = JSON.parse(app.storage.get('panday_plan_conversations:42'));
+  assert.equal(cached['draft:recovery-copy'].messages[0].content, 'Retained recovery copy');
+  assert.equal(cached['9'].messages[0].content, 'Existing saved conversation');
 });

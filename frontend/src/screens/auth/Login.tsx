@@ -8,6 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import Mascot from "@/components/Mascot";
 import WaveHeader from "@/components/WaveHeader";
 import { isValidLoginForm } from "@/validators/auth";
+import { PasswordInputFeedback, usePasswordInput } from "@/components/auth/PasswordInputGuard";
 
 export default function Login() {
   const { passwordReset } = useLocalSearchParams<{ passwordReset?: string }>();
@@ -96,12 +97,16 @@ function Field(props: {
 }) {
   const { label, secureTextEntry, ...inputProps } = props;
   const [hidden, setHidden] = useState(true);
+  const guard = usePasswordInput(inputProps.value, inputProps.onChangeText, !!secureTextEntry, !!secureTextEntry);
   return (
     <View>
       <Text className="text-xs font-medium text-muted-foreground mb-1.5">{label}</Text>
       <View className="flex-row items-center rounded-xl bg-card border border-border">
         <TextInput
           {...inputProps}
+          onChangeText={guard.onChangeText}
+          autoCorrect={false}
+          autoCapitalize={inputProps.autoCapitalize ?? "none"}
           secureTextEntry={secureTextEntry && hidden}
           placeholderTextColor="#6b7280"
           className="flex-1 px-4 py-3 text-sm text-foreground"
@@ -118,6 +123,7 @@ function Field(props: {
           </Pressable>
         ) : null}
       </View>
+      <PasswordInputFeedback guard={guard} />
     </View>
   );
 }

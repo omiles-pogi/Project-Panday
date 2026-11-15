@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\ContractorProfile;
 use App\Models\ContractorRating;
 use App\Models\User;
+use App\Support\ProfilePhotoVisibility;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -86,6 +87,7 @@ class ContractorService
                 return [
                     'id' => $contractor->id,
                     'name' => $contractor->name,
+                    'photoUrl' => ProfilePhotoVisibility::directoryUrl($contractor),
                     'email' => $contractor->email,
                     'companyName' => $profile->company_name,
                     'specialization' => $profile->specialization,
@@ -114,6 +116,7 @@ class ContractorService
         return [
             'id' => $contractor->id,
             'name' => $contractor->name,
+            'photoUrl' => ProfilePhotoVisibility::directoryUrl($contractor),
             'companyName' => $profile?->company_name,
             'specialization' => $profile?->specialization,
             'yearsExperience' => $profile?->years_experience,

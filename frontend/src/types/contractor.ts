@@ -7,6 +7,7 @@ export interface ContractorProfile {
 }
 
 export interface ContractorSearchResult {
+  photoUrl?: string | null;
   id: number;
   name: string;
   email: string;
@@ -29,6 +30,7 @@ export interface ContractorRatingEntry {
 }
 
 export interface ContractorPublicProfile {
+  photoUrl?: string | null;
   id: number;
   name: string;
   companyName: string | null;

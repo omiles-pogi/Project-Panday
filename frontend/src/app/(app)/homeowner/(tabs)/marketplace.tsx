@@ -1,5 +1,8 @@
-import FindWorkers from "@/screens/homeowner/FindWorkers";
+import WorkersDashboard from "@/screens/homeowner/WorkersDashboard";
+import { usePlan } from "@/context/PlanContext";
 
 export default function Marketplace() {
-  return <FindWorkers />;
+  const { activeProjectKey } = usePlan();
+  // Only project-specific local state resets on selection; the public directory needs no project gate.
+  return <WorkersDashboard key={activeProjectKey} />;
 }

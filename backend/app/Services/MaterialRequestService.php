@@ -456,7 +456,7 @@ class MaterialRequestService
             throw ValidationException::withMessages(['project_id' => 'You are not part of this project.']);
         }
 
-        $all = SupplierProduct::query()->listed()->with('supplier:id,name,business_name')->orderBy('price')->get();
+        $all = SupplierProduct::query()->availableForSupply()->with('supplier:id,name,business_name')->orderBy('price')->get();
         $listings = $all->groupBy(fn (SupplierProduct $p) => $this->normalize($p->name));
         $byId = $all->keyBy('id');
 
@@ -561,7 +561,7 @@ class MaterialRequestService
         $productId = $row['supplier_product_id'] ?? null;
 
         if ($productId) {
-            $listing = SupplierProduct::query()->listed()->find($productId);
+            $listing = SupplierProduct::query()->availableForSupply()->find($productId);
             if (! $listing) {
                 throw ValidationException::withMessages(['items' => 'One of the selected supplier materials is no longer available.']);
             }

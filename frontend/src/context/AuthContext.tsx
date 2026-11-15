@@ -43,6 +43,7 @@ interface AuthContextValue {
   logout: () => Promise<void>;
   /** Changes the signed-in user's name on the server and everywhere the app shows it. */
   updateName: (name: string) => Promise<void>;
+  syncProfilePhoto: (ownerId: number, photoUrl: string | null) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -130,6 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await tokenStorage.setItem(TOKEN_KEY, token);
         setAuthToken(token);
         setUser(newUser);
+        setPending(null);
         setStatus("authed");
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to register.";
@@ -159,8 +161,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser((current) => (current ? { ...current, name: updated.name } : current));
   }, []);
 
+  const syncProfilePhoto = useCallback((ownerId: number, photoUrl: string | null) => {
+    // Called only after the authenticated photo endpoint confirms persistence.
+    setUser(current => current?.id === ownerId && current.profile_photo_url !== photoUrl ? { ...current, profile_photo_url: photoUrl } : current);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ status, user, error, pending, clearPending, prefillEmail, login, register, logout, updateName }}>
+    <AuthContext.Provider value={{ status, user, error, pending, clearPending, prefillEmail, login, register, logout, updateName, syncProfilePhoto }}>
       {children}
     </AuthContext.Provider>
   );

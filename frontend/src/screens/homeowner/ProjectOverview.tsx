@@ -102,7 +102,7 @@ function WageButton({ label, onPress }: { label: string; onPress: () => void }) 
 export default function ProjectOverview() {
   const insets = useSafeAreaInsets();
   const { chrome } = useTheme();
-  const { ready: planReady, selectProject: selectPlanProject } = usePlan();
+  const { ready: planReady, selectProject: selectPlanProject, refreshProjectSelection } = usePlan();
   const [data, setData] = useState<DashboardData | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
@@ -152,7 +152,7 @@ export default function ProjectOverview() {
           const id = dashboard.project?.id ?? null;
           setSelectedProjectId(id);
           selectedProjectIdRef.current = id;
-          if (firstLoad || id !== requestedId) selectPlanProject(id, dashboard.project?.approvedPlan);
+          if ((firstLoad || id !== requestedId) && dashboard.project?.status !== "completed") selectPlanProject(id, dashboard.project?.approvedPlan);
           firstLoad = false;
         })
         .catch((err) => {
@@ -180,6 +180,7 @@ export default function ProjectOverview() {
   );
 
   const switchProject = useCallback((projectId: number) => {
+    if (projects.find(item => item.id === projectId)?.status === "completed") { router.push(`/homeowner/history/${projectId}` as never); return; }
     if (projectId === selectedProjectId) return;
     setSwitching(true);
     setSelectedProjectId(projectId);
@@ -192,12 +193,12 @@ export default function ProjectOverview() {
         const actualId = dashboard.project?.id ?? null;
         setSelectedProjectId(actualId);
         selectedProjectIdRef.current = actualId;
-        selectPlanProject(actualId, dashboard.project?.approvedPlan);
+        if (dashboard.project?.status !== "completed") selectPlanProject(actualId, dashboard.project?.approvedPlan);
         if (actualId !== projectId) setProjects((list) => list.filter((item) => item.id !== projectId));
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load project."))
       .finally(() => setSwitching(false));
-  }, [selectedProjectId, selectPlanProject]);
+  }, [projects, selectedProjectId, selectPlanProject]);
 
   const handleRemove = useCallback(async (projectId: number) => {
     if (removalInFlight.current) return;
@@ -239,6 +240,7 @@ export default function ProjectOverview() {
 
   const openPlanner = (projectId: number) => {
     selectedProjectIdRef.current = projectId;
+    if (projects.find(item => item.id === projectId)?.status === "completed") { router.push(`/homeowner/history/${projectId}` as never); return; }
     selectPlanProject(projectId);
     router.push("/homeowner/project-chat" as never);
   };
@@ -484,7 +486,11 @@ export default function ProjectOverview() {
       <ProjectCompletionCard
         key={`project-completion-${project.id}`}
         project={project}
-        onChanged={async () => setData(await fetchProjectOverview(project.id))}
+        onChanged={async () => {
+          const next = await fetchProjectOverview(project.id);
+          setData(next);
+          if (next.project?.status === "completed") await refreshProjectSelection();
+        }}
       />
 
       {/* Small projects with no contractor: the homeowner manages the checklist themselves. */}
@@ -494,7 +500,11 @@ export default function ProjectOverview() {
           <ProjectChecklistCard
             key={`project-checklist-${project.id}`}
             project={project}
-            onChanged={async () => setData(await fetchProjectOverview(project.id))}
+            onChanged={async () => {
+              const next = await fetchProjectOverview(project.id);
+              setData(next);
+              if (next.project?.status === "completed") await refreshProjectSelection();
+            }}
           />
         </View>
       )}

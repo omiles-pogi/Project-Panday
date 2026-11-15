@@ -1,8 +1,7 @@
 import type { ReactNode } from "react";
-import { Pressable, View } from "react-native";
-import { router } from "expo-router";
-import { Drawer, DrawerToggleButton } from "expo-router/drawer";
-import { Ionicons } from "@expo/vector-icons";
+import { View } from "react-native";
+import { Drawer } from "expo-router/drawer";
+import HomeownerHeader from "@/components/HomeownerHeader";
 import RoleDrawerContent, { type DrawerNavItem } from "@/components/RoleDrawerContent";
 import { useTheme } from "@/context/ThemeContext";
 import type { Role } from "@/types/auth";
@@ -30,7 +29,7 @@ export default function RoleDrawer({ role, items, pages, footer }: { role: Role;
       screenOptions={{
         headerStyle: { backgroundColor: chrome.card },
         headerTintColor: chrome.foreground,
-        headerLeft: () => <DrawerToggleButton tintColor={chrome.mutedForeground} />,
+        header: ({ options, route }) => <HomeownerHeader title={options.title ?? route.name} />,
         drawerStyle: { width: 280, backgroundColor: chrome.card },
       }}
       drawerContent={(props) => <RoleDrawerContent {...props} role={role} items={items} />}
@@ -45,16 +44,7 @@ export default function RoleDrawer({ role, items, pages, footer }: { role: Role;
             headerShown: p.headerShown ?? true,
             ...(p.detail
               ? {
-                  headerLeft: () => (
-                    <Pressable
-                      onPress={() => (router.canGoBack() ? router.back() : router.replace(`/${role}` as never))}
-                      hitSlop={10}
-                      style={{ paddingHorizontal: 16 }}
-                      accessibilityLabel="Back"
-                    >
-                      <Ionicons name="arrow-back" size={22} color={chrome.foreground} />
-                    </Pressable>
-                  ),
+                  header: () => <HomeownerHeader title={p.title} backTo={`/${role}`} />,
                 }
               : {}),
           }}

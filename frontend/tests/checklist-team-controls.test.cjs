@@ -28,6 +28,7 @@ function hooks() {
     useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = typeof initial === 'function' ? initial() : initial;
       return [slots[i], (value) => { slots[i] = typeof value === 'function' ? value(slots[i]) : value; }]; },
     useEffect: () => {}, useCallback: (fn) => fn,
+    useRef(value) { const i = cursor++; return slots[i] ??= { current: value }; },
   }, render(fn) { cursor = 0; return fn(); } };
 }
 
@@ -85,6 +86,10 @@ test('skills and services still trim, deduplicate and submit through the origina
     '@/services/api/workers': { searchWorkers: async (params) => { searches.push(['workers', params]); return []; } },
     '@/services/api/contractors': { searchContractors: async (params) => { searches.push(['contractors', params]); return []; } },
     '@/services/api/projects': {}, '@/context/PlanContext': { usePlan: () => ({ plan: null, ready: true, activeProjectKey: '7' }) },
+    '@/services/api/homeownerTeam': {},
+    '@/components/ProfilePhoto': { ProfileAvatar: 'Avatar' },
+    '@/components/homeowner/TeamProfileDetails': { __esModule: true, default: 'Details' },
+    '@/components/homeowner/ProjectHiringPrompt': { __esModule: true, default: 'ProjectPrompt', useHiringProjectPrompt: () => ({ requireProject() {} }) },
     '@/context/ThemeContext': { useTheme: () => ({ chrome: colors.lightChrome }) },
     '@/utils/teamRecommendations': { recommendedSkillsForPlan: () => [] }, '@/utils/currency': {}, '@/utils/wage': {},
   }).default;

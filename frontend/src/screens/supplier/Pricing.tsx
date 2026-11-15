@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,6 +10,9 @@ import { useTheme } from "@/context/ThemeContext";
 import { CATEGORIES, CAT_COLORS, UNITS, type Product, type ProductInput } from "@/data/supplier";
 import { peso } from "@/utils/currency";
 import InventoryStats from "./InventoryStats";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { fetchStockConfirmationReview, type StockConfirmationReview } from "@/services/api/supplierProducts";
+import { isSupplierStockConfirmed } from "@/utils/supplierStock";
 
 const STOCK_FILTERS = ["All", "In Stock", "Out of Stock"];
 const WHOLE_NUMBER = /^\d+$/;
@@ -18,13 +21,23 @@ const errorMessage = (err: unknown, fallback: string) => (err instanceof Error ?
 
 /** Supplier inventory management — the "Inventory" tab (route kept as /supplier/pricing). */
 export default function Pricing() {
-  const { products, productsLoading, productsError, reloadProducts, updateProduct } = useSupplier();
+  const { products, productsLoading, productsError, reloadProducts, updateProduct, setAllProductsActive, confirmStock } = useSupplier();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [stockFilter, setStockFilter] = useState("All");
   const [editing, setEditing] = useState<Product | null>(null);
   const [restocking, setRestocking] = useState<Product | null>(null);
   const [toggleError, setToggleError] = useState<string | null>(null);
+  const [availabilityBusy, setAvailabilityBusy] = useState(false);
+  const [availabilityMessage, setAvailabilityMessage] = useState<string | null>(null);
+  const [stockReview, setStockReview] = useState<StockConfirmationReview | null>(null);
+  const availabilityInFlight = useRef(false);
+  const { ask, dialog } = useConfirmDialog();
+  const eligible = (p: Product) => p.activationEligible ?? (p.price > 0 && p.availableQuantity > 0 && isSupplierStockConfirmed(p));
+  const eligibleCount = products.filter((p) => !p.isActive && eligible(p)).length;
+  const activeCount = products.filter((p) => p.isActive).length;
+  const availableCount = products.filter((p) => p.isActive && eligible(p)).length;
+  const unconfirmedCount = products.filter((p) => !isSupplierStockConfirmed(p)).length;
 
   // Dashboard and bottom navigation actions use ?add=1 to open the form; closing it
   // clears the param so returning to this (already-mounted) tab later doesn't reopen it.
@@ -42,9 +55,62 @@ export default function Pricing() {
       (!term || p.name.toLowerCase().includes(term))
   );
 
-  const toggleActive = (p: Product) => {
+  const runAvailability = async (work: () => Promise<string>) => {
+    if (availabilityInFlight.current) return;
+    availabilityInFlight.current = true;
+    setAvailabilityBusy(true);
     setToggleError(null);
-    updateProduct(p.id, { isActive: !p.isActive }).catch((err) => setToggleError(errorMessage(err, "Could not update listing.")));
+    setAvailabilityMessage(null);
+    try {
+      setAvailabilityMessage(await work());
+    } catch (err) {
+      setToggleError(errorMessage(err, "Could not update availability. Please try again."));
+    } finally {
+      availabilityInFlight.current = false;
+      setAvailabilityBusy(false);
+    }
+  };
+  const bulk = (active: boolean) => {
+    ask({ title: active ? "Activate All Materials?" : "Deactivate All Materials?",
+      message: active ? "Activate all eligible materials in your inventory? These products will become available to homeowners and PandAI."
+        : "Deactivate all active materials? They will no longer be available to homeowners and PandAI until reactivated.",
+      detail: active ? `${eligibleCount} eligible inactive materials` : `${activeCount} active materials`,
+      confirmLabel: active ? "Activate All" : "Deactivate All", mood: "thinking",
+      onConfirm: () => { void runAvailability(async () => {
+        const result = await setAllProductsActive(active);
+        return `${result.updated} ${active ? "activated" : "deactivated"}; ${result.skipped} skipped; ${result.failed} failed.`;
+      }); },
+    });
+  };
+  const prepareStockReview = () => runAvailability(async () => {
+    const review = await fetchStockConfirmationReview();
+    setStockReview(review);
+    // Also reconcile a previously lost confirmation response without writing any records.
+    reloadProducts();
+    return `Review ${review.count} recorded quantities before confirming physical stock.`;
+  });
+  const confirmReviewedStock = () => {
+    if (!stockReview) return;
+    void runAvailability(async () => {
+      const result = await confirmStock(stockReview.review_token);
+      setStockReview(null);
+      return `${result.updated} products' stock confirmed; ${result.skipped} already confirmed. Activation flags unchanged. Use Activate All for inactive eligible materials.`;
+    });
+  };
+  const toggleActive = (p: Product) => {
+    if (!p.isActive && !eligible(p)) {
+      setToggleError(p.activationBlockReason ?? "Confirm available stock and a valid price before activation.");
+      return;
+    }
+    ask({ title: p.isActive ? "Deactivate Material?" : "Activate Material?", detail: p.name,
+      message: p.isActive ? "This material will no longer be available to homeowners and PandAI. Its saved records and stock will be preserved."
+        : "Make this eligible material available to homeowners and PandAI?",
+      confirmLabel: p.isActive ? "Deactivate" : "Activate", mood: "thinking",
+      onConfirm: () => { void runAvailability(async () => {
+        await updateProduct(p.id, { isActive: !p.isActive });
+        return `${p.name} ${p.isActive ? "deactivated" : "activated"}.`;
+      }); },
+    });
   };
 
   return (
@@ -52,6 +118,27 @@ export default function Pricing() {
       <PageHeader title="Inventory" subtitle="Manage your materials, prices and stock levels." badge="Supplier" />
 
       <InventoryStats products={products} />
+
+      <View style={{ gap: 8 }}>
+        <Pressable accessibilityRole="button" disabled={availabilityBusy || productsLoading || products.length === 0}
+          onPress={() => { void prepareStockReview(); }} className="py-3 px-3 rounded-xl items-center bg-muted border border-border"
+          style={{ opacity: availabilityBusy || productsLoading || products.length === 0 ? 0.5 : 1 }}>
+          <Text className="text-xs font-bold text-foreground">Confirm Stock for All</Text>
+        </Pressable>
+        <View className="flex-row gap-3">
+          {[{ label: "Activate All", active: true }, { label: "Deactivate All", active: false }].map((action) => (
+            <Pressable key={action.label} accessibilityRole="button" disabled={availabilityBusy || productsLoading || products.length === 0}
+              onPress={() => bulk(action.active)} className="flex-1 min-w-0 py-3 px-2 rounded-xl items-center bg-primary"
+              style={{ opacity: availabilityBusy || productsLoading || products.length === 0 ? 0.5 : 1 }}>
+              <Text numberOfLines={1} adjustsFontSizeToFit className="text-xs font-bold text-primary-foreground">{action.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text className="text-xs text-muted-foreground">{availableCount} active / in stock · {products.length - activeCount} inactive · {eligibleCount} eligible for activation</Text>
+        {unconfirmedCount > 0 && <Text className="text-xs text-muted-foreground">{unconfirmedCount} materials have unconfirmed stock and are excluded from stock-status totals.</Text>}
+        {availabilityBusy && <Text className="text-xs text-muted-foreground">Updating availability…</Text>}
+        {availabilityMessage && <Text accessibilityRole="alert" className="text-xs" style={{ color: "#10b981" }}>{availabilityMessage}</Text>}
+      </View>
 
       <Field label="Search" value={search} onChangeText={setSearch} placeholder="Search your materials by name" />
       <ChipPicker label="Category" options={["All", ...CATEGORIES]} value={category} onChange={setCategory} />
@@ -86,6 +173,7 @@ export default function Pricing() {
             onEdit={() => setEditing(p)}
             onRestock={() => setRestocking(p)}
             onToggleActive={() => toggleActive(p)}
+            availabilityBusy={availabilityBusy}
           />
         ))
       )}
@@ -93,6 +181,30 @@ export default function Pricing() {
       {editing && <MaterialFormSheet key={`edit-${editing.id}`} product={editing} onClose={() => setEditing(null)} />}
       {adding && <MaterialFormSheet onClose={closeAdd} />}
       {restocking && <StockSheet key={`stock-${restocking.id}`} product={restocking} onClose={() => setRestocking(null)} />}
+      {stockReview && <Sheet visible title="Confirm Stock for All?" subtitle={`${stockReview.count} recorded quantities to verify`}
+        onClose={() => { if (!availabilityBusy) setStockReview(null); }}>
+        <Text className="text-sm text-foreground">Confirm only after you have physically verified every recorded quantity below. This records your verification; it does not change quantities, prices, descriptions, or activation flags.</Text>
+        {stockReview.products.some((p) => p.is_active) && <Text className="text-xs text-muted-foreground">Already-active listings may become available once their stock is verified and all eligibility requirements are met. Inactive listings stay inactive.</Text>}
+        {stockReview.products.map((p) => <View key={p.id} className="p-3 rounded-xl bg-muted" style={{ gap: 4 }}>
+          <Text className="text-sm font-semibold text-foreground">#{p.id} · {p.name}</Text>
+          <Text className="text-xs text-secondary-foreground">Recorded quantity: {p.stock} {p.unit} · Reserved: {p.reserved} · {p.is_active ? "Active" : "Inactive"}</Text>
+        </View>)}
+        {stockReview.count === 0 && <Text className="text-xs text-muted-foreground">All current products already have a recorded stock confirmation.</Text>}
+        {toggleError && <Text className="text-xs text-danger">{toggleError}</Text>}
+        <View className="flex-row gap-3">
+          <Pressable accessibilityRole="button" disabled={availabilityBusy} onPress={() => setStockReview(null)} className="flex-1 py-3 rounded-xl items-center bg-muted">
+            <Text className="text-xs font-semibold text-foreground">Cancel</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" disabled={availabilityBusy || stockReview.count === 0} onPress={confirmReviewedStock}
+            className="flex-1 py-3 px-2 rounded-xl items-center bg-primary" style={{ opacity: availabilityBusy || stockReview.count === 0 ? 0.5 : 1 }}>
+            <Text className="text-xs font-bold text-primary-foreground">{availabilityBusy ? "Confirming…" : "I verified these quantities"}</Text>
+          </Pressable>
+        </View>
+        <Pressable accessibilityRole="button" disabled={availabilityBusy} onPress={() => { void prepareStockReview(); }} className="py-2 items-center">
+          <Text className="text-xs font-semibold text-primary">Refresh Review</Text>
+        </Pressable>
+      </Sheet>}
+      {dialog}
     </Screen>
   );
 }
@@ -102,13 +214,17 @@ function InventoryCard({
   onEdit,
   onRestock,
   onToggleActive,
+  availabilityBusy,
 }: {
   product: Product;
   onEdit: () => void;
   onRestock: () => void;
   onToggleActive: () => void;
+  availabilityBusy: boolean;
 }) {
   const { chrome } = useTheme();
+  const unconfirmed = !isSupplierStockConfirmed(p);
+  const available = p.isActive && p.availableQuantity > 0 && p.price > 0 && !unconfirmed && p.activationEligible !== false;
   return (
     <Card gap={10}>
       <View className="flex-row justify-between items-start gap-3" style={{ opacity: p.isActive ? 1 : 0.6 }}>
@@ -116,8 +232,8 @@ function InventoryCard({
           <Text className="text-sm font-bold text-foreground">{p.name}</Text>
           <View className="flex-row flex-wrap gap-2 items-center">
             <Badge label={p.category} color={CAT_COLORS[p.category] ?? CAT_COLORS.Other} />
-            <StockBadge status={p.stockStatus} />
-            {!p.isActive && <Badge label="Hidden" color="#6b7280" />}
+            {unconfirmed ? <Badge label="Stock unconfirmed" color="#f59e0b" /> : <StockBadge status={p.stockStatus} />}
+            <Badge label={!p.isActive ? "Inactive" : available ? "Active / In Stock" : "Unavailable"} color={available ? "#10b981" : "#6b7280"} />
           </View>
           {p.description ? (
             <Text className="text-xs text-muted-foreground" numberOfLines={2}>
@@ -134,14 +250,16 @@ function InventoryCard({
       </View>
 
       <Text className="text-xs text-muted-foreground">
-        Available: <Text className="font-semibold text-foreground">{p.availableQuantity.toLocaleString()} {p.unit}</Text>
+        {unconfirmed ? "Unconfirmed quantity: " : "Available: "}<Text className="font-semibold text-foreground">{p.availableQuantity.toLocaleString()} {p.unit}</Text>
         {p.reserved > 0 ? ` · On hand ${p.stock.toLocaleString()} · Reserved ${p.reserved.toLocaleString()}` : ""} · Min order {p.minOrder}
       </Text>
+      {p.activationBlockReason && <Text className="text-xs text-muted-foreground">{p.activationBlockReason}</Text>}
+      {p.stockConfirmedAt && p.stockConfirmed && <Text className="text-xs text-muted-foreground">Stock verified {new Date(p.stockConfirmedAt).toLocaleString()} · {p.stockConfirmedQuantity} {p.unit}. Original product notes retained.</Text>}
 
-      <View className="flex-row flex-wrap gap-2">
+      <View pointerEvents={availabilityBusy ? "none" : "auto"} style={{ opacity: availabilityBusy ? 0.5 : 1 }} className="flex-row flex-wrap gap-2">
         <Button label="Update Stock" variant="tint" color="#10b981" onPress={onRestock} />
         <Button label="Edit" variant="tint" color="#f59e0b" onPress={onEdit} />
-        <Pressable onPress={onToggleActive} className="px-4 py-2.5 rounded-xl items-center" style={{ backgroundColor: chrome.muted }}>
+        <Pressable disabled={availabilityBusy} onPress={onToggleActive} className="px-4 py-2.5 rounded-xl items-center" style={{ backgroundColor: chrome.muted, opacity: availabilityBusy ? 0.5 : 1 }}>
           <Text className="text-xs font-semibold" style={{ color: chrome.mutedForeground }}>
             {p.isActive ? "Deactivate" : "Activate"}
           </Text>
@@ -176,7 +294,7 @@ function MaterialFormSheet({ product, onClose }: { product?: Product; onClose: (
     if (!WHOLE_NUMBER.test(stock.trim())) return setError("Enter the available quantity (0 or more).");
     if (!WHOLE_NUMBER.test(minOrder.trim()) || Number(minOrder) < 1) return setError("Minimum order must be at least 1.");
 
-    const input: ProductInput = {
+    const input: Omit<ProductInput, "isActive"> = {
       name: name.trim(),
       category,
       description: description.trim(),
@@ -184,14 +302,13 @@ function MaterialFormSheet({ product, onClose }: { product?: Product; onClose: (
       price: Number(price),
       stock: Number(stock),
       minOrder: Number(minOrder),
-      isActive: product?.isActive ?? true,
     };
 
     setSaving(true);
     setError(null);
     try {
       if (product) await updateProduct(product.id, input);
-      else await addProduct(input);
+      else await addProduct({ ...input, isActive: true });
       onClose();
     } catch (err) {
       setError(errorMessage(err, "Could not save this material."));

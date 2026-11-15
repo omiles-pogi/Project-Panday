@@ -33,6 +33,8 @@ export type NotificationType =
   | "project_corrections_requested";
 
 export interface NotificationData {
+  /** Current portrait from the authorized applicant profile, refreshed by the backend. */
+  applicantPhotoUrl?: string | null;
   /** Chat notifications open the recipient's private conversation. */
   conversationId?: number;
   messageId?: number;

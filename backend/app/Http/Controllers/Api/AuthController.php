@@ -9,8 +9,10 @@ use App\Http\Requests\RegisterRequest;
 use App\Http\Requests\ResetPasswordRequest;
 use App\Http\Requests\UpdateAccountRequest;
 use App\Http\Requests\VerifyPasswordResetCodeRequest;
+use App\Models\User;
 use App\Services\AuthService;
 use App\Services\PasswordResetService;
+use App\Support\AccountPasswordRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -26,7 +28,15 @@ class AuthController extends Controller
     {
         $user = $this->authService->register($request->validated());
 
-        // New accounts must be approved by the admin before they can sign in, so no token yet.
+        // Homeowners can start immediately; professional accounts still wait for admin review.
+        if ($user->role === 'homeowner' && $user->approval_status === 'approved') {
+            return response()->json([
+                'user' => $user,
+                'token' => $user->createToken('mobile')->plainTextToken,
+                'message' => 'Account created. You can start using Project Panday.',
+            ], 201);
+        }
+
         return response()->json([
             'user' => $user,
             'message' => 'Account created. You can sign in once an admin approves it.',
@@ -45,16 +55,24 @@ class AuthController extends Controller
 
         if ($user->approval_status !== 'approved') {
             return response()->json([
-                'error' => $user->approval_status === 'rejected'
-                    ? 'Your account was not approved.'
-                    : 'Your account is awaiting admin approval.',
+                'error' => $user->role === 'homeowner'
+                    ? 'Your account access is restricted. Please contact support.'
+                    : ($user->approval_status === 'rejected'
+                        ? 'Your account was not approved.'
+                        : 'Your account is awaiting admin approval.'),
                 'approval_status' => $user->approval_status,
             ], 403);
         }
 
+        // Hashes cannot reveal legacy whitespace. Classify only after exact credential and
+        // approval checks, without trimming, saving plaintext or changing the account record.
+        $legacy = in_array($user->role, User::SELF_REGISTERABLE_ROLES, true) && AccountPasswordRules::hasWhitespace($request->validated('password'));
+
         return response()->json([
-            'user' => $user,
-            'token' => $user->createToken('mobile')->plainTextToken,
+            'user' => $user->toArray() + ['requires_password_update' => $legacy],
+            'token' => $legacy
+                ? $user->createToken('password-update', [AccountPasswordRules::UPDATE_ABILITY], now()->addMinutes(15))->plainTextToken
+                : $user->createToken('mobile')->plainTextToken,
         ]);
     }
 
@@ -110,7 +128,7 @@ class AuthController extends Controller
 
     public function me(Request $request): JsonResponse
     {
-        return response()->json($request->user());
+        return response()->json($request->user()->toArray() + ['requires_password_update' => AccountPasswordRules::requiresUpdate($request->user())]);
     }
 
     /** Any signed-in user can change their own name from their profile. */

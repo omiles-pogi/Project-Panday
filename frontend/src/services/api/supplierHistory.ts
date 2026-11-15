@@ -5,7 +5,7 @@ async function read<T>(path: string): Promise<T> {
   try {
     return await apiFetch(path) as T;
   } catch {
-    throw new Error("Couldn't load supply history. Check your connection and try again. Only your shop's recorded supplies are available here.");
+    throw new Error("Couldn't load project history. Check your connection and try again. Only completed projects that selected your shop are available here.");
   }
 }
 

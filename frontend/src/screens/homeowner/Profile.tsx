@@ -1,28 +1,29 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Badge, Card, Field, PageHeader, Screen, StatGrid, StatTile, SubmitButton } from "@/components/ui";
+import { Badge, Card, PageHeader, Screen, StatGrid, StatTile } from "@/components/ui";
 import NameCard from "@/components/NameCard";
+import ProfilePhoto from "@/components/ProfilePhoto";
+import AccountManagement from "@/components/AccountManagement";
+import { ProfileEditActions, ProfileEditButton, ProfileField } from "@/components/ProfileEditControls";
+import { useProfileEdit } from "@/hooks/useProfileEdit";
 import { useAuth } from "@/context/AuthContext";
 import { fetchMyHomeownerProfile, updateMyHomeownerProfile, type HomeownerProfile } from "@/services/api/homeownerProfile";
 
 export default function Profile() {
   const { user } = useAuth();
   const [profile, setProfile] = useState<HomeownerProfile | null>(null);
-  const [location, setLocation] = useState("");
-  const [contactNumber, setContactNumber] = useState("");
+  const form = useProfileEdit({ location: "", contactNumber: "" });
+  const { location, contactNumber } = form.draft;
+  const { editing, saving, saved, error: saveError, load } = form;
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
 
   const show = useCallback((next: HomeownerProfile) => {
     setProfile(next);
-    setLocation(next.location ?? "");
-    setContactNumber(next.contactNumber ?? "");
-  }, []);
+    load({ location: next.location ?? "", contactNumber: next.contactNumber ?? "" });
+  }, [load]);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,18 +49,10 @@ export default function Profile() {
   };
 
   const save = async () => {
-    if (saving) return;
-    setSaving(true);
-    setSaveError(null);
-    setSaved(false);
-    try {
-      show(await updateMyHomeownerProfile({ location: location.trim(), contact_number: contactNumber.trim() }));
-      setSaved(true);
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Failed to save your profile.");
-    } finally {
-      setSaving(false);
-    }
+    await form.save(async (draft) => {
+      const confirmed = await updateMyHomeownerProfile({ location: draft.location.trim(), contact_number: draft.contactNumber.trim() });
+      return { location: confirmed.location ?? "", contactNumber: confirmed.contactNumber ?? "" };
+    });
   };
 
   if (loading) {
@@ -86,12 +79,6 @@ export default function Profile() {
 
   // The signed-in name, so a rename shows here at once instead of waiting for this screen to reload.
   const name = user?.name ?? profile.name;
-  const initials = name
-    .split(" ")
-    .map((part) => part[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
   const accountRows: [string, string][] = [
     ["Name", name],
     ["Email", profile.email],
@@ -106,16 +93,12 @@ export default function Profile() {
 
       <Card>
         <View className="flex-row gap-4 items-center">
-          <View className="w-16 h-16 rounded-2xl items-center justify-center" style={{ backgroundColor: "#f59e0b20" }}>
-            <Text className="text-2xl font-bold" style={{ color: "#f59e0b" }}>
-              {initials}
-            </Text>
-          </View>
+          <ProfilePhoto name={name} />
           <View className="flex-1" style={{ gap: 4 }}>
             <Text className="text-lg font-bold text-foreground">{name}</Text>
             <View className="flex-row items-center gap-1">
               <Ionicons name="location-outline" size={13} color="#9ca3af" />
-              <Text className="flex-1 text-xs text-secondary-foreground">{profile.location || "No location set yet"}</Text>
+              <Text className="flex-1 text-xs text-secondary-foreground">{form.baseline.location || "No location set yet"}</Text>
             </View>
             <Badge label="Homeowner" color="#3b82f6" />
           </View>
@@ -128,15 +111,15 @@ export default function Profile() {
         <StatTile label="Completed" value={profile.projects.completed} color="#10b981" icon="checkmark-circle-outline" />
       </StatGrid>
 
-      <NameCard />
+      <NameCard requireEdit saveLabel="Save Changes" />
 
-      <Card title="Your details">
+      <Card title="Your details" right={<ProfileEditButton editing={editing} disabled={!form.ready} section="your details" onPress={form.begin} />}>
         <View style={{ gap: 12 }}>
-          <Field label="Location" value={location} onChangeText={setLocation} placeholder="e.g. Dagupan City, Pangasinan" maxLength={255} />
-          <Field
+          <ProfileField editing={editing} saving={saving} label="Location" value={location} onChangeText={(text) => form.change("location", text)} placeholder="e.g. Dagupan City, Pangasinan" maxLength={255} />
+          <ProfileField editing={editing} saving={saving}
             label="Contact number"
             value={contactNumber}
-            onChangeText={(text) => setContactNumber(text.replace(/[^0-9+()\-\s]/g, ""))}
+            onChangeText={(text) => form.change("contactNumber", text.replace(/[^0-9+()\-\s]/g, ""))}
             placeholder="e.g. 0912 345 6789"
             keyboardType="phone-pad"
             maxLength={30}
@@ -146,7 +129,7 @@ export default function Profile() {
           {saveError && <Text className="text-xs text-danger">{saveError}</Text>}
           {saved && <Badge label="Saved" color="#10b981" />}
 
-          <SubmitButton label={saving ? "Saving…" : "Save Profile"} onPress={save} />
+          {editing && <ProfileEditActions saving={saving} saveLabel="Save Changes" onSave={save} onCancel={form.cancel} />}
         </View>
       </Card>
 
@@ -160,6 +143,7 @@ export default function Profile() {
           ))}
         </View>
       </Card>
+      <AccountManagement />
     </Screen>
   );
 }

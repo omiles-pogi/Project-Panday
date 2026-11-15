@@ -1,5 +1,5 @@
 import "../global.css";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, type ReactNode } from "react";
 import { View, ActivityIndicator } from "react-native";
 import { Stack, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -8,6 +8,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { AccountProvider } from "@/context/AccountContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { NotificationProvider } from "@/context/NotificationContext";
 import { ChatProvider } from "@/context/ChatContext";
@@ -15,7 +16,8 @@ import ThemeToggle from "@/components/ThemeToggle";
 import NotificationBell from "@/components/NotificationBell";
 import NotificationToast from "@/components/NotificationToast";
 import { useAppFonts } from "@/theme/fonts";
-import { usesInlineHomeownerHeader, usesInlineSupplierHistoryHeader, usesInlineSupplierDashboardHeader, usesInlineContractorHeader, usesInlineWorkerHeader } from "@/utils/headerRoutes";
+import { usesInlineRoleHeader } from "@/utils/headerRoutes";
+import RequiredPasswordUpdate from "@/components/auth/RequiredPasswordUpdate";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -36,20 +38,31 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <KeyboardProvider>
       <SafeAreaProvider>
-        <ThemeProvider>
-          <AuthProvider>
-            <NotificationProvider>
-              <ChatProvider>
-                <ThemedChrome />
-                <RootNavigator />
-              </ChatProvider>
-            </NotificationProvider>
-          </AuthProvider>
-        </ThemeProvider>
+        <AuthProvider>
+          <ThemeProvider>
+            <PasswordUpdateBoundary>
+            <AccountProvider>
+              <NotificationProvider>
+                <ChatProvider>
+                  <ThemedChrome />
+                  <RootNavigator />
+                </ChatProvider>
+              </NotificationProvider>
+            </AccountProvider>
+            </PasswordUpdateBoundary>
+          </ThemeProvider>
+        </AuthProvider>
       </SafeAreaProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>
   );
+}
+
+/** Do not start account/chat/notification requests using a credential-update-only token. */
+function PasswordUpdateBoundary({ children }: { children: ReactNode }) {
+  const { status, user } = useAuth();
+  if (status === "authed" && user?.requires_password_update) return <><ThemedChrome /><RequiredPasswordUpdate /></>;
+  return children;
 }
 
 /** Preserve global status/toast behavior and floating actions on screens without an inline header. */
@@ -58,12 +71,9 @@ function ThemedChrome() {
   const { user } = useAuth();
   const pathname = usePathname();
   // Shared headers own these exact controls; keep one visible instance on each active route.
-  const inlineHeader = (user?.role === "homeowner" && usesInlineHomeownerHeader(pathname)) ||
-    (user?.role === "supplier" && (usesInlineSupplierHistoryHeader(pathname) || usesInlineSupplierDashboardHeader(pathname))) ||
-    (user?.role === "contractor" && usesInlineContractorHeader(pathname)) ||
-    (user?.role === "worker" && usesInlineWorkerHeader(pathname));
+  const inlineHeader = usesInlineRoleHeader(pathname, user?.role);
   const showNotifications =
-    user?.role === "homeowner" || user?.role === "worker" || user?.role === "contractor" || user?.role === "supplier";
+    !user?.requires_password_update && (user?.role === "homeowner" || user?.role === "worker" || user?.role === "contractor" || user?.role === "supplier");
   return (
     <>
       <StatusBar style={mode === "dark" ? "light" : "dark"} />
@@ -75,7 +85,7 @@ function ThemedChrome() {
 }
 
 function RootNavigator() {
-  const { status } = useAuth();
+  const { status, user } = useAuth();
 
   if (status === "bootstrapping") {
     return (
@@ -84,6 +94,8 @@ function RootNavigator() {
       </View>
     );
   }
+
+  if (status === "authed" && user?.requires_password_update) return <RequiredPasswordUpdate />;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>

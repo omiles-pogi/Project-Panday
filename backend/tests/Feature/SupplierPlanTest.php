@@ -222,7 +222,8 @@ class SupplierPlanTest extends TestCase
         $construction = $byCategory['Construction Materials']['suppliers'];
         $this->assertCount(1, $construction);
         $this->assertSame('Builders Depot', $construction[0]['name']);
-        $this->assertSame(2, $construction[0]['itemCount']);
+        // Only currently available materials count as supply options; keep the zero-stock record.
+        $this->assertSame(1, $construction[0]['itemCount']);
         $this->assertSame(1, $construction[0]['inStockCount']);
 
         $this->assertSame(2, $byCategory['Electrical and Plumbing']['suppliers'][0]['itemCount']);
@@ -308,6 +309,29 @@ class SupplierPlanTest extends TestCase
     }
 
     // ---- carried through to the contractor -----------------------------------------------------
+
+    public function test_category_preferences_survive_finalization_without_orders_or_inventory_changes(): void
+    {
+        $owner = $this->user('homeowner');
+        $construction = $this->supplier('Construction supplier');
+        $finishing = $this->supplier('Finishing supplier');
+        $cement = $this->product($construction, 'Cement', 'Cement', 250);
+        $paint = $this->product($finishing, 'Paint', 'Paint', 500);
+        $before = SupplierProduct::orderBy('id')->get()->toArray();
+        $preferences = ['Construction Materials' => $construction->id, 'Electrical and Plumbing' => null, 'Finishing Works' => $finishing->id];
+        $project = app(ProjectService::class)->createFromPlan($owner, [
+            'projectTitle' => 'House', 'budget' => 1000000, 'totalEstimate' => 500000,
+            'timelineValue' => 6, 'timelineUnit' => 'months', 'phases' => [],
+            'materials' => [$this->material($cement->id), $this->material($paint->id)],
+            'supplierSelections' => $preferences,
+        ]);
+        $this->assertSame($preferences, $project->fresh()->approved_plan['supplierSelections']);
+        $this->assertSame($construction->id, $project->fresh()->approved_plan['materials'][0]['supplierId']);
+        $this->assertSame($finishing->id, $project->fresh()->ai_materials[1]['supplierId']);
+        $this->assertSame($before, SupplierProduct::orderBy('id')->get()->toArray());
+        $this->assertDatabaseCount('material_requests', 0);
+        $this->assertDatabaseCount('supplier_fulfillments', 0);
+    }
 
     public function test_the_contractors_material_request_starts_from_the_listing_the_homeowner_chose(): void
     {

@@ -32,9 +32,8 @@ export function selectionsOf(plan: ConstructionPlan): SupplierSelections {
 
 /**
  * Lets the homeowner pick which supplier the plan's prices come from, per category — construction
- * materials, electrical and plumbing, finishing works. Choosing one asks the AI to re-source that
- * category's materials from that supplier's real listings (onChoose); "best price" lets it pick the
- * cheapest in-stock listing across suppliers.
+ * materials, electrical and plumbing, finishing works. Preferences save independently of AI;
+ * explicit plan revisions use them to check real listings without replacing approved estimates.
  */
 export default function SupplierPicker({
   plan,
@@ -85,7 +84,7 @@ export default function SupplierPicker({
         <Text className="text-xs font-bold text-foreground">Choose your suppliers</Text>
       </View>
       <Text className="text-xs text-muted-foreground">
-        Prices come from the real listings of the supplier you pick for each category.
+        Choices save separately for each category. Existing estimates stay unchanged until you request a plan revision.
       </Text>
 
       {!options && !error && <ActivityIndicator color="#f59e0b" style={{ marginVertical: 6 }} />}

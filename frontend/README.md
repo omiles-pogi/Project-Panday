@@ -91,6 +91,13 @@ Every screen runs on the real backend — there is no sample-data screen left in
   The selected ID survives app restarts. Each account's messages, plan, approval stage, title, and retry key
   remain keyed by project ID in the existing on-device AsyncStorage; uncreated drafts use unique keys and
   move to their saved project only on finalization. These histories are local to this device, not server-synced.
+  Home reads the same account-scoped saved histories and verified owner-project lifecycle to show
+  **Continue Your Project** cards. One draft gives the hero a **Continue Project** action; multiple drafts
+  are listed individually and the hero scrolls to that choice. Recorded approval stages and save timestamps
+  supply the status labels and draft activity; missing legacy timestamps stay unknown. **Start a New Project**
+  remains available with explicit confirmation and opens an independent draft without replacing any chat.
+  A lost finalization response is reconciled using the existing owner-only retry identity, so an already
+  finalized or completed construction project cannot reappear as a detached unfinished conversation.
   The planner header identifies the selected project, and its existing recent-project chooser can switch chats.
 - **Contractor** — browse and apply to projects, My Projects (the checklist, with Check All / Uncheck All on each phase and
   "Mark Project as Finished" at the bottom, which sends it to the homeowner to confirm or send back; plus the team's
@@ -115,7 +122,52 @@ pop-up. They need a real build (the Android APK, or a development build) with an
 `npx eas-cli init` so `app.json` gets `extra.eas.projectId`, and give EAS your Firebase (FCM) credentials for
 Android. **Expo Go can't receive them** — there the code does nothing, and the in-app notifications are unaffected.
 
+Push initialization checks `isRunningInExpoGo()` before loading `expo-notifications`, then checks for an EAS
+project ID and the native application/push modules. Missing configuration or an incompatible native build
+leaves the Laravel notification feed, unread badge, bell and pop-up running normally. Development builds
+are supported even when their execution environment is `storeClient`; that value alone does not identify Go.
+
+If an old Android bundle still reports `Cannot find native module 'ExpoApplication'` after signing in,
+stop Metro, run `npx expo start --go --clear`, fully close Expo Go and scan the new QR code. Sign in,
+open the bell and verify its notification list; repeat after signing out/in and switching accounts.
+Remote push must be tested separately on a physical device with a configured development/release build,
+including granting notification permission, receiving a push and tapping it to open the existing destination.
+
 `src/data/` only holds display constants now (inventory types and colours, the PandAi tour text).
+
+## Account profiles and preferences
+
+All four mobile roles reuse their existing Safe Edit Profile forms and now share profile photo controls,
+Change Password and App Settings. Camera/gallery selection previews a JPEG, PNG or WebP before saving;
+Cancel does not upload. Photos are limited to 5 MB and 4096 pixels per dimension. Camera access is requested
+only for taking a picture; Android gallery selection uses the system picker. `expo-image-picker` is installed
+at the SDK-compatible version, with microphone permission disabled in its config plugin.
+
+Photos stay in Laravel's private local disk, served by the authenticated owner's versioned
+`/api/account/photo/{userId}/{version}` endpoint. `accountPhotoSource` attaches authentication only to that
+same-backend route. No public storage link is required. The backend storage directory must be writable and
+retained across deployments. Replacing/removing a photo updates the database first, then cleans up its old file.
+
+The additive `2026_11_14_060000_add_account_profile_preferences_to_users_table` migration adds nullable
+`profile_photo_path` and `notification_preferences` columns. Apply it only after the local database owner
+approves it. Before application, new photo/preference endpoints report that setup is pending; legacy auth
+and in-app notification reads remain usable. No historical migration is edited.
+
+Theme settings use the existing ThemeProvider and account-scoped local keys; the header toggle and Settings
+switch share that one state. Unattributed legacy global theme values are not copied between accounts.
+Remote push preferences are stored on the server and enforced before delivery: the master switch gates all
+remote notifications, `messages` gates `new_message`, and `project_updates` gates other project/team/material
+events. Turning the master off preserves both category values and never filters the in-app feed or chat.
+Native push initialization waits for saved preferences, retains the Expo Go guards, and cancels pending work
+on logout or preference changes. Settings can recheck OS permission without changing the saved app choices.
+
+Change Password reuses the registration/reset password policy and password visibility/validation controls.
+It requires the current password, retains the current mobile session, revokes other API sessions and clears
+outstanding password reset grants. About, Privacy Policy and Terms remain non-interactive Coming Soon rows.
+
+Before a future APK build, configure the EAS project and Android Firebase credentials, rebuild to include
+ImagePicker's native configuration, and physically test photo permissions/uploads and remote push delivery.
+No APK is generated by these source changes.
 
 ## Known, intentional oddities
 

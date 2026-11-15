@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Schema;
 
 class SupplierProduct extends Model
 {
@@ -70,7 +71,7 @@ class SupplierProduct extends Model
     ];
 
     /** Always serialized so every client reads the same derived values instead of re-deriving them. */
-    protected $appends = ['available_quantity', 'stock_status'];
+    protected $appends = ['available_quantity', 'stock_status', 'activation_eligible', 'activation_block_reason', 'stock_confirmed'];
 
     protected function casts(): array
     {
@@ -80,6 +81,10 @@ class SupplierProduct extends Model
             'stock' => 'integer',
             'reserved' => 'integer',
             'min_order' => 'integer',
+            'stock_is_confirmed' => 'boolean',
+            'stock_confirmed_at' => 'datetime',
+            'stock_confirmed_by' => 'integer',
+            'stock_confirmed_quantity' => 'integer',
         ];
     }
 
@@ -106,10 +111,77 @@ class SupplierProduct extends Model
         return $this->belongsTo(User::class, 'supplier_id');
     }
 
+    /** Imported placeholder stock is not confirmed merely because its numeric quantity changed. */
+    public function activationFailure(): ?string
+    {
+        if ($this->price <= 0) {
+            return 'invalid_price';
+        }
+        if (! $this->stock_confirmed) {
+            return 'unconfirmed_stock';
+        }
+
+        return $this->available_quantity > 0 ? null : 'out_of_stock';
+    }
+
+    protected function activationEligible(): Attribute
+    {
+        return Attribute::get(fn () => $this->activationFailure() === null);
+    }
+
+    protected function activationBlockReason(): Attribute
+    {
+        return Attribute::get(fn () => match ($this->activationFailure()) {
+            'invalid_price' => 'Set a valid price greater than zero before activation.',
+            'unconfirmed_stock' => 'Availability is unconfirmed. Review the recorded quantities and use Confirm Stock for All after physically verifying them.',
+            'out_of_stock' => 'No unreserved stock is available. Restock before activation.',
+            default => null,
+        });
+    }
+
+    /** Shared pricing/confirmation rules; zero stock may still be displayed as unavailable in the catalog. */
+    public function scopePricedAndConfirmed(Builder $query): void
+    {
+        $query->where('price', '>', 0)->where(function (Builder $confirmed) {
+            if (self::hasStockConfirmationSchema()) {
+                $confirmed->where('stock_is_confirmed', true)->orWhere(function (Builder $legacy) {
+                    $legacy->whereNull('stock_is_confirmed')
+                        ->whereRaw("LOWER(COALESCE(description, '')) NOT LIKE ?", ['%stock availability is unconfirmed%']);
+                });
+            } else {
+                // Safe rollout: existing reads/activation keep working before the approved migration.
+                $confirmed->whereRaw("LOWER(COALESCE(description, '')) NOT LIKE ?", ['%stock availability is unconfirmed%']);
+            }
+        });
+    }
+
+    public static function hasStockConfirmationSchema(): bool
+    {
+        return Schema::hasColumns('supplier_products', ['stock_is_confirmed', 'stock_confirmed_at', 'stock_confirmed_by', 'stock_confirmed_quantity']);
+    }
+
+    protected function stockConfirmed(): Attribute
+    {
+        return Attribute::get(function () {
+            // Structured attestations override historical import notes without erasing them.
+            if ($this->stock_is_confirmed !== null) {
+                return $this->stock_is_confirmed;
+            }
+
+            // Null is untouched legacy data, not a newly created supplier attestation.
+            return ! str_contains(mb_strtolower((string) $this->description), 'stock availability is unconfirmed');
+        });
+    }
+
+    public function scopeAvailableForSupply(Builder $query): void
+    {
+        $query->listed()->whereColumn('stock', '>', 'reserved');
+    }
+
     /** Listings shown in the homeowner/contractor catalog: active, from an approved supplier. */
     public function scopeListed(Builder $query): void
     {
-        $query->where('is_active', true)
+        $query->where('is_active', true)->pricedAndConfirmed()
             ->whereHas('supplier', fn (Builder $q) => $q->where('role', 'supplier')->where('approval_status', 'approved'));
     }
 }

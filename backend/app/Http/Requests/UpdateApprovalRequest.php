@@ -18,8 +18,13 @@ class UpdateApprovalRequest extends FormRequest
      */
     public function rules(): array
     {
+        // Admins may revoke/restore homeowner access, but cannot put them back in a review queue.
+        $statuses = $this->route('user')?->role === 'homeowner'
+            ? ['approved', 'rejected']
+            : User::APPROVAL_STATUSES;
+
         return [
-            'status' => ['required', 'string', Rule::in(User::APPROVAL_STATUSES)],
+            'status' => ['required', 'string', Rule::in($statuses)],
         ];
     }
 }

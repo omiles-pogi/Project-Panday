@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\DeviceTokenController;
 use App\Http\Controllers\Api\HiringWageController;
 use App\Http\Controllers\Api\HomeownerProfileController;
+use App\Http\Controllers\Api\HomeownerTeamController;
 use App\Http\Controllers\Api\MaterialCatalogController;
 use App\Http\Controllers\Api\MaterialPlanController;
 use App\Http\Controllers\Api\MaterialRequestController;
@@ -31,6 +32,7 @@ use App\Http\Controllers\Api\WorkerActivityController;
 use App\Http\Controllers\Api\WorkerController;
 use App\Http\Controllers\Api\WorkerRequestController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\AccountController;
 
 Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:10,1');
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
@@ -39,7 +41,15 @@ Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword'])-
 Route::post('/auth/verify-password-reset-code', [AuthController::class, 'verifyPasswordResetCode'])->middleware('throttle:5,1');
 Route::post('/auth/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', \App\Http\Middleware\EnsurePasswordUpdateCompleted::class])->group(function () {
+    Route::middleware('role:homeowner,contractor,worker,supplier')->group(function () {
+        Route::get('/account', [AccountController::class, 'show']);
+        Route::patch('/account/preferences', [AccountController::class, 'preferences']);
+        Route::post('/account/photo', [AccountController::class, 'upload'])->middleware('throttle:10,1');
+        Route::delete('/account/photo', [AccountController::class, 'remove']);
+        Route::get('/account/photo/{userId}/{version}', [AccountController::class, 'image'])->whereNumber('userId')->where('version', '[A-Za-z0-9._-]+');
+        Route::post('/account/password', [AccountController::class, 'password'])->middleware('throttle:5,1');
+    });
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::patch('/auth/me', [AuthController::class, 'updateMe']);
@@ -56,6 +66,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/projects/{project}/name', [ProjectNamingController::class, 'update'])->whereNumber('project');
         Route::patch('/projects/{project}/hide-from-dashboard', [ProjectDashboardController::class, 'hide'])->whereNumber('project');
         Route::get('/home-dashboard', [ProjectDashboardController::class, 'overview']);
+        Route::get('/projects/{projectId}/team-overview', [HomeownerTeamController::class, 'show'])->whereNumber('projectId');
     });
     Route::get('/projects/available', [ProjectController::class, 'available']);
     Route::get('/projects/available-for-contractors', [ProjectController::class, 'availableForContractors']);
@@ -152,6 +163,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/supplier-products', [SupplierProductController::class, 'index'])->middleware('role:supplier');
     Route::post('/supplier-products', [SupplierProductController::class, 'store'])->middleware('role:supplier');
+    Route::patch('/supplier-products/activation', [SupplierProductController::class, 'bulkActivation'])->middleware('role:supplier');
+    Route::get('/supplier-products/stock-confirmation', [SupplierProductController::class, 'stockConfirmationReview'])->middleware('role:supplier');
+    Route::patch('/supplier-products/stock-confirmation', [SupplierProductController::class, 'confirmStock'])->middleware('role:supplier');
     Route::patch('/supplier-products/{supplierProduct}', [SupplierProductController::class, 'update'])->middleware('role:supplier');
     Route::delete('/supplier-products/{supplierProduct}', [SupplierProductController::class, 'destroy'])->middleware('role:supplier');
 

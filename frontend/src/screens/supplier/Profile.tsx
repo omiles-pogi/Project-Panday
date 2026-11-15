@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Badge, Card, Field, PageHeader, Screen, StatGrid, StatTile, SubmitButton } from "@/components/ui";
+import { Badge, Card, PageHeader, Screen, StatGrid, StatTile } from "@/components/ui";
+import { ProfileEditActions, ProfileEditButton, ProfileField } from "@/components/ProfileEditControls";
+import { useProfileEdit } from "@/hooks/useProfileEdit";
 import NameCard from "@/components/NameCard";
+import ProfilePhoto from "@/components/ProfilePhoto";
+import AccountManagement from "@/components/AccountManagement";
 import { useAuth } from "@/context/AuthContext";
 import { fetchMySupplierProfile, updateMySupplierProfile, type SupplierProfile } from "@/services/api/supplierProfile";
 
@@ -15,22 +19,17 @@ const STATUS_BADGE: Record<SupplierProfile["approvalStatus"], { label: string; c
 export default function Profile() {
   const { user } = useAuth();
   const [profile, setProfile] = useState<SupplierProfile | null>(null);
-  const [location, setLocation] = useState("");
-  const [contactNumber, setContactNumber] = useState("");
-  const [bio, setBio] = useState("");
+  const form = useProfileEdit({ location: "", contactNumber: "", bio: "" });
+  const { location, contactNumber, bio } = form.draft;
+  const { editing, saving, saved, error: saveError, load } = form;
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
 
   const show = useCallback((next: SupplierProfile) => {
     setProfile(next);
-    setLocation(next.location ?? "");
-    setContactNumber(next.contactNumber ?? "");
-    setBio(next.bio ?? "");
-  }, []);
+    load({ location: next.location ?? "", contactNumber: next.contactNumber ?? "", bio: next.bio ?? "" });
+  }, [load]);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,18 +55,10 @@ export default function Profile() {
   };
 
   const save = async () => {
-    if (saving) return;
-    setSaving(true);
-    setSaveError(null);
-    setSaved(false);
-    try {
-      show(await updateMySupplierProfile({ location: location.trim(), contact_number: contactNumber.trim(), bio: bio.trim() }));
-      setSaved(true);
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Failed to save your profile.");
-    } finally {
-      setSaving(false);
-    }
+    await form.save(async (draft) => {
+      const next = await updateMySupplierProfile({ location: draft.location.trim(), contact_number: draft.contactNumber.trim(), bio: draft.bio.trim() });
+      return { location: next.location ?? "", contactNumber: next.contactNumber ?? "", bio: next.bio ?? "" };
+    });
   };
 
   if (loading) {
@@ -95,12 +86,6 @@ export default function Profile() {
   // The signed-in name, so a rename shows here at once instead of waiting for this screen to reload.
   const contactName = user?.name ?? profile.name;
   const shopName = profile.businessName || contactName;
-  const initials = shopName
-    .split(" ")
-    .map((part) => part[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
   const status = STATUS_BADGE[profile.approvalStatus];
   const accountRows: [string, string][] = [
     ["Contact person", contactName],
@@ -117,16 +102,12 @@ export default function Profile() {
 
       <Card>
         <View className="flex-row gap-4 items-center">
-          <View className="w-16 h-16 rounded-2xl items-center justify-center" style={{ backgroundColor: "#f59e0b20" }}>
-            <Text className="text-2xl font-bold" style={{ color: "#f59e0b" }}>
-              {initials}
-            </Text>
-          </View>
+          <ProfilePhoto name={shopName} />
           <View className="flex-1" style={{ gap: 4 }}>
             <Text className="text-lg font-bold text-foreground">{shopName}</Text>
             <View className="flex-row items-center gap-1">
               <Ionicons name="location-outline" size={13} color="#9ca3af" />
-              <Text className="flex-1 text-xs text-secondary-foreground">{profile.location || "No location set yet"}</Text>
+              <Text className="flex-1 text-xs text-secondary-foreground">{form.baseline.location || "No location set yet"}</Text>
             </View>
             <Badge label={status.label} color={status.color} />
           </View>
@@ -139,23 +120,23 @@ export default function Profile() {
         <StatTile label="In Stock" value={profile.listings.inStock} color="#10b981" icon="checkmark-circle-outline" />
       </StatGrid>
 
-      <NameCard hint="The contact person on your shop. Your business name was verified when you registered, so it can't be changed here." />
+      <NameCard requireEdit hint="The contact person on your shop. Your business name was verified when you registered, so it can't be changed here." />
 
-      <Card title="Shop details">
+      <Card title="Shop details" right={<ProfileEditButton editing={editing} disabled={!form.ready} section="shop details" onPress={form.begin} />}>
         <View style={{ gap: 12 }}>
-          <Field label="Location" value={location} onChangeText={setLocation} placeholder="e.g. San Fabian, Pangasinan" maxLength={255} />
-          <Field
+          <ProfileField editing={editing} saving={saving} label="Location" value={location} onChangeText={(text) => form.change("location", text)} placeholder="e.g. San Fabian, Pangasinan" maxLength={255} />
+          <ProfileField editing={editing} saving={saving}
             label="Contact number"
             value={contactNumber}
-            onChangeText={(text) => setContactNumber(text.replace(/[^0-9+()\-\s]/g, ""))}
+            onChangeText={(text) => form.change("contactNumber", text.replace(/[^0-9+()\-\s]/g, ""))}
             placeholder="e.g. 0912 345 6789"
             keyboardType="phone-pad"
             maxLength={30}
           />
-          <Field
+          <ProfileField editing={editing} saving={saving}
             label="About your shop"
             value={bio}
-            onChangeText={setBio}
+            onChangeText={(text) => form.change("bio", text)}
             placeholder="What you sell, delivery areas, opening hours…"
             multiline
             maxLength={1000}
@@ -165,7 +146,7 @@ export default function Profile() {
           {saveError && <Text className="text-xs text-danger">{saveError}</Text>}
           {saved && <Badge label="Saved" color="#10b981" />}
 
-          <SubmitButton label={saving ? "Saving…" : "Save Profile"} onPress={save} />
+          {editing && <ProfileEditActions saving={saving} onSave={save} onCancel={form.cancel} />}
         </View>
       </Card>
 
@@ -182,6 +163,7 @@ export default function Profile() {
           Your business name and license were checked when your account was approved, so they can&apos;t be changed here.
         </Text>
       </Card>
+      <AccountManagement />
     </Screen>
   );
 }

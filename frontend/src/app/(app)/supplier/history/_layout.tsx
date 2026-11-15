@@ -11,6 +11,6 @@ export default function SupplierHistoryLayout() {
   return <Stack screenOptions={{ contentStyle: { backgroundColor: chrome.background } }}>
     <Stack.Screen name="index" options={{ title: "History", header: () => <SupplierHistoryHeader title="History" /> }} />
     <Stack.Screen name="[id]/index" options={{ title: "Project History", header: () => <SupplierHistoryHeader title="Project History" backTo="/supplier/history" /> }} />
-    <Stack.Screen name="[id]/items" options={{ title: "Supplies Provided", header: () => <SupplierHistoryHeader title="Supplies Provided" backTo="/supplier/history" /> }} />
+    <Stack.Screen name="[id]/items" options={{ title: "Estimated Materials", header: () => <SupplierHistoryHeader title="Estimated Materials" backTo="/supplier/history" /> }} />
   </Stack>;
 }

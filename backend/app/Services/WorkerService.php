@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\User;
 use App\Models\WorkerProfile;
 use App\Models\WorkerRating;
+use App\Support\ProfilePhotoVisibility;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -95,6 +96,7 @@ class WorkerService
                 return [
                     'id' => $worker->id,
                     'name' => $worker->name,
+                    'photoUrl' => ProfilePhotoVisibility::directoryUrl($worker),
                     'email' => $worker->email,
                     'trade' => $profile->trade,
                     'yearsExperience' => $profile->years_experience,
@@ -123,6 +125,7 @@ class WorkerService
         return [
             'id' => $worker->id,
             'name' => $worker->name,
+            'photoUrl' => ProfilePhotoVisibility::directoryUrl($worker),
             'trade' => $profile?->trade,
             'yearsExperience' => $profile?->years_experience,
             'bio' => $profile?->bio,

@@ -49,12 +49,12 @@ export function SupplierProjectSummary({ project, onPress }: { project: Supplier
           {onPress && <Ionicons name="chevron-forward" size={18} color={chrome.secondaryForeground} />}
         </View>
         <Text style={{ color: chrome.secondaryForeground, fontSize: 12, lineHeight: 18 }}>{project.homeownerName} · Homeowner</Text>
-        <Text style={{ color: chrome.secondaryForeground, fontSize: 12 }}>{supplyDate(project.lastReceivedAt)}</Text>
-        <Text style={{ color: chrome.foreground, fontSize: 17, fontWeight: "800" }}>{supplyMoney(project.totalAmount)}</Text>
+        <Text style={{ color: chrome.secondaryForeground, fontSize: 12 }}>Completed: {supplyDate(project.completedAt)}</Text>
+        <Text style={{ color: chrome.foreground, fontSize: 17, fontWeight: "800" }}>Estimated: {supplyMoney(project.totalAmount)}</Text>
       </View>
     </View>
   </SupplyCard>;
-  return onPress ? <Pressable accessibilityRole="button" accessibilityLabel={`View supply history for ${project.title}`} onPress={onPress}>{contents}</Pressable> : contents;
+  return onPress ? <Pressable accessibilityRole="button" accessibilityLabel={`View project history for ${project.title}`} onPress={onPress}>{contents}</Pressable> : contents;
 }
 
 export function SupplyHistoryFeedback({ title, message, retry }: { title: string; message: string; retry?: () => void }) {

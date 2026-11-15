@@ -15,11 +15,12 @@ export default function ThemeToggle({ inline = false }: { inline?: boolean } = {
       onPress={toggleTheme}
       accessibilityLabel={isDark ? "Switch to light mode" : "Switch to dark mode"}
       accessibilityRole="button"
-      hitSlop={8}
+      hitSlop={inline ? 4 : 8}
       style={{
         ...(!inline && { position: "absolute" as const, top: insets.top + 8, right: 16, zIndex: 999 }),
         width: 36,
         height: 36,
+        flexShrink: 0,
         borderRadius: 18,
         alignItems: "center",
         justifyContent: "center",

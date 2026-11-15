@@ -15,7 +15,7 @@ class ApprovalStatusTest extends TestCase
         return User::factory()->create([
             'email' => 'waiting@gmail.com',
             'password' => 'password123',
-            'role' => 'homeowner',
+            'role' => 'contractor',
             'approval_status' => $status,
         ]);
     }

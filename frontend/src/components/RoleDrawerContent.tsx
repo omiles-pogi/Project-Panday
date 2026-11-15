@@ -9,6 +9,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useChat } from "@/context/ChatContext";
 import { useTheme } from "@/context/ThemeContext";
 import Logo from "@/components/Logo";
+import { ProfileAvatar } from "@/components/ProfilePhoto";
 import { roleColors } from "@/theme/colors";
 import type { Role } from "@/types/auth";
 
@@ -41,12 +42,6 @@ export default function RoleDrawerContent({
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const color = roleColors[role];
-  const initials = (user?.name ?? "?")
-    .split(" ")
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
 
   const go = (href: string) => {
     navigation.closeDrawer();
@@ -62,11 +57,7 @@ export default function RoleDrawerContent({
 
       <View className="px-4 py-3 border-b border-border">
         <View className="flex-row items-center gap-3 px-3 py-2.5 rounded-xl bg-muted">
-          <View className="w-10 h-10 rounded-full items-center justify-center" style={{ backgroundColor: `${color}30` }}>
-            <Text className="font-bold text-sm" style={{ color }}>
-              {initials}
-            </Text>
-          </View>
+          <ProfileAvatar name={user?.name ?? "?"} url={user?.profile_photo_url} size={40} />
           <View>
             <Text className="font-semibold text-sm text-foreground">{user?.name}</Text>
             <Text className="text-xs" style={{ color }}>

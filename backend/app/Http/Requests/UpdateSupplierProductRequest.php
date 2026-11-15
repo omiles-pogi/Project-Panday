@@ -27,6 +27,8 @@ class UpdateSupplierProductRequest extends FormRequest
             'stock' => ['sometimes', 'integer', 'min:0', 'max:100000000'],
             'min_order' => ['sometimes', 'integer', 'min:1', 'max:100000000'],
             'is_active' => ['sometimes', 'boolean'],
+            'stock_confirmed' => ['prohibited'], 'stock_is_confirmed' => ['prohibited'], 'stock_confirmed_at' => ['prohibited'],
+            'stock_confirmed_by' => ['prohibited'], 'stock_confirmed_quantity' => ['prohibited'],
         ];
     }
 }

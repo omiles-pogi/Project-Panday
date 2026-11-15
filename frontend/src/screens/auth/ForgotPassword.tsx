@@ -21,7 +21,7 @@ export default function ForgotPassword() {
   };
   return (
     <RecoveryScreen title="Forgot password?" description="Enter the email on your account and we'll send a 6-digit code to reset your password.">
-      <RecoveryField label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoComplete="email" editable={!submitting} onSubmitEditing={send} />
+      <RecoveryField label="Registered email" placeholder="Registered email" value={email} onChangeText={setEmail} keyboardType="email-address" autoComplete="email" editable={!submitting} onSubmitEditing={send} />
       <RecoveryError message={error} />
       <RecoveryButton label={submitting ? "Sending..." : "Send Code"} busy={submitting} disabled={!isValidEmail(email)} onPress={send} />
     </RecoveryScreen>

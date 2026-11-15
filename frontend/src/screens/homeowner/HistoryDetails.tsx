@@ -11,9 +11,11 @@ import { fetchProjectHistoryDetails } from "@/services/api/history";
 import { historyDate, historyProjectType, historyTitle } from "@/utils/history";
 import { peso } from "@/utils/currency";
 import { timelineLabel } from "@/utils/timeline";
+import { usePlan } from "@/context/PlanContext";
 
 export default function HistoryDetails() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { getProjectMessages } = usePlan();
   const { chrome } = useTheme();
   const insets = useSafeAreaInsets();
   const load = useCallback(() => fetchProjectHistoryDetails(Number(id)), [id]);
@@ -33,6 +35,7 @@ export default function HistoryDetails() {
   </View>;
 
   const { project } = data;
+  const savedMessages = getProjectMessages(data.id);
   const plan = project.approvedPlan;
   const records = project.budgetRecords;
   const projectType = historyProjectType(data.floors);
@@ -127,6 +130,12 @@ export default function HistoryDetails() {
             </View>)}
           </View>;
         })}
+      </Card>}
+      {savedMessages.length > 0 && <Card title="Saved PandAI conversation" gap={14}>
+        {savedMessages.map((message, index) => <View key={index} style={{ gap: 4 }}>
+          <Text className="text-xs font-semibold text-foreground">{message.role === "user" ? "You" : "PandAI"}</Text>
+          <Text className="text-sm text-secondary-foreground">{message.content}</Text>
+        </View>)}
       </Card>}
     </ScrollView>
   );

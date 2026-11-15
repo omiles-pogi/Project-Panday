@@ -11,7 +11,8 @@ import {
 import { respondToContractorRequest, respondToWorkerRequest } from "@/services/api/projects";
 import type { AppNotification } from "@/types/notification";
 import { useAuth } from "@/context/AuthContext";
-import { enablePush } from "@/services/push";
+import { disablePush, enablePush } from "@/services/push";
+import { useAccount } from "@/context/AccountContext";
 import { notificationRoute } from "@/utils/notificationRoutes";
 
 // Polling, not a websocket — "near real-time" (worst case ~20s stale) without new infra.
@@ -25,6 +26,8 @@ export interface NotificationPopup {
 }
 
 interface NotificationContextValue {
+  pushStatus: string;
+  refreshPushPermissions: () => void;
   notifications: AppNotification[];
   unreadCount: number;
   loading: boolean;
@@ -48,6 +51,11 @@ const NotificationContext = createContext<NotificationContextValue | null>(null)
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { status, user } = useAuth();
+  const account = useAccount();
+  const pushEnabled = account.data?.preferences.push_enabled === true;
+  const [pushStatus, setPushStatus] = useState("");
+  const [pushAttempt, setPushAttempt] = useState(0);
+  const refreshPushPermissions = useCallback(() => setPushAttempt(attempt => attempt + 1), []);
   // Suppliers get material-order notifications; admins have none.
   const relevant =
     status === "authed" &&
@@ -99,20 +107,29 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const role = user?.role;
   useEffect(() => {
     if (!relevant || !role) return;
+    if (!account.ready) return;
+    if (!pushEnabled) {
+      void disablePush();
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPushStatus("Remote push is off. In-app messages and notification history remain available.");
+      return;
+    }
+    const controller = new AbortController();
     let cancelled = false;
     let stop = () => {};
     enablePush((data) => {
       const route = notificationRoute({ type: data.type, data } as unknown as AppNotification, role);
       if (route) router.push(route as never);
-    }).then((cleanup) => {
+    }, { signal: controller.signal, onStatus: message => { if (!controller.signal.aborted) setPushStatus(message); } }).then((cleanup) => {
       if (cancelled) cleanup();
       else stop = cleanup;
     });
     return () => {
       cancelled = true;
+      controller.abort();
       stop();
     };
-  }, [relevant, role]);
+  }, [relevant, role, account.ready, pushEnabled, pushAttempt]);
 
   const dismissPopup = useCallback(() => setPopup(null), []);
 
@@ -166,7 +183,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   return (
     <NotificationContext.Provider
-      value={{ notifications, unreadCount, loading, popup, dismissPopup, refresh, markRead, markAllRead, remove, clearAll, respond }}
+      value={{ pushStatus, refreshPushPermissions, notifications, unreadCount, loading, popup, dismissPopup, refresh, markRead, markAllRead, remove, clearAll, respond }}
     >
       {children}
     </NotificationContext.Provider>

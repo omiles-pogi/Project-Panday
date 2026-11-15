@@ -1,65 +1,64 @@
 import { useEffect, useState } from "react";
 import { Text, View, Pressable, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Badge, Card, Field, PageHeader, Screen, SubmitButton } from "@/components/ui";
+import { Badge, Card, PageHeader, Screen } from "@/components/ui";
+import { ProfileEditActions, ProfileEditButton, ProfileField } from "@/components/ProfileEditControls";
+import { useProfileEdit } from "@/hooks/useProfileEdit";
 import NameCard from "@/components/NameCard";
+import ProfilePhoto from "@/components/ProfilePhoto";
+import AccountManagement from "@/components/AccountManagement";
 import { useAuth } from "@/context/AuthContext";
 import { fetchWorkerProfile, updateMyWorkerProfile } from "@/services/api/workers";
 
 export default function Skills() {
   const { user } = useAuth();
-  const [trade, setTrade] = useState("");
-  const [yearsExperience, setYearsExperience] = useState("");
-  const [bio, setBio] = useState("");
-  const [minDailyWage, setMinDailyWage] = useState("");
-  const [skills, setSkills] = useState<string[]>([]);
+  const form = useProfileEdit({ trade: "", yearsExperience: "", bio: "", minDailyWage: "", skills: [] as string[] });
+  const { trade, yearsExperience, bio, minDailyWage, skills } = form.draft;
+  const { editing, saving, saved, error, load } = form;
   const [skillInput, setSkillInput] = useState("");
   const [averageRating, setAverageRating] = useState<number | null>(null);
   const [ratingCount, setRatingCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const userId = user?.id;
 
   useEffect(() => {
-    if (!user) return;
-    fetchWorkerProfile(user.id)
+    if (!userId) return;
+    let cancelled = false;
+    fetchWorkerProfile(userId)
       .then((profile) => {
-        setTrade(profile.trade ?? "");
-        setYearsExperience(profile.yearsExperience != null ? String(profile.yearsExperience) : "");
-        setBio(profile.bio ?? "");
-        setMinDailyWage(profile.minDailyWage != null ? String(profile.minDailyWage) : "");
-        setSkills(profile.skills);
+        if (cancelled) return;
+        load({ trade: profile.trade ?? "", yearsExperience: profile.yearsExperience != null ? String(profile.yearsExperience) : "",
+          bio: profile.bio ?? "", minDailyWage: profile.minDailyWage != null ? String(profile.minDailyWage) : "", skills: profile.skills });
         setAverageRating(profile.averageRating);
         setRatingCount(profile.ratingCount);
       })
-      .catch(() => undefined)
-      .finally(() => setLoading(false));
-  }, [user]);
+      .catch((err) => { if (!cancelled) setLoadError(err instanceof Error ? err.message : "Failed to load profile."); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [userId, load]);
 
   const addSkill = () => {
+    if (!editing || saving) return;
     const trimmed = skillInput.trim();
     if (!trimmed || skills.some((s) => s.toLowerCase() === trimmed.toLowerCase())) {
       setSkillInput("");
       return;
     }
-    setSkills((prev) => [...prev, trimmed]);
+    form.change("skills", [...skills, trimmed]);
     setSkillInput("");
   };
 
   const removeSkill = (skill: string) => {
-    setSkills((prev) => prev.filter((s) => s !== skill));
+    form.change("skills", skills.filter((s) => s !== skill));
   };
 
   const canSave = trade.trim().length > 0 && yearsExperience.trim().length > 0 && skills.length > 0 && !saving;
 
   const save = async () => {
     if (!canSave) return;
-    setSaving(true);
-    setError(null);
-    setSaved(false);
-    try {
-      await updateMyWorkerProfile({
+    await form.save(async () => {
+      const confirmed = await updateMyWorkerProfile({
         trade: trade.trim(),
         years_experience: Number(yearsExperience) || 0,
         bio: bio.trim() || undefined,
@@ -67,12 +66,9 @@ export default function Skills() {
         min_daily_wage: minDailyWage.trim() ? Number(minDailyWage) : null,
         skills,
       });
-      setSaved(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save profile.");
-    } finally {
-      setSaving(false);
-    }
+      return { trade: confirmed.trade, yearsExperience: String(confirmed.years_experience), bio: confirmed.bio ?? "",
+        minDailyWage: confirmed.min_daily_wage != null ? String(confirmed.min_daily_wage) : "", skills: confirmed.skills.map((s) => s.skill) };
+    });
   };
 
   if (loading) {
@@ -86,12 +82,6 @@ export default function Skills() {
   }
 
   const name = user?.name ?? "Worker";
-  const initials = name
-    .split(" ")
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
 
   return (
     <Screen topInset={false}>
@@ -102,11 +92,7 @@ export default function Skills() {
 
       <Card>
         <View className="flex-row gap-4 items-center">
-          <View className="w-16 h-16 rounded-2xl items-center justify-center" style={{ backgroundColor: "#f43f5e20" }}>
-            <Text className="text-2xl font-bold" style={{ color: "#f43f5e" }}>
-              {initials}
-            </Text>
-          </View>
+          <ProfilePhoto name={name} />
           <View className="flex-1" style={{ gap: 4 }}>
             <Text className="text-lg font-bold text-foreground">{name}</Text>
             <Text className="text-xs text-secondary-foreground">{trade || "No trade set yet"}</Text>
@@ -124,32 +110,32 @@ export default function Skills() {
         </View>
       </Card>
 
-      <NameCard />
+      <NameCard requireEdit />
 
-      <Card title="Edit profile">
+      <Card title="Profile details" right={<ProfileEditButton editing={editing} disabled={!form.ready} section="profile details" onPress={() => { setSkillInput(""); form.begin(); }} />}>
         <View style={{ gap: 12 }}>
-          <Field label="Trade" value={trade} onChangeText={setTrade} placeholder="e.g. Mason, Electrician, Carpenter" />
-          <Field
+          <ProfileField editing={editing} saving={saving} label="Trade" value={trade} onChangeText={(text) => form.change("trade", text)} placeholder="e.g. Mason, Electrician, Carpenter" />
+          <ProfileField editing={editing} saving={saving}
             label="Years of experience"
             value={yearsExperience}
-            onChangeText={(t) => setYearsExperience(t.replace(/[^0-9]/g, ""))}
+            onChangeText={(t) => form.change("yearsExperience", t.replace(/[^0-9]/g, ""))}
             placeholder="e.g. 5"
             keyboardType="number-pad"
           />
-          <Field
+          <ProfileField editing={editing} saving={saving}
             label="Minimum daily wage (₱, optional)"
             value={minDailyWage}
-            onChangeText={(t) => setMinDailyWage(t.replace(/[^0-9]/g, ""))}
+            onChangeText={(t) => form.change("minDailyWage", t.replace(/[^0-9]/g, ""))}
             placeholder="e.g. 850 — the lowest day rate you'll take"
             keyboardType="number-pad"
           />
           <Text className="text-xs -mt-1 text-muted-foreground">
             Homeowners and contractors see this when they look for a worker. Other workers don&apos;t.
           </Text>
-          <Field
+          <ProfileField editing={editing} saving={saving}
             label="Bio (optional)"
             value={bio}
-            onChangeText={setBio}
+            onChangeText={(text) => form.change("bio", text)}
             placeholder="A short description of your experience"
             multiline
           />
@@ -160,6 +146,7 @@ export default function Skills() {
               {skills.map((skill) => (
                 <Pressable
                   key={skill}
+                  disabled={!editing || saving}
                   onPress={() => removeSkill(skill)}
                   className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
                   style={{ backgroundColor: "#f59e0b20" }}
@@ -167,14 +154,14 @@ export default function Skills() {
                   <Text className="text-xs font-medium" style={{ color: "#f59e0b" }}>
                     {skill}
                   </Text>
-                  <Ionicons name="close" size={12} color="#f59e0b" />
+                  {editing && <Ionicons name="close" size={12} color="#f59e0b" />}
                 </Pressable>
               ))}
               {skills.length === 0 && <Text className="text-xs text-muted-foreground">No skills added yet</Text>}
             </View>
-            <View className="flex-row gap-2">
+            {editing && <View className="flex-row gap-2">
               <View className="flex-1">
-                <Field
+                <ProfileField editing={editing} saving={saving}
                   label=""
                   value={skillInput}
                   onChangeText={setSkillInput}
@@ -183,18 +170,20 @@ export default function Skills() {
                   returnKeyType="done"
                 />
               </View>
-              <Pressable onPress={addSkill} className="px-4 items-center justify-center rounded-xl bg-primary">
+              <Pressable disabled={saving} onPress={addSkill} accessibilityLabel="Add skill" className="px-4 items-center justify-center rounded-xl bg-primary">
                 <Ionicons name="add" size={18} color="#0f1117" />
               </Pressable>
-            </View>
+            </View>}
           </View>
 
           {error && <Text className="text-xs text-danger">{error}</Text>}
+          {loadError && <Text className="text-xs text-danger">{loadError}</Text>}
           {saved && <Badge label="Saved" color="#10b981" />}
 
-          <SubmitButton label={saving ? "Saving…" : "Save Profile"} onPress={save} />
+          {editing && <ProfileEditActions saving={saving} canSave={canSave} onSave={save} onCancel={() => { form.cancel(); setSkillInput(""); }} />}
         </View>
       </Card>
+      <AccountManagement accountInformation />
     </Screen>
   );
 }

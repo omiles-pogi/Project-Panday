@@ -8,12 +8,14 @@ export default function NewProjectModal({
   visible,
   creating,
   projectCount,
+  draftCount = 0,
   onCancel,
   onConfirm,
 }: {
   visible: boolean;
   creating: boolean;
   projectCount: number;
+  draftCount?: number;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -24,9 +26,10 @@ export default function NewProjectModal({
           <Mascot size={88} mood="happy" bob />
           <Text className="text-base font-extrabold mt-3 text-foreground">Create another project?</Text>
           <Text className="text-xs text-center mt-2 leading-5 text-muted-foreground">
-            You already have {projectCount} project{projectCount === 1 ? "" : "s"}. Are you sure you want to make a
-            new one? It will be added to your projects as &quot;Not started yet&quot; until you plan it with PandAi
-            and approve the plan. Your other projects stay exactly as they are.
+            {draftCount > 0 ? `You have ${draftCount} unfinished planning session${draftCount === 1 ? "" : "s"}. Start a separate new project? Your saved conversations, estimates and approvals will be preserved. The new conversation will have its own draft.` :
+              <>You already have {projectCount} project{projectCount === 1 ? "" : "s"}. Are you sure you want to make a
+              new one? It will be added to your projects as &quot;Not started yet&quot; until you plan it with PandAi
+              and approve the plan. Your other projects stay exactly as they are.</>}
           </Text>
           <View className="flex-row gap-2 mt-5 w-full">
             <Pressable

@@ -50,6 +50,13 @@ export async function fetchDashboard(projectId?: number): Promise<DashboardData>
   return data as DashboardData;
 }
 
+/** Active tabs require an explicit, still-eligible project. Never fall back to global recency. */
+export async function fetchActiveDashboard(projectId: number): Promise<DashboardData> {
+  if (!Number.isSafeInteger(projectId) || projectId < 1) throw new Error("Select an active project first.");
+  const data = await apiFetch(`/api/dashboard?project_id=${projectId}&active_only=1`) as DashboardData;
+  return { ...data, project: data.project?.id === projectId && data.project.status !== "completed" ? data.project : null };
+}
+
 /** Adds `amount` pesos to the homeowner's budget and returns the project as the dashboard shows it. */
 export async function addProjectBudget(projectId: number, amount: number): Promise<DashboardProject> {
   const data = await apiFetch(`/api/projects/${projectId}/budget`, {

@@ -11,7 +11,9 @@ function load(file, mocks) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
   });
   const exports = {};
-  vm.runInNewContext(outputText, { exports, Error, setTimeout, clearTimeout, require(name) {
+  vm.runInNewContext(outputText, { exports, Error, setTimeout, clearTimeout, setInterval: () => 0, clearInterval: () => {}, require(name) {
+    if (name === '@/utils/planningState') return load('src/utils/planningState.ts', {});
+    if (name === '@/utils/plannerError') return load('src/utils/plannerError.ts', {});
     if (name in mocks) return mocks[name];
     throw new Error(`Unexpected dependency: ${name}`);
   } }, { filename });
@@ -125,6 +127,10 @@ async function provider(storage, userId = 42, options = {}) {
   const hook = hooks();
   const Provider = load('src/context/PlanContext.tsx', {
     react: hook.react, 'react/jsx-runtime': runtime,
+    'react-native': { AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } },
+    'expo-router': { usePathname: () => '/homeowner' },
+    '@/services/api/projects': { fetchMyHomeownerProjects: async () => Array.from({ length: 100 }, (_, i) => ({ id: i + 1, status: 'active', title: 'Project' })) },
+    '@/utils/activeProject': load('src/utils/activeProject.ts', {}),
     '@react-native-async-storage/async-storage': { getItem: async (key) => storage.get(key), setItem: async (key, value) => storage.set(key, value) },
     '@/context/AuthContext': { useAuth: () => ({ user: { id: userId } }) },
     '@/types/plan': { isChatReply: (value) => 'message' in value, isClarificationNeeded: (value) => 'questions' in value },
@@ -182,7 +188,7 @@ test('saved names restore after login, update the plan title, and cannot be reve
 async function chatHarness(request, options = {}) {
   const hook = hooks(); const calls = []; const linked = [];
   const context = {
-    plan, messages: [{ role: 'assistant', content: 'Existing AI plan' }], approvalStage: 'materials', ready: true,
+    plan, messages: options.messages ?? [{ role: 'assistant', content: 'Existing AI plan' }], approvalStage: options.stage ?? 'materials', ready: true,
     activeProjectKey: options.projectKey ?? 'draft', restoredVersion: 0, resumeLatestRequested: true, projectNaming: null,
     getFinalizationKey: async () => { if (options.storageFailure) throw new Error('Disk failure'); return 'persisted-conversation-retry-key'; },
     setApprovalStage: (stage) => { context.approvalStage = stage; },
@@ -198,7 +204,7 @@ async function chatHarness(request, options = {}) {
     '@expo/vector-icons': { Ionicons: 'Icon' }, '@/context/PlanContext': { usePlan: () => context },
     '@/context/ThemeContext': { useTheme: () => ({ chrome: {} }) },
     '@/components/SupplierPicker': {}, '@/components/BudgetCategoryBreakdown': {}, '@/components/charts': {},
-    '@/utils/currency': {}, '@/utils/budget': {}, '@/utils/timeline': {}, '@/utils/garage': {}, '@/utils/chatTime': {},
+    '@/utils/currency': { pesoCompact: value => String(value) }, '@/utils/budget': {}, '@/utils/timeline': {}, '@/utils/garage': {}, '@/utils/chatTime': {},
     '@/services/api/projects': { createProject: send, startProjectFromPlan: send },
     '@/components/Mascot': moduleDefault('Mascot'), '@/components/ProjectNamePrompt': moduleDefault('Naming'),
     'react-native-reanimated': { ...moduleDefault({ View: 'Animated' }), useAnimatedStyle: (fn) => fn() },
@@ -223,6 +229,20 @@ test('chat asks only after backend finalization and repeated taps share one keye
   assert.deepEqual(chat.linked, [7]);
   assert.equal(nodes(tree, 'Naming')[0].props.naming.pending, true);
   assert.equal(chat.context.approvalStage, 'summary');
+});
+
+test('reopening restores every reached card while only the latest current proposal is editable', async () => {
+  const chat = await chatHarness(async () => {}, { messages: [
+    { role: 'assistant', content: 'Plan: first', card: 'materials', planSnapshot: plan },
+    { role: 'assistant', content: 'Plan: latest', card: 'materials', planSnapshot: plan },
+    { role: 'user', content: 'Failed request' },
+  ] });
+  const cards = nodes(chat.initial, 'AIBubble').filter(node => node.props.msg.card);
+  assert.equal(cards.filter(node => !node.props.readOnly).length, 1);
+  assert.equal(cards.find(node => !node.props.readOnly).props.msg.text, 'Plan: latest');
+  assert.ok(cards.some(node => node.props.msg.card === 'plan'));
+  assert.ok(cards.some(node => node.props.msg.card === 'budget'));
+  assert.equal(chat.calls.length, 0);
 });
 
 test('lost finalization responses retry the same key and storage failures send no project request', async () => {

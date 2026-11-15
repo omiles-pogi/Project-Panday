@@ -192,6 +192,8 @@ class ProjectService
             // Which supplier listing the homeowner's plan was priced from, so the contractor's
             // material request starts from that supplier instead of whoever is cheapest.
             'supplierProductId' => (int) ($m['supplierProductId'] ?? 0),
+            // applySupplierData verified this source. Keep it when listings are later retired.
+            ...(isset($m['supplierId']) ? ['supplierId' => (int) $m['supplierId']] : []),
             'supplierName' => $m['supplierName'] ?? null,
             // The phase it's first needed in, so materials can be ordered phase by phase on the schedule.
             'phase' => (string) ($m['phase'] ?? ''),
@@ -905,9 +907,13 @@ class ProjectService
     /**
      * @return array<string, mixed>
      */
-    public function dashboardFor(User $user, ?int $projectId = null, bool $homeDashboardOnly = false): array
+    public function dashboardFor(User $user, ?int $projectId = null, bool $homeDashboardOnly = false, bool $activeOnly = false): array
     {
         $query = $user->projects()->with(['phases.tasks', 'workers.workerProfile', 'contractors.contractorProfile']);
+        // Active navigation opts in; explicit History/overview reads keep completed records accessible.
+        if ($activeOnly) {
+            $query->whereIn('status', ['not_started', 'active', Project::PENDING_CONFIRMATION]);
+        }
         if ($homeDashboardOnly) {
             $query->visibleOnHomeDashboard();
         }
@@ -962,6 +968,11 @@ class ProjectService
                 'status' => $project->status,
                 'startedAt' => $project->started_at->toDateString(),
                 'overallProgressPct' => $project->overallProgressPct(),
+                'createdAt' => $project->created_at?->toIso8601String(),
+                'updatedAt' => $project->updated_at?->toIso8601String(),
+                'projectNamePending' => $project->projectNamePending(),
+                'hasApprovedPlan' => ! empty($project->approved_plan),
+                'finalizationKey' => $project->approved_plan['_finalizationKey'] ?? null,
             ]);
     }
 

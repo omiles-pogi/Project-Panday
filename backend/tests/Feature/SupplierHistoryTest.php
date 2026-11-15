@@ -50,17 +50,17 @@ class SupplierHistoryTest extends TestCase
 
     public function test_empty_history_and_supplier_only_read_access(): void
     {
-        $this->getJson('/api/supplier-history')->assertUnauthorized();
+        $this->getJson('/api/supplier-history?basis=receipts')->assertUnauthorized();
         foreach (['homeowner', 'contractor', 'worker', 'admin', 'superadmin'] as $role) {
             Sanctum::actingAs($this->user($role));
-            $this->getJson('/api/supplier-history')->assertForbidden();
-            $this->getJson('/api/supplier-history/1')->assertForbidden();
+            $this->getJson('/api/supplier-history?basis=receipts')->assertForbidden();
+            $this->getJson('/api/supplier-history/1?basis=receipts')->assertForbidden();
         }
         Sanctum::actingAs($this->user());
-        $this->getJson('/api/supplier-history')->assertOk()->assertExactJson([]);
-        $this->getJson('/api/supplier-history/1')->assertNotFound();
-        $this->getJson('/api/supplier-history/not-an-id')->assertNotFound();
-        $this->postJson('/api/supplier-history')->assertStatus(405);
+        $this->getJson('/api/supplier-history?basis=receipts')->assertOk()->assertExactJson([]);
+        $this->getJson('/api/supplier-history/1?basis=receipts')->assertNotFound();
+        $this->getJson('/api/supplier-history/not-an-id?basis=receipts')->assertNotFound();
+        $this->postJson('/api/supplier-history?basis=receipts')->assertStatus(405);
     }
 
     public function test_received_lines_group_once_per_project_with_actual_homeowner_dates_and_totals(): void
@@ -80,11 +80,11 @@ class SupplierHistoryTest extends TestCase
         $newer = $this->project(title: 'Newest receipt project');
         $this->receipt($supplier, $newer, date: '2026-11-12 10:00:00');
         Sanctum::actingAs($supplier);
-        $this->getJson('/api/supplier-history')->assertOk()->assertJsonCount(2)
+        $this->getJson('/api/supplier-history?basis=receipts')->assertOk()->assertJsonCount(2)
             ->assertJsonPath('0.id', $newer->id)->assertJsonPath('1.id', $project->id)
             ->assertJsonPath('1.homeownerName', $owner->name)->assertJsonPath('1.receiptCount', 2)
             ->assertJsonPath('1.lineCount', 3)->assertJsonPath('1.totalAmount', 8000);
-        $response = $this->getJson("/api/supplier-history/{$project->id}")->assertOk()
+        $response = $this->getJson("/api/supplier-history/{$project->id}?basis=receipts")->assertOk()
             ->assertJsonCount(3, 'items')->assertJsonPath('projectType', '2-storey house')
             ->assertJsonPath('location', 'Dagupan')->assertJsonPath('items.0.fulfillmentId', $latest->id)
             ->assertJsonPath('items.0.fulfillmentStatus', 'received');
@@ -105,9 +105,9 @@ class SupplierHistoryTest extends TestCase
         $private = $this->receipt($other, $own);
         $private->items()->update(['material_name' => 'Other supplier private item', 'confirmed_unit_price' => 99999]);
         Sanctum::actingAs($supplier);
-        $this->getJson('/api/supplier-history')->assertOk()->assertJsonCount(1)->assertJsonPath('0.totalAmount', 2800);
-        $this->getJson("/api/supplier-history/{$foreign->id}")->assertNotFound();
-        $response = $this->getJson("/api/supplier-history/{$own->id}")->assertOk()->assertJsonCount(1, 'items');
+        $this->getJson('/api/supplier-history?basis=receipts')->assertOk()->assertJsonCount(1)->assertJsonPath('0.totalAmount', 2800);
+        $this->getJson("/api/supplier-history/{$foreign->id}?basis=receipts")->assertNotFound();
+        $response = $this->getJson("/api/supplier-history/{$own->id}?basis=receipts")->assertOk()->assertJsonCount(1, 'items');
         $this->assertStringNotContainsString('Other supplier private item', $response->getContent());
         $this->assertStringNotContainsString('99999', $response->getContent());
     }
@@ -121,15 +121,15 @@ class SupplierHistoryTest extends TestCase
         $receipt->items()->update(['supplier_product_id' => $product->id]);
         $product->update(['price' => 9999, 'name' => 'Renamed inventory product']);
         Sanctum::actingAs($supplier);
-        $this->getJson("/api/supplier-history/{$project->id}")->assertOk()
+        $this->getJson("/api/supplier-history/{$project->id}?basis=receipts")->assertOk()
             ->assertJsonPath('items.0.name', 'Recorded cement')->assertJsonPath('items.0.unitPrice', 280)->assertJsonPath('totalAmount', 2800);
         $product->delete();
-        $this->getJson("/api/supplier-history/{$project->id}")->assertOk()->assertJsonPath('totalAmount', 2800);
+        $this->getJson("/api/supplier-history/{$project->id}?basis=receipts")->assertOk()->assertJsonPath('totalAmount', 2800);
         $unknown = $this->project();
         $legacy = $this->receipt($supplier, $unknown, date: null);
         $legacy->items()->update(['confirmed_unit_price' => null]);
         $this->line($legacy, $supplier, ['confirmed_unit_price' => 0, 'quantity' => 1]);
-        $this->getJson("/api/supplier-history/{$unknown->id}")->assertOk()->assertJsonPath('lastReceivedAt', null)
+        $this->getJson("/api/supplier-history/{$unknown->id}?basis=receipts")->assertOk()->assertJsonPath('lastReceivedAt', null)
             ->assertJsonPath('totalAmount', null)->assertJsonPath('missingPriceCount', 1)
             ->assertJsonPath('items.0.unitPrice', null)->assertJsonPath('items.1.lineTotal', 0);
     }
@@ -150,7 +150,7 @@ class SupplierHistoryTest extends TestCase
         $receipt->items()->update(['material_request_id' => 1]);
         $this->receipt($supplier, $this->project($this->user('contractor')));
         Sanctum::actingAs($supplier);
-        $this->getJson('/api/supplier-history')->assertOk()->assertExactJson([]);
+        $this->getJson('/api/supplier-history?basis=receipts')->assertOk()->assertExactJson([]);
     }
 
     public function test_reading_history_preserves_all_records_and_ignores_home_dashboard_visibility(): void
@@ -163,8 +163,8 @@ class SupplierHistoryTest extends TestCase
             ->mapWithKeys(fn ($table) => [$table => DB::table($table)->orderBy('id')->get()->toJson()])->all();
         $before = $snapshot();
         Sanctum::actingAs($supplier);
-        $this->getJson('/api/supplier-history')->assertOk()->assertJsonCount(1);
-        $this->getJson("/api/supplier-history/{$project->id}")->assertOk();
+        $this->getJson('/api/supplier-history?basis=receipts')->assertOk()->assertJsonCount(1);
+        $this->getJson("/api/supplier-history/{$project->id}?basis=receipts")->assertOk();
         $this->assertSame($before, $snapshot());
     }
 }

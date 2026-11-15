@@ -1,13 +1,13 @@
 import type { SupplierHistoryProject } from "@/types/supplierHistory";
 
-function receiptDate(value: string | null): Date | null {
+function completionDate(value: string | null): Date | null {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
 export function supplyDate(value: string | null): string {
-  const date = receiptDate(value);
+  const date = completionDate(value);
   return date ? date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "Date not recorded";
 }
 
@@ -22,7 +22,7 @@ export function supplyHistorySections(projects: SupplierHistoryProject[], now = 
   const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
   const groups = new Map<string, { title: string; data: SupplierHistoryProject[] }>();
   for (const project of projects) {
-    const date = receiptDate(project.lastReceivedAt);
+    const date = completionDate(project.completedAt);
     const key = date ? localDay(date) : "undated";
     const title = !date ? "Date not recorded" : key === localDay(now) ? "Today" : key === localDay(yesterday) ? "Yesterday"
       : date.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });

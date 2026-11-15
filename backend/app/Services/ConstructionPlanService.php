@@ -101,6 +101,8 @@ class ConstructionPlanService
     // wait is this short, and saves the homeowner from a "try again" they didn't need to see.
     private const RATE_LIMIT_RETRIES = 2;
 
+    private const REQUEST_BUDGET_SECONDS = 120;
+
     /**
      * @param  array<int, array{role: string, content: string}>  $messages  The full conversation so far.
      * @param  array<string, mixed>|null  $currentPlan  The plan as the homeowner has it right now, including
@@ -119,13 +121,18 @@ class ConstructionPlanService
      */
     public function generate(array $messages, bool $forcePlan, callable $onChunk, ?array $currentPlan = null, array $supplierSelections = [], ?array $projectContext = null): array
     {
+        // Keep the HTTP worker alive for our bounded provider budget; no global PHP setting changes.
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(self::REQUEST_BUDGET_SECONDS + 10);
+        }
+        $deadline = microtime(true) + self::REQUEST_BUDGET_SECONDS;
         $selections = $this->normalizeSelections($supplierSelections);
 
         $apiKey = config('services.groq.key');
         if (! $apiKey) {
             throw new ConstructionPlanGenerationException(
-                'GROQ_API_KEY is not set. Add it to your .env file and restart the server.',
-                500
+                'The AI service is not configured. Contact the administrator; your saved planning data is unchanged.',
+                500, 'provider_configuration'
             );
         }
 
@@ -170,7 +177,7 @@ class ConstructionPlanService
         // is never retried once text starts streaming: it's already on screen, and plain text can't
         // "fail to parse" the way tool-call JSON can.
         for ($attempt = 1; $attempt <= self::MAX_ATTEMPTS; $attempt++) {
-            $result = $this->streamOnce($apiKey, $apiMessages, $tools, $toolChoice, $onChunk, $maxReplyTokens);
+            $result = $this->streamOnce($apiKey, $apiMessages, $tools, $toolChoice, $onChunk, $maxReplyTokens, $deadline);
             if ($result !== null) {
                 $isPlan = ! isset($result['chatReply']) && ! isset($result['needsClarification']);
 
@@ -198,7 +205,7 @@ class ConstructionPlanService
      * @param  callable(string): void  $onChunk
      * @return array<string, mixed>|null
      */
-    private function streamOnce(string $apiKey, array $apiMessages, array $tools, string|array $toolChoice, callable $onChunk, int $maxReplyTokens): ?array
+    private function streamOnce(string $apiKey, array $apiMessages, array $tools, string|array $toolChoice, callable $onChunk, int $maxReplyTokens, float $deadline): ?array
     {
         $payload = [
             'model' => config('services.groq.model'),
@@ -219,21 +226,21 @@ class ConstructionPlanService
             $payload['reasoning_effort'] = $effort;
         }
 
-        $response = $this->sendWithRateLimitRetry($apiKey, $payload);
+        $response = $this->sendWithRateLimitRetry($apiKey, $payload, $deadline);
 
         if ($response->failed()) {
             // A request-level rejection (e.g. bad API key) arrives as an ordinary JSON body, not SSE —
             // Groq never starts streaming if it's rejecting the request outright.
             $retryableGroqErrors = ['Failed to parse tool call arguments', 'did not call a tool', 'did not match schema'];
             $errorMessage = (string) $response->json('error.message');
-            $isRetryable = collect($retryableGroqErrors)->contains(fn (string $needle) => str_contains($errorMessage, $needle));
+            $isRetryable = $response->json('error.code') === 'tool_use_failed' || collect($retryableGroqErrors)->contains(fn (string $needle) => str_contains($errorMessage, $needle));
             if ($isRetryable) {
-                Log::warning('Construction plan attempt retried: Groq rejected the tool call.', ['groq_message' => $errorMessage]);
+                Log::warning('Construction plan attempt retried: Groq rejected the tool call.', ['category' => 'provider_tool_rejected'] + $this->providerDiagnostics($response->json('error') ?? [], $response->status(), 'provider_http'));
 
                 return null;
             }
 
-            throw $this->failureFor($response->status(), $errorMessage);
+            throw $this->failureFor($response->status(), $errorMessage, $this->providerDiagnostics($response->json('error') ?? [], $response->status(), 'provider_http'));
         }
 
         $body = $response->toPsrResponse()->getBody();
@@ -245,13 +252,28 @@ class ConstructionPlanService
         $sawToolCall = false;
         $lineBuffer = '';
         $done = false;
+        $finishReason = null;
 
-        while (! $done && ! $body->eof()) {
-            $chunk = $body->read(2048);
-            if ($chunk === '') {
+        while (! $done && (! $body->eof() || $lineBuffer !== '')) {
+            if (microtime(true) >= $deadline) {
+                throw new ConstructionPlanGenerationException('The AI service is temporarily unavailable because the provider timed out. Your saved planning data is unchanged. Please retry.', 502, 'provider_timeout');
+            }
+            try {
+                $chunk = $body->eof() ? '' : $body->read(2048);
+            } catch (\Throwable $error) {
+                $timeout = str_contains(strtolower($error->getMessage()), 'timed out') || str_contains(strtolower($error->getMessage()), 'timeout');
+                throw new ConstructionPlanGenerationException('The AI provider connection ended before its response completed. Your saved planning data is unchanged. Please retry.', 502, $timeout ? 'provider_timeout' : 'provider_stream', [
+                    'failure_origin' => 'provider_stream_read', 'upstream_status' => $response->status(),
+                ]);
+            }
+            if ($chunk === '' && ! $body->eof()) {
                 continue;
             }
             $lineBuffer .= $chunk;
+            // A final SSE line need not carry a newline. Do not drop a final [DONE] marker.
+            if ($body->eof() && $lineBuffer !== '' && ! str_ends_with($lineBuffer, "\n")) {
+                $lineBuffer .= "\n";
+            }
 
             while (($newlinePos = strpos($lineBuffer, "\n")) !== false) {
                 $line = trim(substr($lineBuffer, 0, $newlinePos));
@@ -267,6 +289,29 @@ class ConstructionPlanService
                 }
 
                 $event = json_decode($data, true);
+                if (isset($event['error'])) {
+                    $diagnostics = $this->providerDiagnostics($event['error'], $response->status(), 'provider_sse') + [
+                        'partial_content' => $sawContent, 'tool_argument_bytes' => strlen($toolArgsBuffer),
+                        'max_completion_tokens' => $maxReplyTokens, 'context_message_count' => count($apiMessages),
+                        'estimated_prompt_tokens' => (int) ceil(strlen((string) json_encode([$apiMessages, $tools], JSON_UNESCAPED_UNICODE)) / 3.8),
+                    ];
+                    // A tool rejection can also arrive inside an HTTP 200 SSE stream. Retry only
+                    // a known rejected tool call before any visible chat; never replay partial text.
+                    if (! $sawContent && $diagnostics['provider_code'] === 'tool_use_failed') {
+                        Log::warning('Construction plan attempt retried: provider rejected streamed tool call.', ['category' => 'provider_tool_rejected'] + $diagnostics);
+                        $body->close();
+
+                        return null;
+                    }
+                    if ($diagnostics['provider_code'] === 'rate_limit_exceeded') {
+                        throw new ConstructionPlanGenerationException('The AI provider has reached its usage limit. Your saved planning data is unchanged. Please retry later.', 429, 'provider_rate_limit', $diagnostics);
+                    }
+                    if ($diagnostics['provider_code'] === 'context_length_exceeded') {
+                        throw new ConstructionPlanGenerationException('The AI request exceeds the provider context limit. Your saved planning data is unchanged. Please request a smaller change.', 413, 'provider_response', $diagnostics);
+                    }
+                    throw new ConstructionPlanGenerationException('The AI provider could not complete this response. Your saved planning data is unchanged. Please retry.', 502, 'provider_stream', $diagnostics);
+                }
+                $finishReason = $event['choices'][0]['finish_reason'] ?? $finishReason;
                 $delta = $event['choices'][0]['delta'] ?? null;
                 if (! is_array($delta)) {
                     continue;
@@ -290,6 +335,17 @@ class ConstructionPlanService
             }
         }
 
+        if ($finishReason === 'length') {
+            throw new ConstructionPlanGenerationException('The AI response exceeded its output limit. Your saved planning data is unchanged. Please request a smaller change and retry.', 502, 'provider_output_limit', [
+                'failure_origin' => 'provider_sse', 'upstream_status' => $response->status(), 'max_completion_tokens' => $maxReplyTokens,
+            ]);
+        }
+        if (! $done && ($sawContent || $sawToolCall)) {
+            throw new ConstructionPlanGenerationException('The AI provider connection ended before its response completed. Your saved planning data is unchanged. Please retry.', 502, 'provider_stream', [
+                'failure_origin' => 'provider_stream_eof', 'upstream_status' => $response->status(),
+            ]);
+        }
+
         if ($sawContent && ! $sawToolCall) {
             $content = trim($contentBuffer);
             if ($content !== '') {
@@ -304,8 +360,8 @@ class ConstructionPlanService
             $arguments = json_decode($toolArgsBuffer, true);
             if (! is_array($arguments)) {
                 Log::warning('Construction plan attempt retried: tool call arguments were not valid JSON.', [
-                    'tool' => $toolCallName,
-                    'raw_arguments' => substr($toolArgsBuffer, 0, 4000),
+                    'category' => 'provider_invalid_json',
+                    'argument_bytes' => strlen($toolArgsBuffer),
                 ]);
 
                 return null;
@@ -318,12 +374,12 @@ class ConstructionPlanService
                     return $arguments;
                 }
                 Log::warning('Construction plan attempt retried: the submitted plan failed the coherence check.', [
-                    'plan' => $arguments,
+                    'category' => 'provider_incoherent_plan',
                 ]);
 
                 return null;
             }
-            Log::warning('Construction plan attempt retried: unrecognized tool call.', ['tool' => $toolCallName]);
+            Log::warning('Construction plan attempt retried: unrecognized tool call.', ['category' => 'provider_unknown_tool']);
 
             return null;
         }
@@ -372,19 +428,26 @@ class ConstructionPlanService
      *
      * @throws ConstructionPlanGenerationException
      */
-    private function sendWithRateLimitRetry(string $apiKey, array $payload): Response
+    private function sendWithRateLimitRetry(string $apiKey, array $payload, float $deadline): Response
     {
         for ($retry = 0; ; $retry++) {
+            $remaining = $deadline - microtime(true);
+            if ($remaining <= 0) {
+                throw new ConstructionPlanGenerationException('The AI service is temporarily unavailable because the provider timed out. Your saved planning data is unchanged. Please retry.', 502, 'provider_timeout');
+            }
             try {
-                $response = Http::withToken($apiKey)->withOptions(['stream' => true])->timeout(30)->post(
+                $response = Http::withToken($apiKey)->withOptions(['stream' => true, 'read_timeout' => min(30, $remaining)])->connectTimeout(min(8, $remaining))->timeout(min(30, $remaining))->post(
                     'https://api.groq.com/openai/v1/chat/completions',
                     $payload
                 );
-            } catch (ConnectionException) {
+            } catch (ConnectionException $error) {
                 // No HTTP response at all (DNS failure, refused connection, timed out before Groq
                 // answered) — never reaches failureFor()'s >=500 branch, so it needs the same
                 // friendly message here instead of bubbling up as a raw exception mid-stream.
-                throw new ConstructionPlanGenerationException('The AI service is temporarily unavailable. Please try again shortly.', 502);
+                $timeout = str_contains(strtolower($error->getMessage()), 'timed out') || str_contains($error->getMessage(), 'cURL error 28');
+                throw new ConstructionPlanGenerationException('The AI service is temporarily unavailable. Your saved planning data is unchanged. Please retry.', 502, $timeout ? 'provider_timeout' : 'provider_connection', [
+                    'failure_origin' => 'provider_transport',
+                ]);
             }
 
             if ($response->status() !== 429) {
@@ -392,14 +455,10 @@ class ConstructionPlanService
             }
 
             $wait = $this->retryAfterSeconds($response);
-            if ($retry >= self::RATE_LIMIT_RETRIES || $wait === null || $wait > self::MAX_RATE_LIMIT_WAIT_SECONDS) {
+            if ($retry >= self::RATE_LIMIT_RETRIES || $wait === null || $wait > self::MAX_RATE_LIMIT_WAIT_SECONDS || microtime(true) + ceil($wait) + 1 >= $deadline) {
                 throw $this->rateLimitFailure($response, $wait);
             }
 
-            // PHP's own execution limit would otherwise cut the request off mid-wait.
-            if (function_exists('set_time_limit')) {
-                set_time_limit(120);
-            }
             Sleep::for((int) ceil($wait) + 1)->seconds();
         }
     }
@@ -427,31 +486,49 @@ class ConstructionPlanService
         $daily = str_contains($reason, 'per day') || str_contains($reason, '(TPD)') || str_contains($reason, '(RPD)');
         $when = $wait !== null ? ' in about '.$this->humanDuration($wait) : ' in a moment';
 
-        Log::warning('Construction plan request rate-limited by Groq.', ['groq_message' => $reason, 'wait_seconds' => $wait, 'daily' => $daily]);
+        Log::warning('Construction plan request rate-limited by Groq.', ['category' => 'provider_rate_limit', 'wait_seconds' => $wait, 'daily' => $daily]);
 
         return new ConstructionPlanGenerationException(
             $daily
                 ? "The AI has reached its daily usage limit. Please try again{$when}."
                 : "The AI is handling a lot of requests right now. Please try again{$when}.",
-            429
+            429, 'provider_rate_limit'
         );
     }
 
     /** Turns a Groq failure into something a homeowner can act on, rather than passing its raw message (org ids and all) through. */
-    private function failureFor(int $status, string $groqMessage): ConstructionPlanGenerationException
+    private function failureFor(int $status, string $groqMessage, array $diagnostics = []): ConstructionPlanGenerationException
     {
         if ($status === 413 || str_contains($groqMessage, 'Request too large')) {
             return new ConstructionPlanGenerationException(
                 'This conversation has become too long for the AI to handle. Please start a new project chat or shorten your message.',
-                413
+                413, 'provider_response', $diagnostics
             );
         }
 
         if ($status >= 500) {
-            return new ConstructionPlanGenerationException('The AI service is temporarily unavailable. Please try again shortly.', 502);
+            return new ConstructionPlanGenerationException('The AI service is temporarily unavailable. Please try again shortly.', 502, 'provider_response', $diagnostics);
         }
 
-        return new ConstructionPlanGenerationException($groqMessage ?: 'Groq API request failed.', $status);
+        return new ConstructionPlanGenerationException(
+            in_array($status, [401, 403]) ? 'The AI provider rejected the service configuration. Contact the administrator; your saved planning data is unchanged.' : 'The AI provider could not complete this request. Your saved planning data is unchanged. Please retry.',
+            $status, in_array($status, [401, 403]) ? 'provider_configuration' : 'provider_response', $diagnostics
+        );
+    }
+
+    private function providerDiagnostics(mixed $error, int $status, string $origin): array
+    {
+        $error = is_array($error) ? $error : [];
+        // Provider error prose can contain org IDs, prompts or generated tool arguments.
+        // Keep only known public enum values so logs cannot accidentally disclose them.
+        $codes = ['tool_use_failed', 'rate_limit_exceeded', 'context_length_exceeded', 'invalid_api_key', 'invalid_request_error', 'server_error'];
+        $types = ['invalid_request_error', 'server_error', 'tokens', 'requests', 'authentication_error'];
+
+        return [
+            'failure_origin' => $origin, 'upstream_status' => $status,
+            'provider_code' => in_array($error['code'] ?? null, $codes, true) ? $error['code'] : 'other',
+            'provider_type' => in_array($error['type'] ?? null, $types, true) ? $error['type'] : 'other',
+        ];
     }
 
     private function humanDuration(float $seconds): string
@@ -526,7 +603,7 @@ class ConstructionPlanService
 
         $products = $ids->isEmpty()
             ? collect()
-            : SupplierProduct::query()->listed()->whereColumn('stock', '>', 'reserved')->with('supplier:id,name,business_name')->whereIn('id', $ids)->get()->keyBy('id');
+            : SupplierProduct::query()->availableForSupply()->with('supplier:id,name,business_name')->whereIn('id', $ids)->get()->keyBy('id');
 
         $plan['materials'] = collect($plan['materials'] ?? [])->map(function (array $material) use ($products, $selections) {
             $product = $products->get((int) ($material['supplierProductId'] ?? 0));

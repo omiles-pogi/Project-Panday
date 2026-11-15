@@ -70,7 +70,7 @@ test('history API uses only GET reads, rejects invalid links, and sanitizes back
   await assert.rejects(api.fetchProjectHistory(), (error) => /Couldn't load project history/.test(error.message) && !/SQLSTATE|password/.test(error.message));
 });
 
-function screenHarness(file, data) {
+function screenHarness(file, data, savedMessages = []) {
   const slots = []; let cursor = 0; let refreshes = 0; let lastLoad;
   const resource = { data, loading: false, error: null, refresh: async () => { refreshes++; } };
   let mode = 'light'; let dimensions = { width: 390, fontScale: 1 }; const navigations = [];
@@ -85,6 +85,7 @@ function screenHarness(file, data) {
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 24, bottom: 24, left: 0, right: 0 }) },
     '@/components/ui': { ...primitive(['Badge', 'Card', 'PageHeader']), MAX_CONTENT_WIDTH: 880 },
     '@/components/history/HistoryUI': primitive(['HistoryFeedback', 'HistoryRow']),
+    '@/context/PlanContext': { usePlan: () => ({ getProjectMessages: (id) => { assert.equal(id, data.id); return savedMessages; } }) },
     '@/context/ThemeContext': { useTheme: () => ({ mode, chrome: mode === 'light' ? colors.lightChrome : colors.darkChrome }) },
     '@/hooks/useFocusedResource': { useFocusedResource: (fn) => { lastLoad = fn; return resource; } },
     '@/services/api/history': { fetchProjectHistory: async () => data, fetchProjectHistoryDetails: async (id) => ({ id }) },
@@ -174,7 +175,10 @@ test('details show recorded costs, unknown payments, and phases without editing 
     workers: [{ id: 4, name: 'Recorded worker', trade: 'Carpenter' }], contractors: [],
     phases: [{ id: 5, name: 'Construction', tasks: [{ id: 6, description: 'Final inspection', isDone: true }] }],
   } };
-  const harness = screenHarness('src/screens/homeowner/HistoryDetails.tsx', data);
+  const harness = screenHarness('src/screens/homeowner/HistoryDetails.tsx', data, [
+    { role: 'user', content: 'This completed project original brief' },
+    { role: 'assistant', content: 'This completed project saved response' },
+  ]);
   for (const mode of ['light', 'dark']) {
     harness.theme(mode);
     const screen = harness.render();
@@ -186,6 +190,8 @@ test('details show recorded costs, unknown payments, and phases without editing 
     assert.equal(rows.find((node) => node.props.label === 'Supplier-confirmed material commitments').props.value, 'PHP 2800');
     assert.match(text(screen), /Historical cement/);
     assert.match(text(screen), /Final inspection/);
+    assert.match(text(screen), /This completed project original brief/);
+    assert.match(text(screen), /This completed project saved response/);
     assert.equal((await harness.load()).id, 3);
   }
   harness.resource.data = null; harness.resource.error = 'Unavailable';
@@ -205,6 +211,7 @@ test('homeowner History menu opens the section and stays highlighted on nested d
   assert.equal(item.matchChildren, true);
   let current = '/homeowner/history/3'; let pushed; let closed = 0;
   const Content = load('src/components/RoleDrawerContent.tsx', {
+    '@/components/ProfilePhoto': { ProfileAvatar: 'ProfileAvatar' },
     'react/jsx-runtime': runtime, 'react-native': primitive(['Text', 'View', 'Pressable', 'ScrollView']),
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 24 }) },
     'expo-router': { usePathname: () => current, router: { push: (route) => { pushed = route; } } },

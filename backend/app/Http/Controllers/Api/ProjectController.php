@@ -58,7 +58,7 @@ class ProjectController extends Controller
     {
         $projectId = $request->query('project_id');
 
-        return response()->json($this->projects->dashboardFor($request->user(), $projectId ? (int) $projectId : null, $request->boolean('dashboard_only')));
+        return response()->json($this->projects->dashboardFor($request->user(), $projectId ? (int) $projectId : null, $request->boolean('dashboard_only'), $request->boolean('active_only')));
     }
 
     /** Adds to the homeowner's budget — for when the estimate has gone past it. */

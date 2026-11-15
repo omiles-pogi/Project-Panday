@@ -9,7 +9,10 @@ use App\Services\ConstructionPlanService;
 use App\Services\ProjectService;
 use App\Services\SupplierProductService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 class ConstructionPlanController extends Controller
 {
@@ -45,8 +48,10 @@ class ConstructionPlanController extends Controller
         $projectId = $request->validated('project_id');
         $projectContext = $projectId ? $this->projects->planningContextFor($request->user(), (int) $projectId) : null;
         $currentPlan ??= $projectContext['approvedPlan'] ?? null;
+        $clientId = $request->header('X-PandAI-Request-ID', '');
+        $requestId = preg_match('/\Apanday-[a-z0-9-]{1,80}\z/i', $clientId) ? $clientId : 'panday-'.Str::uuid();
 
-        return response()->stream(function () use ($messages, $forcePlan, $currentPlan, $supplierSelections, $projectContext) {
+        return response()->stream(function () use ($messages, $forcePlan, $currentPlan, $supplierSelections, $projectContext, $requestId) {
             $emit = function (array $event) {
                 echo json_encode($event)."\n";
                 if (ob_get_level() > 0) {
@@ -56,6 +61,7 @@ class ConstructionPlanController extends Controller
             };
 
             try {
+                $emit(['type' => 'started', 'requestId' => $requestId]);
                 $result = $this->planService->generate(
                     $messages,
                     $forcePlan,
@@ -66,7 +72,11 @@ class ConstructionPlanController extends Controller
                 );
                 $emit(['type' => 'done', 'result' => $result]);
             } catch (ConstructionPlanGenerationException $e) {
-                $emit(['type' => 'error', 'message' => $e->getMessage(), 'status' => $e->statusCode()]);
+                Log::warning('PandAI request failed.', ['request_id' => $requestId, 'category' => $e->failureKind(), 'status' => $e->statusCode()] + $e->diagnostics());
+                $emit(['type' => 'error', 'message' => $e->getMessage(), 'status' => $e->statusCode(), 'code' => $e->failureKind(), 'requestId' => $requestId]);
+            } catch (Throwable $e) {
+                Log::error('PandAI request failed.', ['request_id' => $requestId, 'category' => 'backend_error', 'exception_type' => get_class($e)]);
+                $emit(['type' => 'error', 'message' => 'Project Panday could not complete this request. Your saved planning data is unchanged. Please retry.', 'status' => 500, 'code' => 'backend_error', 'requestId' => $requestId]);
             }
         }, 200, [
             'Content-Type' => 'application/x-ndjson',

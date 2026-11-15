@@ -7,6 +7,10 @@ import KeyboardAwareScrollView from "@/components/KeyboardAwareScrollView";
 import Mascot from "@/components/Mascot";
 import WaveHeader from "@/components/WaveHeader";
 import { useTheme } from "@/context/ThemeContext";
+import { Ionicons } from "@expo/vector-icons";
+import { useValidationColors } from "@/components/auth/PasswordValidation";
+import type { ValidationState } from "@/validators/auth";
+import { PasswordInputFeedback, usePasswordInput } from "@/components/auth/PasswordInputGuard";
 
 export function RecoveryScreen({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   const insets = useSafeAreaInsets();
@@ -27,30 +31,36 @@ export function RecoveryScreen({ title, description, children }: { title: string
 }
 
 export function RecoveryButton({ label, busy = false, disabled = false, onPress }: { label: string; busy?: boolean; disabled?: boolean; onPress: () => void }) {
+  const { chrome } = useTheme();
+  const unavailable = disabled || busy;
   return (
-    <Pressable accessibilityRole="button" accessibilityState={{ disabled: disabled || busy, busy }} disabled={disabled || busy} onPress={onPress} className="mt-6 py-3.5 rounded-xl items-center bg-primary" style={{ minHeight: 48, opacity: disabled || busy ? 0.6 : 1 }}>
+    <Pressable accessibilityRole="button" accessibilityState={{ disabled: unavailable, busy }} disabled={unavailable} onPress={onPress} className="mt-6 py-3.5 rounded-xl items-center" style={{ minHeight: 48, backgroundColor: unavailable ? chrome.muted : "#f59e0b" }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        {busy && <ActivityIndicator size="small" color="#0f1117" />}
-        <Text className="font-bold text-sm text-primary-foreground">{label}</Text>
+        {busy && <ActivityIndicator size="small" color={chrome.mutedForeground} />}
+        <Text className="font-bold text-sm" style={{ color: unavailable ? chrome.mutedForeground : "#0f1117" }}>{label}</Text>
       </View>
     </Pressable>
   );
 }
 
-export function RecoveryField({ label, secureTextEntry, ...props }: TextInputProps & { label: string }) {
+export function RecoveryField({ label, secureTextEntry, validationState = "neutral", autoCapitalize = "none", existingPassword = false, allowLegacyWhitespace = false, ...props }: TextInputProps & { label: string; validationState?: ValidationState; existingPassword?: boolean; allowLegacyWhitespace?: boolean }) {
   const { chrome } = useTheme();
+  const colors = useValidationColors();
   const [hidden, setHidden] = useState(true);
+  const guard = usePasswordInput(props.value ?? "", props.onChangeText, !!secureTextEntry, existingPassword, allowLegacyWhitespace);
   return (
     <View>
       <Text className="text-xs font-medium text-muted-foreground mb-1.5">{label}</Text>
-      <View className="flex-row items-center rounded-xl bg-card border border-border">
-        <TextInput {...props} accessibilityLabel={label} secureTextEntry={secureTextEntry && hidden} placeholderTextColor={chrome.mutedForeground} autoCorrect={false} autoCapitalize="none" className="flex-1 px-4 py-3 text-sm text-foreground" style={{ minWidth: 0 }} />
+      <View className="flex-row items-center rounded-xl bg-card border" style={{ borderColor: validationState === "neutral" ? chrome.border : colors[validationState] }}>
+        <TextInput {...props} onChangeText={guard.onChangeText} accessibilityLabel={label} secureTextEntry={secureTextEntry && hidden} placeholderTextColor={chrome.mutedForeground} autoCorrect={false} autoCapitalize={autoCapitalize} className="flex-1 px-4 py-3 text-sm text-foreground" style={{ minWidth: 0 }} />
+        {validationState === "valid" && <Ionicons name="checkmark-circle" size={18} color={colors.valid} />}
         {secureTextEntry && (
           <Pressable onPress={() => setHidden((previous) => !previous)} hitSlop={8} accessibilityRole="button" accessibilityLabel={hidden ? `Show ${label.toLowerCase()}` : `Hide ${label.toLowerCase()}`} className="px-4 py-3">
-            <Text className="text-xs font-semibold text-muted-foreground">{hidden ? "Show" : "Hide"}</Text>
+            <Ionicons name={hidden ? "eye-outline" : "eye-off-outline"} size={19} color={chrome.mutedForeground} />
           </Pressable>
         )}
       </View>
+      <PasswordInputFeedback guard={guard} />
     </View>
   );
 }

@@ -14,6 +14,8 @@ function load(file, mocks = {}, globals = {}) {
   const exports = {};
   vm.runInNewContext(outputText, { exports, ...globals, require(name) {
     if (name in mocks) return mocks[name];
+    if (name === '@/components/auth/PasswordInputGuard') return load('src/components/auth/PasswordInputGuard.tsx', mocks);
+    if (name === '@/validators/auth') return load('src/validators/auth.ts', {});
     throw new Error(`Unexpected dependency ${name}`);
   } }, { filename });
   return exports;
@@ -107,6 +109,7 @@ function screen(file, recovery, api = {}) {
     '@/services/api/auth': api,
     '@/services/api/client': { ApiError: class extends Error {} },
     '@/validators/auth': validators,
+    '@/components/auth/PasswordValidation': { __esModule: true, default: 'Requirements', PasswordConfirmation: 'Confirmation' },
   });
   return { render: () => hook.render(Screen), navigated, authorized, recovery };
 }
@@ -199,6 +202,7 @@ test('immediate action lock prevents duplicate requests and ignores responses af
     'react-native': {}, 'react-native-safe-area-context': {},
     '@/components/KeyboardView': {}, '@/components/KeyboardAwareScrollView': {},
     '@/components/Mascot': {}, '@/components/WaveHeader': {}, '@/context/ThemeContext': {},
+    '@expo/vector-icons': {}, '@/components/auth/PasswordValidation': {},
   });
   const action = hook.render(useRecoveryAction);
   let release;
@@ -219,6 +223,8 @@ test('requesting an email opens verification only after the request succeeds', a
     forgotPasswordRequest: () => new Promise((resolve) => resolveRequest = resolve),
   });
   let tree = app.render();
+  assert.equal(nodes(tree, 'Field')[0].props.label, 'Registered email');
+  assert.equal(nodes(tree, 'Field')[0].props.placeholder, 'Registered email');
   assert.equal(nodes(tree, 'Button')[0].props.disabled, true);
   nodes(tree, 'Field')[0].props.onChangeText('Test@Example.com');
   tree = app.render();
@@ -240,6 +246,7 @@ test('both password fields toggle visibility independently', () => {
       'react-native-safe-area-context': {}, '@/components/KeyboardView': {},
       '@/components/KeyboardAwareScrollView': {}, '@/components/Mascot': {}, '@/components/WaveHeader': {},
       '@/context/ThemeContext': { useTheme: () => ({ chrome: {} }) },
+      '@expo/vector-icons': { Ionicons: 'Icon' }, '@/components/auth/PasswordValidation': { useValidationColors: () => ({}) },
     });
     const render = () => hook.render(() => RecoveryField({ label, secureTextEntry: true, value: 'private', onChangeText() {} }));
     let tree = render();

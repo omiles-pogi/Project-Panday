@@ -3,21 +3,23 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\SelectedSupplierHistoryService;
 use App\Services\SupplierHistoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class SupplierHistoryController extends Controller
 {
-    public function __construct(private readonly SupplierHistoryService $history) {}
+    public function __construct(private readonly SupplierHistoryService $receipts, private readonly SelectedSupplierHistoryService $history) {}
 
     public function index(Request $request): JsonResponse
     {
-        return response()->json($this->history->listFor($request->user()));
+        // Retain the existing receipt ledger separately; it must never be confused with estimates.
+        return response()->json(($request->query('basis') === 'receipts' ? $this->receipts : $this->history)->listFor($request->user()));
     }
 
     public function show(Request $request, int $projectId): JsonResponse
     {
-        return response()->json($this->history->detailsFor($request->user(), $projectId));
+        return response()->json(($request->query('basis') === 'receipts' ? $this->receipts : $this->history)->detailsFor($request->user(), $projectId));
     }
 }

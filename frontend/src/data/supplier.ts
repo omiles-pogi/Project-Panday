@@ -23,9 +23,16 @@ export interface Product {
   isActive: boolean;
   /** Derived by the backend from `stock` — the single source of truth for In/Out of Stock. */
   stockStatus: StockStatus;
+  /** Server-checked availability; older clients may omit this read-only metadata. */
+  activationEligible?: boolean;
+  activationBlockReason?: string | null;
+  stockConfirmed?: boolean;
+  stockConfirmedAt?: string | null;
+  stockConfirmedBy?: number | null;
+  stockConfirmedQuantity?: number | null;
 }
 
-export type ProductInput = Omit<Product, "id" | "stockStatus" | "reserved" | "availableQuantity">;
+export type ProductInput = Omit<Product, "id" | "stockStatus" | "reserved" | "availableQuantity" | "activationEligible" | "activationBlockReason" | "stockConfirmed" | "stockConfirmedAt" | "stockConfirmedBy" | "stockConfirmedQuantity">;
 
 /** Must match SupplierProduct::CATEGORIES on the backend (it validates against that list). */
 export const CATEGORIES = [

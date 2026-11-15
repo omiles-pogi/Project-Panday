@@ -183,6 +183,13 @@ export interface ProjectSummary {
   status: ProjectStatus;
   startedAt: string;
   overallProgressPct: number;
+  /** Owner-only planning metadata; older servers may omit it. */
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  projectNamePending?: boolean | null;
+  hasApprovedPlan?: boolean;
+  /** Owner-only finalization retry identity, not an authentication credential. */
+  finalizationKey?: string | null;
 }
 
 export interface ActivityLogEntry {

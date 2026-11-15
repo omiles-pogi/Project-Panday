@@ -23,12 +23,13 @@ export default function NotificationBell({ inline = false }: { inline?: boolean 
         }}
         accessibilityLabel="Notifications"
         accessibilityRole="button"
-        hitSlop={8}
+        hitSlop={inline ? 4 : 8}
         style={{
           // Landing headers lay out this same control in their right-hand flex group.
           ...(!inline && { position: "absolute" as const, top: insets.top + 8, right: 60, zIndex: 999 }),
           width: 36,
           height: 36,
+          flexShrink: 0,
           borderRadius: 18,
           alignItems: "center",
           justifyContent: "center",

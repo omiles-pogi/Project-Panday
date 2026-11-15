@@ -21,6 +21,12 @@ export interface SupplierProductDto {
   is_active: boolean;
   /** Always derived server-side from available_quantity (> 0 → in stock) — never set it directly. */
   stock_status: StockStatus;
+  activation_eligible?: boolean;
+  activation_block_reason?: string | null;
+  stock_confirmed?: boolean;
+  stock_confirmed_at?: string | null;
+  stock_confirmed_by?: number | null;
+  stock_confirmed_quantity?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -76,6 +82,40 @@ export async function updateSupplierProduct(
 
 export async function deleteSupplierProduct(id: number): Promise<void> {
   await apiFetch(`/api/supplier-products/${id}`, { method: "DELETE" });
+}
+
+export interface BulkActivationResult {
+  total: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  skipped_reasons: Record<string, number>;
+  products: SupplierProductDto[];
+}
+
+export async function setAllSupplierProductsActive(isActive: boolean): Promise<BulkActivationResult> {
+  return await apiFetch("/api/supplier-products/activation", {
+    method: "PATCH", body: JSON.stringify({ is_active: isActive }),
+  }) as BulkActivationResult;
+}
+
+export interface StockConfirmationReview {
+  review_token: string;
+  count: number;
+  products: { id: number; name: string; stock: number; reserved: number; unit: string; price: number; is_active: boolean }[];
+}
+
+export type StockConfirmationResult = Omit<BulkActivationResult, "skipped_reasons">;
+
+/** Preview is read-only; the signed review binds this supplier to these exact recorded quantities. */
+export async function fetchStockConfirmationReview(): Promise<StockConfirmationReview> {
+  return await apiFetch("/api/supplier-products/stock-confirmation") as StockConfirmationReview;
+}
+
+export async function confirmSupplierStock(reviewToken: string): Promise<StockConfirmationResult> {
+  return await apiFetch("/api/supplier-products/stock-confirmation", {
+    method: "PATCH", body: JSON.stringify({ confirmed: true, review_token: reviewToken }),
+  }) as StockConfirmationResult;
 }
 
 export async function fetchMaterialCatalog(filters: CatalogFilters = {}): Promise<CatalogMaterialDto[]> {

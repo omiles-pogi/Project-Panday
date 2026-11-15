@@ -1,11 +1,17 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { isChatReply, isClarificationNeeded, type ConstructionPlan, type SupplierSelections } from "@/types/plan";
+import { AppState } from "react-native";
+import { usePathname } from "expo-router";
+import { fetchMyHomeownerProjects } from "@/services/api/projects";
+import { activeProjectCandidate, resumablePlanningSessions, type PlanningSession } from "@/utils/activeProject";
+import { isChatReply, isClarificationNeeded, SUPPLIER_CATEGORIES, type ConstructionPlan, type SupplierCategory, type SupplierSelections } from "@/types/plan";
 import { generateConstructionPlan, type ChatHistoryMessage } from "@/services/ai/client";
 import { garageLabel } from "@/utils/garage";
 import { normalizePlanTimeline, timelineLabel } from "@/utils/timeline";
 import { useAuth } from "@/context/AuthContext";
-import type { FinalizedProject, SavedProjectName } from "@/types/project";
+import type { FinalizedProject, SavedProjectName, ProjectSummary } from "@/types/project";
+import { EMPTY_REVIEW, snapshotCurrentReview, type PlanningReview, type PendingPlannerTurn } from "@/utils/planningState";
+import { PlannerRequestError } from "@/utils/plannerError";
 
 export type SendResult =
   | { type: "plan"; plan: ConstructionPlan }
@@ -27,11 +33,21 @@ interface PlanContextValue {
   lastAssistantMessage: string | null;
   /** The approval step the homeowner last reached for the current plan; null until a plan exists. */
   approvalStage: ApprovalStage | null;
-  setApprovalStage: (stage: ApprovalStage) => void;
-  /** True once the persisted conversations have finished loading (or there were none) —
+  setApprovalStage: (stage: ApprovalStage, event?: { userText: string; assistantText: string }) => Promise<void>;
+  review: PlanningReview;
+  setReview: (changes: Partial<PlanningReview>) => void;
+  pendingTurn: PendingPlannerTurn | null;
+  /** True once persisted conversations have loaded and the selection's lifecycle is verified —
    * consumers that build their own local copy of the conversation on mount (ProjectChat) should
    * wait for this before doing so, since hydration happens asynchronously after mount. */
   ready: boolean;
+  projectSelectionError: string | null;
+  refreshProjectSelection: () => Promise<void>;
+  getProjectMessages: (projectId: number) => ChatHistoryMessage[];
+  planningSessions: PlanningSession[];
+  planningSessionsReady: boolean;
+  /** Explicit selection by the original draft/project identity; never uses a latest-chat fallback. */
+  resumePlanningSession: (key: string) => boolean;
   /** Identifies which conversation is currently active — a saved project's id as a string, or
    * a unique "draft:..." key for one that hasn't been turned into a project yet. Consumers that snapshot the
    * conversation into their own local state (ProjectChat) should treat a change here as a signal
@@ -48,12 +64,14 @@ interface PlanContextValue {
     text: string,
     onChunk?: (partial: string) => void,
     /** The supplier choices to plan with this turn; defaults to whatever the current plan already has. */
-    options?: { supplierSelections?: SupplierSelections }
+    options?: { supplierSelections?: SupplierSelections; retry?: boolean }
   ) => Promise<SendResult>;
   /** Replaces the current plan with the homeowner's own hand-edited version. The total estimate is
    * recomputed from the budget breakdown (same rule the backend applies to AI plans), and the
    * edited plan is what the AI sees on its next turn. */
   updatePlan: (next: ConstructionPlan) => void;
+  /** Persist a category preference without regenerating or replacing approved estimates. */
+  setSupplierSelection: (category: SupplierCategory, supplierId: number | null) => Promise<void>;
   /** Starts a unique blank draft, preserving every existing project's and draft's history. */
   reset: () => void;
   /** Switches the active conversation to the given project's own — each project remembers its
@@ -92,6 +110,8 @@ interface Conversation {
   finalizationKey?: string;
   projectNaming?: SavedProjectName;
   projectTitle?: string;
+  review?: PlanningReview;
+  pendingTurn?: PendingPlannerTurn | null;
 }
 
 const EMPTY_CONVERSATION: Conversation = { plan: null, messages: [], approvalStage: null, clarificationRounds: 0 };
@@ -121,6 +141,7 @@ function summarizePlan(plan: ConstructionPlan): string {
 
 export function PlanProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const pathname = usePathname();
   // Conversations belong to an account as well as a project. Never load another account's draft.
   const storageKey = `${STORAGE_KEY}:${user?.id ?? "guest"}`;
   const [plan, setPlan] = useState<ConstructionPlan | null>(null);
@@ -129,7 +150,9 @@ export function PlanProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [lastAssistantMessage, setLastAssistantMessage] = useState<string | null>(null);
   const [clarificationRounds, setClarificationRounds] = useState(0);
-  const [approvalStage, setApprovalStage] = useState<ApprovalStage | null>(null);
+  const [approvalStage, setApprovalStageState] = useState<ApprovalStage | null>(null);
+  const [review, setReviewState] = useState<PlanningReview>(EMPTY_REVIEW);
+  const [pendingTurn, setPendingTurn] = useState<PendingPlannerTurn | null>(null);
   const [activeProjectKey, setActiveProjectKey] = useState<string>(newDraftKey);
   const [activeProjectTitle, setActiveProjectTitle] = useState<string | null>(null);
   const [restoredVersion, setRestoredVersion] = useState(0);
@@ -137,23 +160,40 @@ export function PlanProvider({ children }: { children: ReactNode }) {
   // initial state first (which would overwrite the saved conversations with nothing), and lets
   // consumers like ProjectChat know when it's safe to build their own view of the conversation.
   const [ready, setReady] = useState(false);
+  const [storageAttempt, setStorageAttempt] = useState(0);
+  const [validatedSelection, setValidatedSelection] = useState<{ key: string; path: string } | null>(null);
+  const [projectSelectionError, setProjectSelectionError] = useState<string | null>(null);
+  const activeSelectionReady = ready && validatedSelection?.key === activeProjectKey && validatedSelection.path === pathname;
   const [projectNaming, setProjectNaming] = useState<SavedProjectName | null>(null);
 
   // All projects' conversations, keyed by project id (or "draft") — kept in a ref rather than
   // state since nothing needs to re-render off the whole map, only off the active slot's own
   // fields above and off which key is active.
   const conversationsRef = useRef<Record<string, Conversation>>({});
+  // Home reads only successfully persisted snapshots. Keep the original conversation store
+  // authoritative; this is a reactive view of that same store, not a second draft system.
+  const [savedConversations, setSavedConversations] = useState<Record<string, Conversation>>({});
+  const [verifiedProjects, setVerifiedProjects] = useState<ProjectSummary[] | null>(null);
   const activeKeyRef = useRef(activeProjectKey);
   const conversationEpoch = useRef(0);
+  const inFlightTurn = useRef<string | null>(null);
+  const requestController = useRef<AbortController | null>(null);
+  const completedTurns = useRef(new Map<string, SendResult>());
   const writes = useRef<Promise<void>>(Promise.resolve());
+  const validationEpoch = useRef(0);
+  const completedIds = useRef(new Set<number>());
+  const routeRef = useRef(pathname);
+  useEffect(() => { routeRef.current = pathname; }, [pathname]);
 
   // Serialize snapshots so an older async write cannot restore a previous project's selection.
   const saveSnapshot = useCallback(() => {
-    const snapshot = JSON.stringify(conversationsRef.current);
+    const saved = { ...conversationsRef.current };
+    const snapshot = JSON.stringify(saved);
     const selected = activeKeyRef.current;
     const write = writes.current.catch(() => undefined).then(async () => {
       await AsyncStorage.setItem(storageKey, snapshot);
       await AsyncStorage.setItem(`${storageKey}:active`, selected);
+      setSavedConversations(saved);
     });
     writes.current = write;
     return write;
@@ -167,7 +207,13 @@ export function PlanProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     let loaded = false;
     Promise.all([AsyncStorage.getItem(storageKey), AsyncStorage.getItem(`${storageKey}:active`)])
-      .then(([raw, selected]) => {
+      .then(async ([raw, selected]) => {
+        if (cancelled) return;
+        // Keep an exact account-scoped pre-change copy before writing any new planner metadata.
+        // A failed backup/read must not be followed by overwriting the only saved conversation.
+        if (raw && !await AsyncStorage.getItem(`${storageKey}:before-planner-reliability`)) {
+          await AsyncStorage.setItem(`${storageKey}:before-planner-reliability`, JSON.stringify({ conversations: raw, active: selected }));
+        }
         if (cancelled) return;
         if (raw) {
           try {
@@ -182,28 +228,37 @@ export function PlanProvider({ children }: { children: ReactNode }) {
             throw new Error("Could not read saved conversations. Reopen the app to try again.");
           }
         }
+        if (conversationsRef.current[DRAFT_KEY]) {
+          // Preserve an older unsaved slot even when a different saved project is selected.
+          const legacyKey = newDraftKey();
+          conversationsRef.current[legacyKey] = conversationsRef.current[DRAFT_KEY];
+          delete conversationsRef.current[DRAFT_KEY];
+          if (!selected || selected === DRAFT_KEY) activeKeyRef.current = legacyKey;
+        }
         if (selected && (/^[1-9]\d*$/.test(selected) || (selected.startsWith("draft:") && conversationsRef.current[selected]))) {
           activeKeyRef.current = selected;
-        } else if (conversationsRef.current[DRAFT_KEY]) {
-          // Migrate the old unsaved slot once, preserving its full history under a unique draft ID.
-          conversationsRef.current[activeKeyRef.current] = conversationsRef.current[DRAFT_KEY];
-          delete conversationsRef.current[DRAFT_KEY];
         }
         const active = conversationsRef.current[activeKeyRef.current] ?? EMPTY_CONVERSATION;
+        setSavedConversations({ ...conversationsRef.current });
         setActiveProjectKey(activeKeyRef.current);
         setActiveProjectTitle(active.projectNaming?.title ?? active.projectTitle ?? active.plan?.projectTitle ?? null);
         setPlan(active.plan);
         setMessages(active.messages);
-        setApprovalStage(active.approvalStage);
+        setApprovalStageState(active.approvalStage);
+        setReviewState(active.review ?? EMPTY_REVIEW);
+        setPendingTurn(active.pendingTurn ?? null);
         setClarificationRounds(active.clarificationRounds ?? 0);
         setProjectNaming(active.projectNaming ?? null);
         loaded = true;
       })
-      .catch(() => { if (!cancelled) setError("Could not read saved conversations. Reopen the app to try again."); })
+      .catch(() => { if (!cancelled) {
+        setError("Could not safely read or back up saved conversations. No saved data was overwritten.");
+        setProjectSelectionError("Could not safely read or back up saved conversations. Try again before continuing.");
+      } })
       // A failed read must never be followed by a write of empty state over saved history.
       .finally(() => { if (!cancelled && loaded) setReady(true); });
-    return () => { cancelled = true; conversationEpoch.current += 1; };
-  }, [storageKey]);
+    return () => { cancelled = true; conversationEpoch.current += 1; requestController.current?.abort(); };
+  }, [storageKey, storageAttempt]);
 
   // Keeps the active slot in the map (and on disk) up to date with whatever's currently showing.
   useEffect(() => {
@@ -220,8 +275,35 @@ export function PlanProvider({ children }: { children: ReactNode }) {
     persist();
   }, [ready, activeProjectKey, activeProjectTitle, plan, messages, approvalStage, clarificationRounds, projectNaming, persist]);
 
+  const setApprovalStage = useCallback(async (stage: ApprovalStage, event?: { userText: string; assistantText: string }) => {
+    if (!activeSelectionReady || activeKeyRef.current !== activeProjectKey) return;
+    const key = activeKeyRef.current;
+    const previous = conversationsRef.current[key] ?? EMPTY_CONVERSATION;
+    const stamp = new Date().toISOString();
+    const reviewed = snapshotCurrentReview(previous.messages, previous.plan, previous.approvalStage, previous.review ?? EMPTY_REVIEW);
+    const nextMessages: ChatHistoryMessage[] = event ? [...reviewed,
+      { role: "user", content: event.userText, id: `approval-${Date.now()}-user`, createdAt: stamp },
+      { role: "assistant", content: event.assistantText, id: `approval-${Date.now()}-${stage}`, createdAt: stamp,
+        card: stage, ...(previous.plan ? { planSnapshot: previous.plan } : {}), reviewSnapshot: previous.review ?? EMPTY_REVIEW },
+    ] : previous.messages;
+    conversationsRef.current[key] = { ...previous, approvalStage: stage, messages: nextMessages, updatedAt: event || previous.approvalStage !== stage ? Date.now() : previous.updatedAt };
+    setApprovalStageState(stage);
+    if (event) setMessages(nextMessages);
+    await saveSnapshot();
+  }, [activeSelectionReady, activeProjectKey, saveSnapshot]);
+
+  const setReview = useCallback((changes: Partial<PlanningReview>) => {
+    if (!activeSelectionReady || activeKeyRef.current !== activeProjectKey) return;
+    const key = activeKeyRef.current;
+    const previous = conversationsRef.current[key] ?? EMPTY_CONVERSATION;
+    const next = { ...(previous.review ?? EMPTY_REVIEW), ...changes };
+    conversationsRef.current[key] = { ...previous, review: next, updatedAt: Date.now() };
+    setReviewState(next);
+    persist();
+  }, [activeSelectionReady, activeProjectKey, persist]);
+
   const getFinalizationKey = useCallback(async () => {
-    if (!ready || activeKeyRef.current !== activeProjectKey) throw new Error("The selected project changed.");
+    if (!activeSelectionReady || activeKeyRef.current !== activeProjectKey) throw new Error("The selected project changed.");
     const key = activeKeyRef.current;
     const conversation = conversationsRef.current[key] ?? { plan, messages, approvalStage, clarificationRounds };
     // This is a uniqueness/retry token, not an authentication credential. Keep one per conversation.
@@ -229,7 +311,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
     conversationsRef.current[key] = { ...conversation, finalizationKey };
     await saveSnapshot();
     return finalizationKey;
-  }, [ready, activeProjectKey, saveSnapshot, plan, messages, approvalStage, clarificationRounds]);
+  }, [activeSelectionReady, activeProjectKey, saveSnapshot, plan, messages, approvalStage, clarificationRounds]);
 
   const syncProjectNaming = useCallback((project: FinalizedProject) => {
     const key = String(project.id);
@@ -258,81 +340,172 @@ export function PlanProvider({ children }: { children: ReactNode }) {
     async (
       text: string,
       onChunk?: (partial: string) => void,
-      options?: { supplierSelections?: SupplierSelections }
+      options?: { supplierSelections?: SupplierSelections; retry?: boolean }
     ): Promise<SendResult> => {
       const trimmed = text.trim();
-      if (!ready || activeKeyRef.current !== activeProjectKey) throw new Error("Select the project again before sending a message.");
+      if (!activeSelectionReady || activeKeyRef.current !== activeProjectKey) throw new Error("Select the project again before sending a message.");
       if (!trimmed) {
         throw new Error("Message is empty.");
       }
-      setLoading(true);
-      setError(null);
-      const userMessage: ChatHistoryMessage = { role: "user", content: trimmed };
-      const historyForRequest = [...messages, userMessage];
-      const requestEpoch = conversationEpoch.current;
-      // Save the user's turn under its original project even if they leave while the AI streams.
       const key = activeKeyRef.current;
-      conversationsRef.current[key] = { ...(conversationsRef.current[key] ?? EMPTY_CONVERSATION), messages: historyForRequest, updatedAt: Date.now() };
-      setMessages(historyForRequest);
-      persist();
-
+      if (inFlightTurn.current) throw new Error("A PandAI request is already in progress.");
+      const previous = conversationsRef.current[key] ?? EMPTY_CONVERSATION;
+      const retrying = options?.retry && previous.pendingTurn?.text === trimmed;
+      if (options?.retry && !retrying) throw new Error("This failed request no longer belongs to the selected conversation.");
+      const turn: PendingPlannerTurn = retrying ? { ...previous.pendingTurn!, status: "sending", error: undefined } : {
+        id: `turn-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`, text: trimmed, createdAt: new Date().toISOString(),
+        supplierSelections: options?.supplierSelections, status: "sending",
+      };
+      const userMessage: ChatHistoryMessage = { role: "user", content: trimmed, id: turn.id, createdAt: turn.createdAt };
+      const reviewed = snapshotCurrentReview(previous.messages, previous.plan, previous.approvalStage, previous.review ?? EMPTY_REVIEW);
+      const historyForRequest = retrying ? reviewed.filter(message => message.id !== `${turn.id}-assistant`) : [...reviewed, userMessage];
+      const requestEpoch = conversationEpoch.current;
+      inFlightTurn.current = turn.id;
+      const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+      requestController.current = controller;
+      setLoading(true); setError(null); setPendingTurn(turn);
+      conversationsRef.current[key] = { ...previous, messages: retrying && completedTurns.current.has(turn.id) ? previous.messages : historyForRequest, pendingTurn: turn, updatedAt: Date.now() };
+      setMessages(retrying && completedTurns.current.has(turn.id) ? previous.messages : historyForRequest);
+      let providerStarted = false;
+      let responseReceived = false;
       try {
+        // Save the turn before sending. A device I/O failure cannot silently replace history.
+        await saveSnapshot();
+        if (requestEpoch !== conversationEpoch.current || key !== activeKeyRef.current) throw new Error("The selected project changed.");
+        const cached = completedTurns.current.get(turn.id);
+        if (cached) {
+          conversationsRef.current[key] = { ...conversationsRef.current[key], pendingTurn: null };
+          await saveSnapshot();
+          if (requestEpoch !== conversationEpoch.current || key !== activeKeyRef.current) throw new Error("The selected project changed.");
+          setPendingTurn(null);
+          setMessages(conversationsRef.current[key].messages);
+          return cached;
+        }
+        providerStarted = true;
         const result = await generateConstructionPlan(
           historyForRequest,
-          clarificationRounds >= FORCE_PLAN_AFTER_CLARIFICATIONS,
+          previous.clarificationRounds >= FORCE_PLAN_AFTER_CLARIFICATIONS,
           (chunk) => { if (requestEpoch === conversationEpoch.current) onChunk?.(chunk); },
-          plan,
-          options?.supplierSelections,
-          /^\d+$/.test(activeProjectKey) ? Number(activeProjectKey) : null
+          previous.plan,
+          turn.supplierSelections,
+          /^\d+$/.test(activeProjectKey) ? Number(activeProjectKey) : null,
+          { signal: controller?.signal, requestId: `panday-${turn.id}-${Date.now().toString(36)}` }
         );
         if (requestEpoch !== conversationEpoch.current) throw new Error("The selected project changed. Send your message again in its project chat.");
-
+        responseReceived = true;
+        const latest = conversationsRef.current[key];
+        let next = { ...latest, pendingTurn: null as PendingPlannerTurn | null };
+        let outcome: SendResult;
+        let assistant: ChatHistoryMessage;
         if (isChatReply(result)) {
-          const assistantMessage: ChatHistoryMessage = { role: "assistant", content: result.message };
-          setMessages([...historyForRequest, assistantMessage]);
+          assistant = { role: "assistant", content: result.message };
           setLastAssistantMessage(result.message);
-          return { type: "chat", message: result.message };
-        }
-
-        if (isClarificationNeeded(result)) {
+          outcome = { type: "chat", message: result.message };
+        } else if (isClarificationNeeded(result)) {
           const summary = result.questions.join(" ");
-          const assistantMessage: ChatHistoryMessage = { role: "assistant", content: summary };
-          setMessages([...historyForRequest, assistantMessage]);
+          assistant = { role: "assistant", content: summary };
           setLastAssistantMessage(summary);
-          setClarificationRounds((n) => n + 1);
-          return { type: "clarification", questions: result.questions };
+          next.clarificationRounds = (latest.clarificationRounds ?? 0) + 1;
+          outcome = { type: "clarification", questions: result.questions };
+        } else {
+          const namedPlan = preserveProjectName(result);
+          const stage = previous.plan && previous.approvalStage && previous.approvalStage !== "summary" ? previous.approvalStage : "plan";
+          assistant = { role: "assistant", content: summarizePlan(namedPlan), card: stage, planSnapshot: namedPlan, reviewSnapshot: latest.review ?? EMPTY_REVIEW };
+          next = { ...next, plan: namedPlan, approvalStage: stage, clarificationRounds: 0 };
+          setPlan(namedPlan); setApprovalStageState(stage); setLastAssistantMessage(null);
+          outcome = { type: "plan", plan: namedPlan };
         }
-
-        const namedPlan = preserveProjectName(result);
-        const summary = summarizePlan(namedPlan);
-        const assistantMessage: ChatHistoryMessage = { role: "assistant", content: summary };
-        setMessages([...historyForRequest, assistantMessage]);
-        setPlan(namedPlan);
-        setLastAssistantMessage(null);
-        setClarificationRounds(0);
-        return { type: "plan", plan: namedPlan };
+        assistant = { ...assistant, id: `${turn.id}-assistant`, createdAt: new Date().toISOString() };
+        next.messages = [...historyForRequest, assistant]; next.updatedAt = Date.now();
+        conversationsRef.current[key] = next;
+        completedTurns.current.set(turn.id, outcome);
+        setMessages(next.messages); setClarificationRounds(next.clarificationRounds); setPendingTurn(null);
+        await saveSnapshot();
+        return outcome;
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Something went wrong.";
-        if (requestEpoch === conversationEpoch.current) setError(message);
+        if (requestEpoch === conversationEpoch.current && key === activeKeyRef.current) {
+          const storage = !providerStarted || responseReceived;
+          const message = storage ? "Could not save this turn on your device. Your previous planning data is preserved. Keep the app open and retry saving this message." : err instanceof Error ? err.message : "The request failed. Your saved planning progress is unchanged.";
+          const failed: PendingPlannerTurn = { ...turn, status: "failed", error: message, errorCode: storage ? "storage" : err instanceof PlannerRequestError ? err.code : "request_failed" };
+          conversationsRef.current[key] = { ...conversationsRef.current[key], pendingTurn: failed };
+          setPendingTurn(failed); setError(message);
+          try { await saveSnapshot(); } catch { /* Keep the in-memory response and original device backup intact. */ }
+        }
         throw err;
       } finally {
+        if (inFlightTurn.current === turn.id) inFlightTurn.current = null;
         if (requestEpoch === conversationEpoch.current) setLoading(false);
       }
     },
-    [ready, messages, plan, activeProjectKey, clarificationRounds, preserveProjectName, persist]
+    [activeSelectionReady, activeProjectKey, preserveProjectName, saveSnapshot]
   );
 
   const updatePlan = useCallback((next: ConstructionPlan) => {
+    if (!activeSelectionReady || activeKeyRef.current !== activeProjectKey) return;
     const breakdownTotal = next.budgetBreakdown.reduce((s, b) => s + b.amount, 0);
-    setPlan(preserveProjectName({ ...next, totalEstimate: breakdownTotal > 0 ? Math.round(breakdownTotal) : next.totalEstimate }));
-  }, [preserveProjectName]);
+    const edited = preserveProjectName({ ...next, totalEstimate: breakdownTotal > 0 ? Math.round(breakdownTotal) : next.totalEstimate });
+    const previous = conversationsRef.current[activeProjectKey] ?? EMPTY_CONVERSATION;
+    const nextMessages: ChatHistoryMessage[] = [...snapshotCurrentReview(previous.messages, previous.plan, previous.approvalStage, previous.review ?? EMPTY_REVIEW), {
+      id: `edit-${Date.now()}`, role: "assistant", createdAt: new Date().toISOString(),
+      content: "I've applied your changes to this saved planning proposal.", card: previous.approvalStage ?? "plan",
+      planSnapshot: edited, reviewSnapshot: previous.review ?? EMPTY_REVIEW,
+    }];
+    // Hand edits and supplier choices must survive the same way as provider results.
+    conversationsRef.current[activeProjectKey] = { ...previous, plan: edited, messages: nextMessages, updatedAt: Date.now() };
+    setPlan(edited); setMessages(nextMessages);
+    const epoch = conversationEpoch.current;
+    void saveSnapshot().catch(() => { if (epoch === conversationEpoch.current) setError("Couldn't save your planning edits on this device. Keep the app open and try again."); });
+  }, [activeSelectionReady, activeProjectKey, preserveProjectName, saveSnapshot]);
+
+  const setSupplierSelection = useCallback(async (category: SupplierCategory, supplierId: number | null) => {
+    const key = activeKeyRef.current;
+    if (!activeSelectionReady || key !== activeProjectKey || inFlightTurn.current) throw new Error("Wait for the current planning action to finish, then try again.");
+    if (!SUPPLIER_CATEGORIES.includes(category) || (supplierId !== null && (!Number.isSafeInteger(supplierId) || supplierId <= 0))) throw new Error("Choose a valid supplier.");
+    const previous = conversationsRef.current[key];
+    if (!previous?.plan) throw new Error("Open a saved material estimate before choosing a supplier.");
+    const epoch = conversationEpoch.current;
+    const lock = `supplier-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    inFlightTurn.current = lock;
+    // Read the authoritative conversation, not a render's stale plan. A choice in one category
+    // must never replace choices in another, and must not require a successful provider stream.
+    const selected: ConstructionPlan = { ...previous.plan, supplierSelections: {
+      "Construction Materials": null, "Electrical and Plumbing": null, "Finishing Works": null,
+      ...previous.plan.supplierSelections, [category]: supplierId,
+    } };
+    const history: ChatHistoryMessage[] = [...snapshotCurrentReview(previous.messages, previous.plan, previous.approvalStage, previous.review ?? EMPTY_REVIEW), {
+      id: lock, role: "assistant", createdAt: new Date().toISOString(),
+      content: `Supplier preference saved for ${category}. Existing estimates and approvals are unchanged.`,
+      card: previous.approvalStage ?? "materials", planSnapshot: selected, reviewSnapshot: previous.review ?? EMPTY_REVIEW,
+    }];
+    // A failed earlier AI request may carry old preferences. Its retry must use the latest saved
+    // choices while retaining the same user-turn identity and every existing approval.
+    const pending = previous.pendingTurn ? { ...previous.pendingTurn, supplierSelections: selected.supplierSelections } : null;
+    const updated: Conversation = { ...previous, plan: selected, messages: history, pendingTurn: pending, updatedAt: Date.now() };
+    conversationsRef.current[key] = updated;
+    try {
+      await saveSnapshot();
+      if (epoch === conversationEpoch.current && key === activeKeyRef.current) {
+        setPlan(selected); setMessages(history); setPendingTurn(pending); setError(null);
+      }
+    } catch {
+      if (conversationsRef.current[key] === updated) conversationsRef.current[key] = previous;
+      const message = "Could not save your supplier choice on this device. Your previous choice and approved estimates are preserved. Please retry.";
+      if (epoch === conversationEpoch.current) setError(message);
+      throw new Error(message);
+    } finally {
+      if (inFlightTurn.current === lock) inFlightTurn.current = null;
+    }
+  }, [activeSelectionReady, activeProjectKey, saveSnapshot]);
 
   const applyConversation = useCallback((conversation: Conversation) => {
     conversationEpoch.current += 1;
+    requestController.current?.abort(); inFlightTurn.current = null;
     setLoading(false);
     setPlan(conversation.plan);
     setMessages(conversation.messages);
-    setApprovalStage(conversation.approvalStage);
+    setApprovalStageState(conversation.approvalStage);
+    setReviewState(conversation.review ?? EMPTY_REVIEW);
+    setPendingTurn(conversation.pendingTurn ?? null);
     setClarificationRounds(conversation.clarificationRounds ?? 0);
     setProjectNaming(conversation.projectNaming ?? null);
     setActiveProjectTitle(conversation.projectNaming?.title ?? conversation.projectTitle ?? conversation.plan?.projectTitle ?? null);
@@ -341,6 +514,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
   const selectProject = useCallback(
     (projectId: number | null, savedPlan?: Partial<ConstructionPlan> | null, title?: string) => {
       if (!ready || (projectId != null && (!Number.isSafeInteger(projectId) || projectId < 1))) return;
+      if (projectId != null && completedIds.current.has(projectId)) return;
       const key = projectId != null ? String(projectId) : (activeKeyRef.current.startsWith("draft:") ? activeKeyRef.current : newDraftKey());
       let conversation = conversationsRef.current[key] ?? EMPTY_CONVERSATION;
       if (title) conversation = { ...conversation, projectTitle: title };
@@ -381,6 +555,81 @@ export function PlanProvider({ children }: { children: ReactNode }) {
     [selectProject]
   );
 
+  const validateProjectSelection = useCallback(async () => {
+    if (!ready) return;
+    const epoch = ++validationEpoch.current;
+    const key = activeKeyRef.current;
+    const path = routeRef.current;
+    try {
+      const projects = await fetchMyHomeownerProjects();
+      if (epoch !== validationEpoch.current || key !== activeKeyRef.current || path !== routeRef.current) return;
+      // Only construction completion retires a project; an approved AI plan remains eligible.
+      completedIds.current = new Set(projects.filter(p => p.status === "completed").map(p => p.id));
+      setVerifiedProjects(projects);
+      let recovered = false;
+      for (const [draftKey, conversation] of Object.entries(conversationsRef.current)) {
+        if (!draftKey.startsWith("draft:") || !conversation.finalizationKey) continue;
+        const saved = projects.find(project => project.finalizationKey === conversation.finalizationKey);
+        if (!saved) continue;
+        const savedKey = String(saved.id);
+        const target = conversationsRef.current[savedKey];
+        // Recover only a proven same-finalization identity. Never overwrite another saved
+        // conversation; keep a conflicting recovery copy intact but out of Home's draft list.
+        if (!target?.messages.length && !target?.plan) {
+          conversationsRef.current[savedKey] = { ...conversation, projectTitle: saved.title, approvalStage: "summary",
+            plan: conversation.plan ? { ...conversation.plan, projectTitle: saved.title } : null,
+            ...(saved.projectNamePending != null ? { projectNaming: { projectId: saved.id, title: saved.title, pending: saved.projectNamePending } } : {}) };
+          delete conversationsRef.current[draftKey];
+          recovered = true;
+        }
+        if (activeKeyRef.current === draftKey) {
+          activeKeyRef.current = savedKey;
+          // Retire completed construction below without exposing its cached chat as active.
+          if (saved.status !== "completed") {
+            applyConversation(conversationsRef.current[savedKey]);
+            setActiveProjectKey(savedKey);
+          }
+        }
+      }
+      const selectedKey = activeKeyRef.current;
+      if (/^[1-9]\d*$/.test(selectedKey)) {
+        const next = activeProjectCandidate(selectedKey, projects);
+        if (String(next?.id) !== selectedKey) selectProject(next?.id ?? null, undefined, next?.title);
+      }
+      if (recovered) persist();
+      setProjectSelectionError(null);
+      setValidatedSelection({ key: activeKeyRef.current, path });
+    } catch {
+      if (epoch !== validationEpoch.current || key !== activeKeyRef.current || path !== routeRef.current) return;
+      setValidatedSelection(null);
+      setProjectSelectionError("Couldn't verify the active project. Check your connection and try again.");
+    }
+  }, [ready, selectProject, applyConversation, persist]);
+
+  const refreshProjectSelection = useCallback(async () => {
+    if (!ready) { setStorageAttempt(attempt => attempt + 1); return; }
+    // Invalidate any in-flight AI work before checking a newly completed project's replacement.
+    conversationEpoch.current += 1;
+    requestController.current?.abort();
+    inFlightTurn.current = null;
+    setLoading(false);
+    setValidatedSelection(null);
+    await validateProjectSelection();
+  }, [validateProjectSelection, ready]);
+
+  useEffect(() => {
+    if (!ready) return;
+    // Verify restored/navigation selections before exposing cached data; also catch completion elsewhere.
+    void Promise.resolve().then(validateProjectSelection);
+    const timer = setInterval(() => { if (AppState.currentState === "active") void validateProjectSelection(); }, 15000);
+    const subscription = AppState.addEventListener("change", state => { if (state === "active") void validateProjectSelection(); });
+    return () => { validationEpoch.current += 1; clearInterval(timer); subscription.remove(); };
+  }, [ready, activeProjectKey, pathname, validateProjectSelection]);
+
+  const getProjectMessages = useCallback((projectId: number) => {
+    return [...(conversationsRef.current[String(projectId)]?.messages ?? [])];
+  }, []);
+
   const linkToProject = useCallback(
     (projectId: number, naming?: SavedProjectName) => {
       if (activeKeyRef.current !== activeProjectKey) throw new Error("The selected project changed.");
@@ -400,7 +649,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
         setActiveProjectTitle(naming.title);
         setProjectNaming(naming);
         setPlan(linkedPlan);
-        setApprovalStage("summary");
+        setApprovalStageState("summary");
       }
       persist();
       setActiveProjectKey(newKey);
@@ -420,28 +669,56 @@ export function PlanProvider({ children }: { children: ReactNode }) {
     setActiveProjectKey(key);
   }, [ready, applyConversation, persist]);
 
+  const planningSessions = activeSelectionReady && verifiedProjects ? resumablePlanningSessions(savedConversations, verifiedProjects) : [];
+  const resumePlanningSession = (key: string): boolean => {
+    if (!activeSelectionReady || !planningSessions.some(session => session.key === key)) return false;
+    if (/^[1-9]\d*$/.test(key)) {
+      selectProject(Number(key), undefined, verifiedProjects?.find(project => String(project.id) === key)?.title);
+    } else {
+      const conversation = conversationsRef.current[key];
+      if (!conversation || !key.startsWith("draft:")) return false;
+      activeKeyRef.current = key;
+      applyConversation(conversation);
+      setError(null);
+      setLastAssistantMessage(null);
+      setActiveProjectKey(key);
+      persist();
+    }
+    return true;
+  };
+
   return (
     <PlanContext.Provider
       value={{
-        plan,
-        messages,
+        plan: activeSelectionReady ? plan : null,
+        messages: activeSelectionReady ? messages : EMPTY_CONVERSATION.messages,
         loading,
         error,
-        lastAssistantMessage,
-        approvalStage,
+        lastAssistantMessage: activeSelectionReady ? lastAssistantMessage : null,
+        approvalStage: activeSelectionReady ? approvalStage : null,
         setApprovalStage,
-        ready,
+        review: activeSelectionReady ? review : EMPTY_REVIEW,
+        setReview,
+        pendingTurn: activeSelectionReady ? pendingTurn : null,
+        ready: activeSelectionReady,
+        projectSelectionError,
+        refreshProjectSelection,
+        getProjectMessages,
+        planningSessions,
+        planningSessionsReady: activeSelectionReady && verifiedProjects !== null,
+        resumePlanningSession,
         activeProjectKey,
-        activeProjectTitle,
+        activeProjectTitle: activeSelectionReady ? activeProjectTitle : null,
         restoredVersion,
         send,
         updatePlan,
+        setSupplierSelection,
         reset,
         selectProject,
         startFresh,
         linkToProject,
         getFinalizationKey,
-        projectNaming,
+        projectNaming: activeSelectionReady ? projectNaming : null,
         syncProjectNaming,
       }}
     >

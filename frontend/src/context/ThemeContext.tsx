@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Appearance, View } from "react-native";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { View } from "react-native";
 import { vars } from "nativewind";
 import { tokenStorage } from "@/utils/tokenStorage";
 import { darkChrome, lightChrome, type ChromeColors } from "@/theme/colors";
@@ -42,32 +43,53 @@ interface ThemeContextValue {
    * className (React Navigation's screenOptions, SVGs, etc.). */
   chrome: ChromeColors;
   toggleTheme: () => void;
+  setTheme: (mode: ThemeMode) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [mode, setMode] = useState<ThemeMode>(() => (Appearance.getColorScheme() === "light" ? "light" : "dark"));
+  const { user } = useAuth();
+  const key = `${STORAGE_KEY}:${user?.id ?? "guest"}`;
+  // New accounts start in Light Mode; an explicit per-account saved choice still wins.
+  const fallback: ThemeMode = "light";
+  const [selection, setSelection] = useState<{ key: string; mode: ThemeMode }>(() => ({ key, mode: fallback }));
+  const revision = useRef(0);
+  const lastSelection = useRef<{ key: string; mode: ThemeMode }>({ key, mode: fallback });
+  const writes = useRef<Promise<unknown>>(Promise.resolve());
+  const mode = selection.key === key ? selection.mode : fallback;
 
   useEffect(() => {
-    tokenStorage.getItem(STORAGE_KEY).then((saved) => {
-      if (saved === "light" || saved === "dark") setMode(saved);
-    });
-  }, []);
+    let cancelled = false;
+    const epoch = revision.current;
+    tokenStorage.getItem(key).then(saved => {
+      if (!cancelled && epoch === revision.current) {
+        const next: { key: string; mode: ThemeMode } = { key, mode: saved === "light" || saved === "dark" ? saved : fallback };
+        lastSelection.current = next;
+        setSelection(next);
+      }
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [key, fallback]);
 
+  const setTheme = (next: ThemeMode) => {
+    revision.current++;
+    lastSelection.current = { key, mode: next };
+    setSelection({ key, mode: next });
+    // Serialize writes for rapid header toggles; keys isolate accounts on shared phones.
+    writes.current = writes.current.catch(() => undefined).then(() => tokenStorage.setItem(key, next));
+    void writes.current.catch(() => undefined);
+  };
   const toggleTheme = () => {
-    setMode((prev) => {
-      const next: ThemeMode = prev === "dark" ? "light" : "dark";
-      tokenStorage.setItem(STORAGE_KEY, next).catch(() => undefined);
-      return next;
-    });
+    const current = lastSelection.current.key === key ? lastSelection.current.mode : mode;
+    setTheme(current === "dark" ? "light" : "dark");
   };
 
   const chrome = mode === "dark" ? darkChrome : lightChrome;
   const themeVars = useMemo(() => vars(CSS_VARS[mode]), [mode]);
 
   return (
-    <ThemeContext.Provider value={{ mode, chrome, toggleTheme }}>
+    <ThemeContext.Provider value={{ mode, chrome, toggleTheme, setTheme }}>
       <View style={[{ flex: 1 }, themeVars]}>{children}</View>
     </ThemeContext.Provider>
   );

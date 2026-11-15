@@ -23,6 +23,13 @@ logs/
 
 # Database exports — contain real user data (names, emails, hashed passwords).
 /backups/
+*.sql
+*.sql.gz
+*.sql.zip
+*.dump
+*.sqlite
+*.sqlite3
+*.bak
 
 # Local database dump: contains account and authentication data.
 /backend/database/buildai_seed.sql

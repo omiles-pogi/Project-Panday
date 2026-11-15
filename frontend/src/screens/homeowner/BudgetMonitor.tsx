@@ -4,7 +4,7 @@ import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Button, Card, PageHeader, Screen, StatGrid, StatTile } from "@/components/ui";
 import AddBudgetSheet from "@/components/AddBudgetSheet";
-import { addProjectBudget, fetchDashboard } from "@/services/api/projects";
+import { addProjectBudget, fetchActiveDashboard } from "@/services/api/projects";
 import { usePlan } from "@/context/PlanContext";
 import { peso } from "@/utils/currency";
 import { BUDGET_STATUS_META, compareBudget, formatBudget } from "@/utils/budget";
@@ -16,7 +16,7 @@ import { normalizePlanTimeline } from "@/utils/timeline";
 import type { DashboardProject } from "@/types/project";
 
 export default function BudgetMonitor() {
-  const { activeProjectKey, ready, selectProject } = usePlan();
+  const { activeProjectKey, ready, selectProject, refreshProjectSelection } = usePlan();
   const [project, setProject] = useState<DashboardProject | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,13 +35,14 @@ export default function BudgetMonitor() {
         if (inFlight) return;
         inFlight = true;
         const projectId = /^\d+$/.test(activeProjectKey) ? Number(activeProjectKey) : undefined;
-        fetchDashboard(projectId)
+        (projectId ? fetchActiveDashboard(projectId) : Promise.resolve({ project: null }))
         .then((dashboard) => {
           if (cancelled) return;
+          if (projectId && !dashboard.project) void refreshProjectSelection();
           // A "not started yet" project has no budget or estimate to monitor.
           setProject(dashboard.project?.status === "not_started" ? null : dashboard.project);
           setError(null);
-          if (dashboard.project) selectProject(dashboard.project.id, dashboard.project.approvedPlan);
+          if (dashboard.project) selectProject(dashboard.project.id, dashboard.project.approvedPlan, dashboard.project.title);
         })
         .catch((err) => {
           if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load budget.");
@@ -59,7 +60,7 @@ export default function BudgetMonitor() {
       };
     // Changing refreshKey intentionally restarts the focused fetch for Retry / Refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [ready, activeProjectKey, selectProject, refreshKey])
+    }, [ready, activeProjectKey, selectProject, refreshProjectSelection, refreshKey])
   );
 
   if (loading) {
