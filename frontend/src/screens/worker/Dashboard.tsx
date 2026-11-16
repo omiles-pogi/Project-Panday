@@ -8,7 +8,6 @@ import { fetchMyProjects } from "@/services/api/projects";
 import { useFocusedResource } from "@/hooks/useFocusedResource";
 import { workerDashboardData } from "@/utils/workerHistory";
 import AttendanceSection from "@/screens/worker/AttendanceSection";
-import DailyLogSection from "@/screens/worker/DailyLogSection";
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -55,7 +54,7 @@ export default function Dashboard() {
           {active.map((p) => (
             <Pressable
               key={p.id}
-              onPress={() => router.push(`/worker/assignments?projectId=${p.id}` as never)}
+              onPress={() => router.push(`/worker/project/${p.id}` as never)}
               className="p-3.5 rounded-2xl bg-muted"
             >
               <View className="flex-row items-center justify-between mb-1.5" style={{ gap: 8 }}>
@@ -77,7 +76,6 @@ export default function Dashboard() {
         </View>
       </Card>
 
-      <DailyLogSection />
     </Screen>
   );
 }

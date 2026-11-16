@@ -9,7 +9,7 @@ export function workerHistorySearch(projects: WorkerCompletedProject[], search: 
 
 export function workerDashboardData(projects: MyProject[], workerId: number) {
   const assigned = projects.filter(p => p.workers.some(w => w.id === workerId));
-  return { assigned, active: assigned.filter(p => isOngoing(p.status)), completed: assigned.filter(p => p.status === "completed") };
+  return { assigned, active: assigned.filter(p => isOngoing(p.status) && !p.completion?.confirmedAt), completed: assigned.filter(p => p.status === "completed") };
 }
 
 export function workerHistoryDate(value: string | null | undefined): string {

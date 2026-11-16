@@ -36,7 +36,7 @@ test('Worker Dashboard filters by actual worker pivots, keeping ongoing and comp
   assert.equal(utils.workerDashboardData([], 10).active.length, 0);
 });
 
-test('Dashboard preserves Attendance then Assigned Projects then Daily Work Log, with actual greeting and project links', () => {
+test('Dashboard preserves Attendance and Assigned Projects, removes Daily Work Log, and links to exact project details', () => {
   let projects = [{ id: 11, title: 'Assigned Project', ownerName: 'Recorded Owner', location: null, startedAt: '2026-01-05',
     status: 'active', overallProgressPct: 65, workers: [{ id: 10 }] }, { id: 7, status: 'completed', workers: [{ id: 10 }] }];
   const destinations = [];
@@ -49,15 +49,15 @@ test('Dashboard preserves Attendance then Assigned Projects then Daily Work Log,
     '@/screens/worker/AttendanceSection': defaults('AttendanceSection'), '@/screens/worker/DailyLogSection': defaults('DailyLogSection'),
   }).default;
   const tree = Dashboard();
-  assert.deepEqual(Array.from(tree.props.children.filter(n => n && ['AttendanceSection', 'Card', 'DailyLogSection'].includes(n.type)), n => n.type), ['AttendanceSection', 'Card', 'DailyLogSection']);
+  assert.deepEqual(Array.from(tree.props.children.filter(n => n && ['AttendanceSection', 'Card', 'DailyLogSection'].includes(n.type)), n => n.type), ['AttendanceSection', 'Card']);
   assert.equal(nodes(tree, 'Card')[0].props.title, 'Assigned Projects');
   assert.equal(nodes(tree, 'PageHeader')[0].props.title, 'Good day, Recorded Worker!');
   assert.equal(nodes(tree, 'WorkerDashboardStats')[0].props.active, 1); assert.equal(nodes(tree, 'WorkerDashboardStats')[0].props.completed, 1);
   const row = nodes(tree, 'Pressable').find(n => n.props.className?.includes('p-3.5')); row.props.onPress();
-  assert.equal(destinations.at(-1), '/worker/assignments?projectId=11');
+  assert.equal(destinations.at(-1), '/worker/project/11');
   const progress = nodes(tree, 'View').find(n => n.props.accessibilityRole === 'progressbar'); assert.equal(progress.props.accessibilityValue.now, 65);
   projects = []; const empty = Dashboard();
-  assert.ok(JSON.stringify(empty).includes('No active assignments yet')); assert.equal(nodes(empty, 'AttendanceSection').length, 1); assert.equal(nodes(empty, 'DailyLogSection').length, 1);
+  assert.ok(JSON.stringify(empty).includes('No active assignments yet')); assert.equal(nodes(empty, 'AttendanceSection').length, 1); assert.equal(nodes(empty, 'DailyLogSection').length, 0);
 });
 
 test('Worker History searches project/homeowner names and leaves unknown completion dates explicit', () => {
@@ -116,20 +116,23 @@ test('Worker navigation has equal touch regions, safe areas, theme surfaces, and
   app.state.pathname = '/worker/history/7'; assert.equal(app.render(), null);
 });
 
-test('Worker completed details render only saved authorized fields and use the required description fallback', () => {
-  const details = { ...completed, projectType: '2-storey project', location: 'Recorded location', description: 'Final approved specifications.' };
-  const Details = load('src/screens/worker/CompletedProject.tsx', {
-    'react/jsx-runtime': runtime, react: { useCallback: fn => fn }, 'react-native': primitive(['ActivityIndicator', 'ScrollView', 'Text', 'View']),
-    'expo-router': { useLocalSearchParams: () => ({ id: '7' }) }, '@/components/worker/HistoryUI': { ...primitive(['WorkerCompletedBadge', 'WorkerInfoRow', 'WorkerProjectImage']), useWorkerContentStyle: () => ({ paddingBottom: 24 }) },
-    '@/components/history/HistoryUI': primitive(['HistoryFeedback']), '@/context/ThemeContext': { useTheme: () => ({ chrome: colors.lightChrome }) },
-    '@/hooks/useFocusedResource': { useFocusedResource: () => ({ data: details }) }, '@/services/api/workerHistory': {}, '@/utils/workerHistory': utils,
+test('Worker completed details preserve saved information and keep project activity read-only', () => {
+  const details = { ...completed, projectType:'2-storey project',location:'Recorded location',description:'Final approved specifications.' };
+  const Details=load('src/screens/worker/ProjectDetails.tsx',{
+    'react/jsx-runtime':runtime,react:{useCallback:fn=>fn,useEffect(){},useState:value=>[value,()=>{}],useRef:value=>({current:value})},
+    'react-native':primitive(['ActivityIndicator','ScrollView','Text','View','Pressable']),'expo-router':{router:{}},'@expo/vector-icons':{Ionicons:'Icon'},'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:0,bottom:20,left:0,right:0})},
+    '@/components/ui':primitive(['Badge','Card','ProgressBar']),'@/components/MessageButton':defaults('Message'),
+    '@/components/worker/ProjectWorkLogs':defaults('Logs'),'@/components/worker/ProjectEarnings':defaults('Earnings'),'@/components/worker/HistoryUI':{WorkerInfoRow:'WorkerInfoRow'},
+    '@/context/AuthContext':{useAuth:()=>({user:{id:10}})},'@/context/ThemeContext':{useTheme:()=>({chrome:colors.lightChrome})},
+    '@/hooks/useFocusedResource':{useFocusedResource:()=>({data:{project:{...details,ownerName:details.homeownerName,overallProgressPct:100,phases:[],contractors:[]},historyDetails:details,logs:[],date:'2027-03-10',earnings:null}})},
+    '@/services/api/workerProjects':{},'@/utils/workerHistory':utils,'@/utils/workerProjects':{},'@/utils/projectStatus':status,
   }).default;
-  const rows = nodes(Details(), 'WorkerInfoRow').map(n => n.props);
-  assert.deepEqual(rows.map(r => r.label), ['Homeowner', 'Project Type', 'My Role', 'Completion Date', 'Location', 'Project Description']);
-  assert.equal(rows[2].value, 'Mason'); assert.equal(rows[5].value, details.description);
-  details.description = null; details.workerRole = null;
-  const missing = nodes(Details(), 'WorkerInfoRow'); assert.equal(missing[5].props.value, 'Final project description unavailable.'); assert.equal(missing[2].props.value, 'Not recorded');
-  assert.equal(nodes(Details(), 'Pressable').length, 0);
+  const render=()=>Details({projectId:7,history:true});
+  const rows=nodes(render(),'WorkerInfoRow').map(n=>n.props);
+  assert.equal(rows.find(r=>r.label==='My Role').value,'Mason');assert.equal(rows.find(r=>r.label==='Project Description').value,details.description);
+  details.description=null;details.workerRole=null;
+  const missing=nodes(render(),'WorkerInfoRow').map(n=>n.props);assert.equal(missing.find(r=>r.label==='Project Description').value,'Final project description unavailable.');assert.equal(missing.find(r=>r.label==='My Role').value,'Not recorded');
+  assert.equal(nodes(render(),'Logs')[0].props.readOnly,true);assert.equal(nodes(render(),'Earnings').length,1);
 });
 
 test('Existing Attendance check-in and check-out still call the same actions and refresh recorded data', async () => {

@@ -423,7 +423,8 @@ function SummaryCard({ plan }: { plan: ConstructionPlan }) {
           </View>
         </View>
         <Pressable
-          onPress={() => router.push("/homeowner/marketplace" as never)}
+          // Keep the selected project in PlanContext; reset only the directory's local filters.
+          onPress={() => router.push({ pathname: "/homeowner/find-team", params: { directorySession: `${Date.now()}-${Math.random().toString(36).slice(2)}` } } as never)}
           className="py-2.5 rounded-xl items-center bg-primary"
         >
           <Text className="text-sm font-bold text-primary-foreground">Find Your Team →</Text>

@@ -98,6 +98,18 @@ class TimelineService
         }
 
         $project->load('phases.tasks');
+        // Contractor History is a view of saved records, never a schedule repair.
+        // Legacy completed projects with missing dates remain viewable elsewhere,
+        // but must not be rescheduled merely by opening the Calendar/AI Schedule tab.
+        if ($actingUser->role === 'contractor' && $project->status === 'completed'
+            && $project->phases->contains(fn (ProjectPhase $phase) => ! $phase->planned_start || ! $phase->planned_end)) {
+            throw ValidationException::withMessages(['project_id' => 'The saved schedule is unavailable for this completed project. Historical records have not been changed.']);
+        }
+        if ($actingUser->role === 'contractor'
+            && $project->phases->contains(fn (ProjectPhase $phase) => ! $phase->planned_start || ! $phase->planned_end)
+            && $project->phases->contains(fn (ProjectPhase $phase) => $phase->planned_start || $phase->planned_end)) {
+            throw ValidationException::withMessages(['project_id' => 'The saved schedule has incomplete dates. Existing phase dates have been preserved; schedule review is required.']);
+        }
         $this->ensureSchedule($project);
 
         $today = Carbon::today();

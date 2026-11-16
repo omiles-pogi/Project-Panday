@@ -25,7 +25,7 @@ async function directory(options = {}) {
     '@/utils/workersFilters': load('src/utils/workersFilters.ts', {}),
     './ProjectHiringPrompt': { ...defaults('ProjectPrompt'), useHiringProjectPrompt: () => ({ disabled: options.unverified, requireProject: () => attempts++ }) },
   }).default;
-  const render = () => h.render(() => Screen({}));
+  const render = () => h.render(() => Screen(options.props ?? {}));
   return { render, tree: await render(), calls, routes, attempts: () => attempts, h };
 }
 const action = (tree, label) => nodes(tree, 'Action').find(n => n.props.accessibilityLabel === label || n.props.label === label);
@@ -53,6 +53,7 @@ test('the unverified/no-project directory reads both approved APIs without AI re
 
 test('public worker/contractor profiles open without a project, and Invite uses only the guarded planning prompt', async () => {
   const app = await directory();
+  assert.equal(action(app.tree,'Invite to Project').props.disabled,true);
   for (const [name, id, role] of [['Worker 11',11,'worker'],['Contractor 21',21,'contractor']]) {
     action(app.tree, `View ${name}'s profile`).props.onPress();
     const tree = await app.render(); assert.deepEqual({ ...nodes(tree, 'Profile')[0].props.member }, { id, name, role });
@@ -121,60 +122,119 @@ test('project actions are explicit, preserve unfinished conversations, and canno
 test('Workers and Find Your Team routes expose browsing without a full-screen lifecycle gate while retaining per-project keys',()=>{
   let context={activeProjectKey:'draft:one',ready:false};
   for(const [file,name] of [['src/app/(app)/homeowner/(tabs)/marketplace.tsx','Dashboard'],['src/app/(app)/homeowner/find-team.tsx','Browse']]){
-    const Route=load(file,{'react/jsx-runtime':runtime,'@/context/PlanContext':{usePlan:()=>context},'@/screens/homeowner/WorkersDashboard':defaults('Dashboard'),'@/screens/homeowner/FindWorkers':defaults('Browse')}).default;
+    const Route=load(file,{'react/jsx-runtime':runtime,'expo-router':{useLocalSearchParams:()=>({})},'@/context/PlanContext':{usePlan:()=>context},'@/screens/homeowner/WorkersDashboard':defaults('Dashboard'),'@/screens/homeowner/FindWorkers':defaults('Browse')}).default;
     const first=Route();assert.equal(first.type,name);context={activeProjectKey:'7',ready:true};assert.notEqual(Route().key,first.key);context={activeProjectKey:'draft:one',ready:false};
   }
 });
 
 async function browser(options={}) {
   const h=hooks(),calls=[],routes=[];let prompts=0;
+  let current=h;
+  const react=Object.fromEntries(Object.keys(h.react).map(name=>[name,(...args)=>current.react[name](...args)]));
   const context={ready:options.ready??true,activeProjectKey:options.key??'draft:blank',refreshProjectSelection:async()=>{calls.push(['validate']);}};
   const Component=load('src/screens/homeowner/FindWorkers.tsx',{
-    react:h.react,'react/jsx-runtime':runtime,'expo-router':{useFocusEffect:fn=>h.react.useEffect(fn,[fn])},
+    react,'react/jsx-runtime':runtime,'expo-router':{useFocusEffect:fn=>h.react.useEffect(fn,[fn])},
     'react-native':{Text:'Text',View:'View',Pressable:'Pressable',ActivityIndicator:'Spinner'},'@expo/vector-icons':{Ionicons:'Icon'},
     '@/components/ui':Object.fromEntries(['Badge','Card','Field','PageHeader','Screen','SubmitButton'].map(n=>[n,n])),
     '@/context/PlanContext':{usePlan:()=>context},'@/context/ThemeContext':{useTheme:()=>theme},
     '@/services/api/workers':{searchWorkers:async params=>{calls.push(['workers',params]);return options.workers?options.workers(params):[worker(11)];}},
     '@/services/api/contractors':{searchContractors:async params=>{calls.push(['contractors',params]);return[contractor(21)];}},
     '@/services/api/projects':{
-      fetchActiveDashboard:async id=>{calls.push(['dashboard',id]);return{project:options.project??null};},
+      fetchActiveDashboard:async id=>{calls.push(['dashboard',id]);return options.dashboard ? options.dashboard(id) : {project:options.project??null};},
       fetchHiringWages:async id=>{calls.push(['wages',id]);return{workers:[],contractors:[]};},
+      assignWorkerToProject:async (...args)=>calls.push(['invite-worker',...args]),
+      assignContractorToProject:async (...args)=>calls.push(['invite-contractor',...args]),
     },
-    '@/services/api/homeownerTeam':{fetchHomeownerTeam:async id=>{calls.push(['team',id]);return{pendingWorkers:[],pendingContractorIds:[]};}},
+    '@/services/api/homeownerTeam':{fetchHomeownerTeam:async id=>{calls.push(['team',id]);return{
+      pendingWorkers:calls.filter(c=>c[0]==='invite-worker'&&c[1]===id).map(c=>({workerId:c[2]})),
+      pendingContractorIds:calls.filter(c=>c[0]==='invite-contractor'&&c[1]===id).map(c=>c[2]),
+    };}},
     '@/utils/currency':{},'@/utils/wage':{}, '@/components/ProfilePhoto':{ProfileAvatar:'Avatar'},
     '@/components/homeowner/TeamProfileDetails':defaults('Profile'),
+    '@/components/homeowner/WorkersDirectory':defaults('Directory'),
     '@/components/homeowner/ProjectHiringPrompt':{...defaults('ProjectPrompt'),useHiringProjectPrompt:()=>({requireProject:()=>prompts++})},
   }).default;
-  const render=()=>h.render(Component);
-  return{render,tree:await render(),calls,routes,prompts:()=>prompts,h};
+  const render=()=>{current=h;return h.render(Component);};
+  const renderCard=async node=>{const child=hooks();current=child;const result=await child.render(()=>node.type(node.props));current=h;return result;};
+  return{render,renderCard,context,tree:await render(),calls,routes,prompts:()=>prompts,h};
 }
 
 test('the existing advanced browser loads unfiltered records before project hydration and exposes public profiles',async()=>{
   const app=await browser({ready:false});
-  assert.deepEqual(app.calls.map(c=>c[0]),['workers']);
-  assert.equal(app.calls[0][1].skills.length,0);
-  const card=nodes(app.tree,'WorkerCard')[0];assert.equal(card.props.projectId,null);card.props.onView();
+  const shared=await directory({props:nodes(app.tree,'Directory')[0].props});
+  assert.deepEqual(shared.calls.map(c=>c[0]),['workers','contractors']);
+  assert.ok(shared.calls.every(c=>c[1].skills.length===0));
+  assert.equal(nodes(shared.tree,'BuildTeamBanner').length,0);
+  const card=nodes(shared.tree,'WorkerCard')[0];assert.equal(card.props.projectId,null);card.props.onView();
   let tree=await app.render();assert.equal(nodes(tree,'Profile')[0].props.member.id,11);
-  nodes(tree,'Pressable').find(n=>text(n)==='Contractors').props.onPress();tree=await app.render();
-  assert.equal(nodes(tree,'ContractorCard')[0].props.contractor.id,21);assert.equal(nodes(tree,'ContractorCard')[0].props.projectId,null);
-  nodes(tree,'ContractorCard')[0].props.onNeedsProject();
+  assert.equal(nodes(shared.tree,'ContractorCard')[0].props.contractor.id,21);assert.equal(nodes(shared.tree,'ContractorCard')[0].props.projectId,null);
+  nodes(shared.tree,'ContractorCard')[0].props.onNeedsProject();
   assert.equal(app.prompts(),1);
-  assert.ok(app.calls.every(c=>c[0]==='workers'||c[0]==='contractors'));
+  assert.equal(app.calls.length,0);
 });
 
 test('the advanced browser enables project actions only for the exact eligible project, never a draft or completed project',async()=>{
   for(const status of ['not_started','completed','active']){
     const app=await browser({key:'7',project:{id:7,title:'Selected project',status,workers:[],contractors:[]}});
-    const active=status==='active';assert.equal(nodes(app.tree,'WorkerCard')[0].props.projectId,active?7:null);
+    const card=nodes(app.tree,'Directory')[0].props.renderWorker(worker(11));
+    const active=status==='active';assert.equal(card.props.projectId,active?7:null);
+    assert.equal(nodes(app.tree,'Directory')[0].props.showProjectPrompt,!active);
     assert.equal(app.calls.filter(c=>c[0]==='team').length,active?1:0);assert.equal(app.calls.filter(c=>c[0]==='wages').length,active?1:0);
     assert.ok(app.calls.filter(c=>['dashboard','team','wages'].includes(c[0])).every(c=>c[1]===7));
   }
 });
 
-test('switching the advanced directory mode ignores old responses and stops the new loading indicator correctly',async()=>{
-  const old=deferred();const app=await browser({ready:false,workers:()=>old.promise});
-  nodes(app.tree,'Pressable').find(n=>text(n)==='Contractors').props.onPress();let tree=await app.render();
-  assert.equal(nodes(tree,'ContractorCard').length,1);assert.equal(nodes(tree,'Spinner').length,0);
-  old.resolve([worker(99)]);tree=await app.render();assert.equal(nodes(tree,'ContractorCard')[0].props.contractor.id,21);assert.equal(nodes(tree,'WorkerCard').length,0);
+test('old project responses cannot enable invitations after the selected project changes',async()=>{
+  const old=deferred();const app=await browser({key:'7',dashboard:id=>id===7?old.promise:Promise.resolve({project:{id:8,title:'New',status:'active',workers:[],contractors:[]}})});
+  app.context.activeProjectKey='8';let tree=await app.render();
+  old.resolve({project:{id:7,title:'Old',status:'active',workers:[],contractors:[]}});tree=await app.render();
+  assert.equal(nodes(tree,'Directory')[0].props.renderWorker(worker(11)).props.projectId,8);
+  assert.equal(app.calls.some(c=>c[0]==='team'&&c[1]===7),false);
   app.h.unmount();
+});
+
+test('standalone directory retains both invitation APIs, selected project, pending states and profile actions',async()=>{
+  const app=await browser({key:'7',project:{id:7,title:'Current',status:'active',workers:[],contractors:[]}});
+  for(const [role,person]of [['worker',worker(11)],['contractor',contractor(21)]]){
+    const props=nodes(await app.render(),'Directory')[0].props;
+    const card=role==='worker'?props.renderWorker(person):props.renderContractor(person);
+    const rendered=await app.renderCard(card);
+    await nodes(rendered,'AssignButton')[0].props.onPress();
+    assert.deepEqual(app.calls.find(c=>c[0]==='invite-'+role),['invite-'+role,7,person.id]);
+    const next=nodes(await app.render(),'Directory')[0].props;
+    assert.equal((role==='worker'?next.renderWorker(person):next.renderContractor(person)).props.pending,true);
+    card.props.onView();assert.equal(nodes(await app.render(),'Profile')[0].props.member.id,person.id);
+  }
+  assert.equal(app.context.activeProjectKey,'7');
+});
+
+test('fresh PandAI directory entries remount local filters without changing project context or the Workers tab',()=>{
+  const context={activeProjectKey:'7',ready:true};let directorySession='first';
+  const Route=load('src/app/(app)/homeowner/find-team.tsx',{'react/jsx-runtime':runtime,'expo-router':{useLocalSearchParams:()=>({directorySession})},'@/context/PlanContext':{usePlan:()=>context},'@/screens/homeowner/FindWorkers':defaults('Browse')}).default;
+  const first=Route();directorySession='second';assert.notEqual(Route().key,first.key);assert.equal(context.activeProjectKey,'7');
+});
+
+test('the reused directory preserves theme surfaces and restores both user types when drawer filters are cleared',async()=>{
+  for(const card of ['#fff','#1c222b']){
+    const app=await directory({theme:{...theme,chrome:{...theme.chrome,card}}});
+    assert.equal(nodes(app.tree,'Button').find(n=>n.props.accessibilityLabel==='Filter workers').props.style.backgroundColor,card);
+    let drawer=await openFilters(app);drawer.props.onApply({type:'worker',specialty:'Mason',skills:[],minRate:'',maxRate:''});drawer.props.onClose();
+    assert.deepEqual(nodes(await app.render(),'Identity').map(n=>n.props.person.id),[11]);
+    drawer=await openFilters(app);drawer.props.onClear();drawer.props.onClose();
+    assert.deepEqual(nodes(await app.render(),'Identity').map(n=>n.props.person.id),[11,12,21]);
+  }
+});
+
+test('adding project-management sections keeps one loaded directory, existing photos and both unfiltered API requests',async()=>{
+  const props={beforeBanner:null,children:null,showProjectPrompt:true};
+  const app=await directory({props,workers:async()=>[worker(11,{photoUrl:'/api/account/photo/11/saved.jpg'})]});
+  assert.equal(nodes(app.tree,'Screen').length,1);assert.deepEqual(app.calls.map(c=>c[0]),['workers','contractors']);
+  props.beforeBanner={type:'Overview',props:{children:'Team Overview'}};
+  props.children={type:'Management',props:{children:['Pending Applications','Current Team','Recommended Workers']}};
+  props.showProjectPrompt=false;
+  const tree=await app.render();
+  assert.deepEqual(app.calls.map(c=>c[0]),['workers','contractors'],'project sections do not remount or refetch the directory');
+  assert.equal(nodes(tree,'Screen').length,1);assert.equal(nodes(tree,'Overview').length,1);assert.equal(nodes(tree,'Management').length,1);
+  assert.equal(nodes(tree,'Avatar')[0].props.url,'/api/account/photo/11/saved.jpg');
+  assert.ok(text(tree).indexOf('Explore Contractors')<text(tree).indexOf('Pending Applications'));
 });

@@ -44,7 +44,7 @@ test('checklist task text follows the theme while toggle, delete, add and phase 
       '@/components/ConfirmDialog': { useConfirmDialog: () => ({ ask: (options) => confirmations.push(options), dialog: null }) },
       '@/services/api/projects': api, '@/context/ThemeContext': { useTheme: () => ({ mode, chrome }) },
     }).default;
-    const project = { id: 7, title: 'Saved house', canManageChecklist: true, checklistLocked: false, canSubmitCompletion: false,
+    const project = { id: 7, title: 'Saved house', status: 'active', canManageChecklist: true, checklistLocked: false, canSubmitCompletion: false,
       checklist: { pct: 50, totalTasks: 2, doneTasks: 1 }, phases: [{ id: 8, name: 'Foundation', progressPct: 50,
         tasks: [{ id: 9, description: 'Check excavation', isDone: false }, { id: 10, description: 'Site cleared', isDone: true }] }] };
     const render = () => hook.render(() => {
@@ -55,8 +55,10 @@ test('checklist task text follows the theme while toggle, delete, add and phase 
     let tree = render();
     const description = nodes(tree, 'Text').find((node) => node.props.children === 'Check excavation');
     assert.equal(description.props.style.color, chrome.foreground);
-    nodes(tree, 'Pressable').find((node) => node.props.accessibilityRole === 'checkbox').props.onPress();
+    const toggle = nodes(tree, 'Pressable').find((node) => node.props.accessibilityRole === 'checkbox').props.onPress;
+    toggle(); toggle();
     await tick(); tree = render(); assert.deepEqual(calls.at(-1), ['togglePhaseTask', 7, 8, 9, true]);
+    assert.equal(calls.filter(call => call[0] === 'togglePhaseTask').length, 1);
     let stopped = false;
     nodes(tree, 'Pressable').find((node) => node.props.accessibilityLabel === 'Delete Check excavation').props.onPress({ stopPropagation() { stopped = true; } });
     await tick(); tree = render(); assert.equal(stopped, true); assert.deepEqual(calls.at(-1), ['deletePhaseTask', 7, 8, 9]);
@@ -75,40 +77,13 @@ test('checklist task text follows the theme while toggle, delete, add and phase 
   }
 });
 
-test('skills and services still trim, deduplicate and submit through the original search functions', async () => {
-  const hook = hooks(); const searches = [];
-  const FindWorkers = load('src/screens/homeowner/FindWorkers.tsx', {
-    react: hook.react, 'react/jsx-runtime': runtime,
-    'expo-router': { useFocusEffect: () => {} },
-    'react-native': { Text: 'Text', View: 'View', Pressable: 'Pressable', ActivityIndicator: 'Spinner' },
-    '@expo/vector-icons': { Ionicons: 'Icon' },
-    '@/components/ui': Object.fromEntries(['Badge', 'Card', 'Field', 'PageHeader', 'Screen', 'SubmitButton'].map((name) => [name, name])),
-    '@/services/api/workers': { searchWorkers: async (params) => { searches.push(['workers', params]); return []; } },
-    '@/services/api/contractors': { searchContractors: async (params) => { searches.push(['contractors', params]); return []; } },
-    '@/services/api/projects': {}, '@/context/PlanContext': { usePlan: () => ({ plan: null, ready: true, activeProjectKey: '7' }) },
-    '@/services/api/homeownerTeam': {},
-    '@/components/ProfilePhoto': { ProfileAvatar: 'Avatar' },
-    '@/components/homeowner/TeamProfileDetails': { __esModule: true, default: 'Details' },
-    '@/components/homeowner/ProjectHiringPrompt': { __esModule: true, default: 'ProjectPrompt', useHiringProjectPrompt: () => ({ requireProject() {} }) },
-    '@/context/ThemeContext': { useTheme: () => ({ chrome: colors.lightChrome }) },
-    '@/utils/teamRecommendations': { recommendedSkillsForPlan: () => [] }, '@/utils/currency': {}, '@/utils/wage': {},
-  }).default;
-  let tree = hook.render(FindWorkers);
-  const field = () => nodes(tree, 'Field').find((node) => node.props.label === '');
-  field().props.onChangeText('  Concrete Work  '); tree = hook.render(FindWorkers);
-  const add = nodes(tree, 'Pressable').find((node) => node.props.accessibilityLabel === 'Add skill');
-  assert.equal(add.props.style.height, 44); assert.equal(add.props.style.flexShrink, 0);
-  add.props.onPress(); tree = hook.render(FindWorkers); assert.equal(field().props.value, '');
-  field().props.onChangeText('concrete work'); tree = hook.render(FindWorkers);
-  nodes(tree, 'Pressable').find((node) => node.props.accessibilityLabel === 'Add skill').props.onPress(); tree = hook.render(FindWorkers);
-  nodes(tree, 'SubmitButton')[0].props.onPress(); await tick(); tree = hook.render(FindWorkers);
-  assert.equal(searches[0][0], 'workers'); assert.deepEqual([...searches[0][1].skills], ['Concrete Work']);
-  nodes(tree, 'Pressable').find((node) => node.props.children?.props?.children === 'Contractors').props.onPress();
-  await tick(); tree = hook.render(FindWorkers);
-  assert.ok(nodes(tree, 'Pressable').find((node) => node.props.accessibilityLabel === 'Add service'));
-  field().props.onChangeText('Project Management'); tree = hook.render(FindWorkers);
-  field().props.onSubmitEditing(); tree = hook.render(FindWorkers);
-  nodes(tree, 'SubmitButton')[0].props.onPress(); await tick();
-  assert.equal(searches.at(-1)[0], 'contractors');
-  assert.deepEqual([...searches.at(-1)[1].skills], ['Project Management']);
+test('drawer skills and services trim and deduplicate before submitting the original search parameters', () => {
+  const model=load('src/utils/workersFilters.ts',{});
+  for(const type of ['worker','contractor']) {
+    const filters=model.normalizeWorkerFilters({type,specialty:'  Residential  ',skills:['  Concrete Work  ','concrete work'],minRate:'',maxRate:''});
+    assert.deepEqual(Array.from(filters.skills),['concrete work']);
+    const query=model.workerFilterQuery(type,filters);
+    assert.deepEqual(Array.from(query.skills),['concrete work']);
+    assert.equal(query[type==='worker'?'trade':'specialization'],'Residential');
+  }
 });

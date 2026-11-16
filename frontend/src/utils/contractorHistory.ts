@@ -9,7 +9,7 @@ export function contractorHistorySearch(projects: ContractorCompletedProject[], 
 
 export function contractorDashboardData(projects: MyProject[], contractorId: number) {
   const assigned = projects.filter(p => p.contractors.some(c => c.id === contractorId));
-  const active = assigned.filter(p => isOngoing(p.status));
+  const active = assigned.filter(p => isOngoing(p.status) && !p.completion?.confirmedAt);
   const completed = assigned.filter(p => p.status === "completed");
   const team = new Set<number>();
   for (const project of assigned) {

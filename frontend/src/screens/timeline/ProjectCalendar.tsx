@@ -33,10 +33,25 @@ const ACTUAL_COLOR = "#f59e0b";
  * the project's phases.
  */
 export default function ProjectCalendar({ projectId, showPhases = true }: { projectId: number; showPhases?: boolean }) {
-  const [monthKey, setMonthKey] = useState<string | null>(null);
-  const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const load = useCallback(() => fetchProjectTimeline(projectId), [projectId]);
   const { data: timeline, loading, error } = useFocusedResource(load);
+  return <View style={{ gap: 16 }}>
+    <View className="flex-row items-center gap-2">
+      <Ionicons name="calendar-outline" size={16} color="#f59e0b" />
+      <Text className="font-bold text-sm text-foreground">Project Calendar</Text>
+    </View>
+    {error && <InfoBox color="#ef4444" title="Couldn't load the calendar">{error}</InfoBox>}
+    {loading && !timeline && <ActivityIndicator color="#f59e0b" style={{ marginVertical: 24 }} />}
+    {timeline && timeline.projectId === projectId && <ProjectCalendarContent key={projectId} timeline={timeline} showPhases={showPhases} />}
+  </View>;
+}
+
+/** Present the existing views with one parent-owned refresh; tabs never start extra pollers. */
+export function ProjectCalendarContent({ timeline, showPhases = true, section = "all" }: {
+  timeline: ProjectTimeline; showPhases?: boolean; section?: "all" | "overview" | "calendar" | "schedule" | "none";
+}) {
+  const [monthKey, setMonthKey] = useState<string | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
   useEffect(() => {
     if (!timeline) return;
     // Preserve the chosen month while fresh progress arrives from the backend.
@@ -54,24 +69,16 @@ export default function ProjectCalendar({ projectId, showPhases = true }: { proj
 
   return (
     <View style={{ gap: 16 }}>
-      <View className="flex-row items-center gap-2">
+      {section === "calendar" && <View className="flex-row items-center gap-2">
         <Ionicons name="calendar-outline" size={16} color="#f59e0b" />
         <Text className="font-bold text-sm text-foreground">Project Calendar</Text>
-      </View>
-
-      {error && (
-        <InfoBox color="#ef4444" title="Couldn't load the calendar">
-          {error}
-        </InfoBox>
-      )}
-
-      {loading && !timeline && <ActivityIndicator color="#f59e0b" style={{ marginVertical: 24 }} />}
+      </View>}
 
       {timeline && (
         <>
-          <ScheduleSummary timeline={timeline} />
-          <MonthlyChart timeline={timeline} selectedKey={monthKey} onSelect={pickMonth} />
-          {month && (
+          {(section === "all" || section === "overview") && <ScheduleSummary timeline={timeline} />}
+          {(section === "all" || section === "overview") && <MonthlyChart timeline={timeline} selectedKey={monthKey} onSelect={pickMonth} />}
+          {(section === "all" || section === "calendar") && month && (
             <MonthCalendar
               timeline={timeline}
               month={month}
@@ -83,7 +90,7 @@ export default function ProjectCalendar({ projectId, showPhases = true }: { proj
               onSelectDay={setSelectedDay}
             />
           )}
-          {showPhases && <PhaseSchedule timeline={timeline} />}
+          {showPhases && (section === "all" || section === "schedule") && <PhaseSchedule timeline={timeline} />}
         </>
       )}
     </View>

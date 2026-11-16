@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { useFocusEffect } from "expo-router";
-import { Text, View, Pressable, ActivityIndicator } from "react-native";
+import { Text, View, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Badge, Card, Field, PageHeader, Screen, SubmitButton } from "@/components/ui";
-import { searchWorkers, rateWorker } from "@/services/api/workers";
+import { Badge, Card, Field, PageHeader } from "@/components/ui";
+import { rateWorker } from "@/services/api/workers";
 import { fetchHomeownerTeam } from "@/services/api/homeownerTeam";
-import { searchContractors, rateContractor } from "@/services/api/contractors";
+import { rateContractor } from "@/services/api/contractors";
 import {
   assignWorkerToProject,
   unassignWorkerFromProject,
@@ -20,28 +20,11 @@ import { ProfileAvatar } from "@/components/ProfilePhoto";
 import { peso } from "@/utils/currency";
 import { wageLine } from "@/utils/wage";
 import TeamProfileDetails from "@/components/homeowner/TeamProfileDetails";
-import ProjectHiringPrompt, { useHiringProjectPrompt } from "@/components/homeowner/ProjectHiringPrompt";
+import { useHiringProjectPrompt } from "@/components/homeowner/ProjectHiringPrompt";
+import WorkersDirectory from "@/components/homeowner/WorkersDirectory";
 import type { HiringWage, HiringWageData } from "@/types/project";
 import type { WorkerSearchResult } from "@/types/worker";
 import type { ContractorSearchResult } from "@/types/contractor";
-
-type Mode = "workers" | "contractors";
-
-function SkillTag({ skill, onRemove }: { skill: string; onRemove?: () => void }) {
-  return (
-    <Pressable
-      onPress={onRemove}
-      disabled={!onRemove}
-      className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
-      style={{ backgroundColor: "#f59e0b20" }}
-    >
-      <Text className="text-xs font-medium" style={{ color: "#f59e0b" }}>
-        {skill}
-      </Text>
-      {onRemove && <Ionicons name="close" size={12} color="#f59e0b" />}
-    </Pressable>
-  );
-}
 
 function RatingForm({ onCancel, onSubmit }: { onCancel: () => void; onSubmit: (score: number, comment?: string) => Promise<void> }) {
   const [score, setScore] = useState(5);
@@ -327,7 +310,8 @@ function ContractorCard({
       <View className="flex-row items-start justify-between gap-2 mb-2">
         <ProfileAvatar name={contractor.name} url={contractor.photoUrl} size={40} />
         <View className="flex-1">
-          <Text className="font-bold text-sm text-foreground">{contractor.companyName || contractor.name}</Text>
+          <Text className="font-bold text-sm text-foreground">{contractor.name}</Text>
+          {!!contractor.companyName && <Text className="text-xs text-muted-foreground">{contractor.companyName}</Text>}
           <Text className="text-xs text-muted-foreground">
             {contractor.specialization} · {contractor.yearsExperience} yrs experience
           </Text>
@@ -385,17 +369,6 @@ export default function FindWorkers() {
   const { activeProjectKey, ready, refreshProjectSelection } = usePlan();
   const projectFlow = useHiringProjectPrompt();
   const [profile, setProfile] = useState<{ id: number; name: string; role: "worker" | "contractor" } | null>(null);
-  const [mode, setMode] = useState<Mode>("workers");
-  const [query, setQuery] = useState("");
-  const [skillInput, setSkillInput] = useState("");
-  const [skills, setSkills] = useState<string[]>([]);
-  const [workerResults, setWorkerResults] = useState<WorkerSearchResult[] | null>(null);
-  const [contractorResults, setContractorResults] = useState<ContractorSearchResult[] | null>(null);
-  const [loading, setLoading] = useState(true); // starts true: we auto-load on mount below
-  const [error, setError] = useState<string | null>(null);
-  const searchVersion = useRef(0);
-  const invalidateSearch = useCallback(() => { searchVersion.current++; }, []);
-
   const [projectId, setProjectId] = useState<number | null>(null);
   const [projectTitle, setProjectTitle] = useState<string | null>(null);
   const [assignedWorkerIds, setAssignedWorkerIds] = useState<Set<number>>(new Set());
@@ -462,41 +435,6 @@ export default function FindWorkers() {
     }, [activeProjectKey, ready, refreshProjectSelection, wageVersion])
   );
 
-  const runSearch = useCallback(async (targetMode: Mode, query: string | undefined, skills: string[]) => {
-    const version = ++searchVersion.current;
-    setLoading(true); setError(null);
-    try {
-      if (targetMode === "workers") {
-        const data = await searchWorkers({ trade: query, skills });
-        if (version === searchVersion.current) setWorkerResults(data);
-      } else {
-        const data = await searchContractors({ specialization: query, skills });
-        if (version === searchVersion.current) setContractorResults(data);
-      }
-    } catch (err) {
-      if (version === searchVersion.current) setError(err instanceof Error ? err.message : "Failed to load the directory. Please retry.");
-    } finally { if (version === searchVersion.current) setLoading(false); }
-  }, []);
-
-  // Public browsing does not wait for project validation or use AI results. Hiring
-  // and wages above still require the exact verified active project.
-  useEffect(() => {
-    let cancelled = false;
-    void Promise.resolve().then(() => { if (!cancelled) void runSearch("workers", undefined, []); });
-    return () => { cancelled = true; invalidateSearch(); };
-  }, [runSearch, invalidateSearch]);
-
-  const switchMode = (next: Mode) => {
-    setMode(next);
-    setQuery("");
-    setSkills([]);
-    setSkillInput("");
-    setError(null);
-    searchVersion.current++;
-    setLoading(false);
-    if ((next === "workers" && workerResults === null) || (next === "contractors" && contractorResults === null)) void runSearch(next, undefined, []);
-  };
-
   const handleWorkerAssignedChange = (id: number, assigned: boolean) => {
     setWageVersion((version) => version + 1);
     setAssignedWorkerIds((prev) => {
@@ -517,165 +455,40 @@ export default function FindWorkers() {
     });
   };
 
-  const addSkill = () => {
-    const trimmed = skillInput.trim();
-    if (!trimmed || skills.some((s) => s.toLowerCase() === trimmed.toLowerCase())) {
-      setSkillInput("");
-      return;
-    }
-    setSkills((prev) => [...prev, trimmed]);
-    setSkillInput("");
-  };
-
-  const search = () => runSearch(mode, query.trim() || undefined, skills);
-
-  const results = mode === "workers" ? workerResults : contractorResults;
   const workerWagesById = new Map(hiringWages?.workers.map((entry) => [entry.userId, entry]));
   const contractorWagesById = new Map(hiringWages?.contractors.map((entry) => [entry.userId, entry]));
 
-  return (
-    <Screen topInset={false}>
-      <PageHeader
-        title="Find Your Team"
-        subtitle="Browse approved workers and contractors. Use the filters to narrow it down."
-      />
+  return <>
+    <WorkersDirectory showBanner={false} showProjectPrompt={!projectId} header={<>
+      <PageHeader title="Find Your Team" subtitle="Browse approved workers and contractors. Use the filters to narrow it down." />
       <Text className="text-xs leading-5 text-muted-foreground">Wages are filled in automatically when team members join your project. Estimates are marked below; you do not need to enter amounts manually.</Text>
-
-      {!projectId && <ProjectHiringPrompt flow={projectFlow} />}
-
-      {projectId && (
-        <View className="flex-row items-center gap-1.5 px-1">
-          <Ionicons name="briefcase-outline" size={13} color="#9ca3af" />
-          <Text className="text-xs text-muted-foreground">
-            Adding team members to: <Text className="text-foreground font-semibold">{projectTitle}</Text>
-          </Text>
-        </View>
-      )}
-      {!projectId && pendingTitle && (
-        <View className="flex-row items-start gap-1.5 px-1">
-          <Ionicons name="hourglass-outline" size={13} color="#f59e0b" style={{ marginTop: 1 }} />
-          <Text className="text-xs flex-1" style={{ color: "#f59e0b" }}>
-            &quot;{pendingTitle}&quot; hasn&apos;t started yet. Finish its plan with PandAi, then you can invite a team.
-          </Text>
-        </View>
-      )}
-
-      <View className="flex-row rounded-xl overflow-hidden border border-border">
-        {(["workers", "contractors"] as Mode[]).map((m) => (
-          <Pressable
-            key={m}
-            onPress={() => switchMode(m)}
-            className="flex-1 py-2.5 items-center"
-            style={{ backgroundColor: mode === m ? "#f59e0b20" : "transparent" }}
-          >
-            <Text className="text-xs font-semibold capitalize" style={{ color: mode === m ? "#f59e0b" : "#9ca3af" }}>
-              {m === "workers" ? "Skilled Workers" : "Contractors"}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      <Card title="Filter">
-        <View style={{ gap: 12 }}>
-          <Field
-            label={mode === "workers" ? "Trade" : "Specialization"}
-            value={query}
-            onChangeText={setQuery}
-            placeholder={mode === "workers" ? "e.g. Mason, Electrician" : "e.g. Residential Renovation"}
-          />
-          <View>
-            <Text className="text-xs font-medium mb-2 text-secondary-foreground">
-              {mode === "workers" ? "Skills needed" : "Services needed"}
-            </Text>
-            <View className="flex-row flex-wrap gap-2 mb-2">
-              {skills.map((skill) => (
-                <SkillTag key={skill} skill={skill} onRemove={() => setSkills((prev) => prev.filter((s) => s !== skill))} />
-              ))}
-            </View>
-            <View className="flex-row gap-2" style={{ alignItems: "center" }}>
-              <View className="flex-1">
-                <Field
-                  label=""
-                  value={skillInput}
-                  onChangeText={setSkillInput}
-                  placeholder={mode === "workers" ? "e.g. Concrete Work" : "e.g. Project Management"}
-                  onSubmitEditing={addSkill}
-                  returnKeyType="done"
-                  style={{ minHeight: 44 }}
-                />
-              </View>
-              <Pressable onPress={addSkill} accessibilityRole="button" accessibilityLabel={mode === "workers" ? "Add skill" : "Add service"}
-                className="items-center justify-center rounded-xl bg-primary"
-                style={{ width: 44, height: 44, flexShrink: 0, alignSelf: "center" }}>
-                <Ionicons name="add" size={18} color="#0f1117" />
-              </Pressable>
-            </View>
-          </View>
-          <SubmitButton
-            label={loading ? "Filtering…" : `Filter ${mode === "workers" ? "Workers" : "Contractors"}`}
-            onPress={search}
-          />
-        </View>
-      </Card>
-
-      {error && <Text className="text-xs text-danger px-1">{error}</Text>}
-      {wageError && (
-        <View style={{ gap: 6 }}>
-          <Text className="text-xs text-danger">Could not refresh team wages: {wageError}</Text>
-          <Pressable accessibilityRole="button" onPress={() => setWageVersion((version) => version + 1)} className="self-start px-3 py-2 rounded-lg bg-muted border border-border">
-            <Text className="text-xs font-semibold text-foreground">Retry wages</Text>
-          </Pressable>
-        </View>
-      )}
-
-      {loading && (
-        <View className="items-center py-6">
-          <ActivityIndicator color="#f59e0b" />
-        </View>
-      )}
-
-      {!loading && !error && results !== null && results.length === 0 && (
-        <Text className="text-sm text-center text-muted-foreground py-6">
-          No approved {mode === "workers" ? "workers" : "contractors"} {query.trim() || skills.length ? "match that filter" : "have signed up yet"}.
-        </Text>
-      )}
-
-      {!loading &&
-        mode === "workers" &&
-        workerResults?.map((worker) => (
-          <WorkerCard
-            key={`${projectId}-${worker.id}`}
-            worker={worker}
-            projectId={projectId}
-            assigned={assignedWorkerIds.has(worker.id)}
-            onAssignedChange={handleWorkerAssignedChange}
-            hiringWage={workerWagesById.get(worker.id)}
-            wageLoading={wageLoading}
-            pending={pendingWorkerIds.has(worker.id)}
-            onInvited={() => { setPendingWorkerIds(previous => new Set([...previous, worker.id])); setWageVersion(version => version + 1); }}
-            onView={() => setProfile({ id: worker.id, name: worker.name, role: "worker" })}
-            onNeedsProject={projectFlow.requireProject}
-          />
-        ))}
-
-      {!loading &&
-        mode === "contractors" &&
-        contractorResults?.map((contractor) => (
-          <ContractorCard
-            key={`${projectId}-${contractor.id}`}
-            contractor={contractor}
-            projectId={projectId}
-            assigned={assignedContractorIds.has(contractor.id)}
-            onAssignedChange={handleContractorAssignedChange}
-            hiringWage={contractorWagesById.get(contractor.id)}
-            wageLoading={wageLoading}
-            pending={pendingContractorIds.has(contractor.id)}
-            onInvited={() => { setPendingContractorIds(previous => new Set([...previous, contractor.id])); setWageVersion(version => version + 1); }}
-            onView={() => setProfile({ id: contractor.id, name: contractor.name, role: "contractor" })}
-            onNeedsProject={projectFlow.requireProject}
-          />
-        ))}
-      {profile && <TeamProfileDetails key={`${profile.role}-${profile.id}`} member={profile} onClose={() => setProfile(null)} />}
-    </Screen>
-  );
+      {projectId && <View className="flex-row items-center gap-1.5 px-1">
+        <Ionicons name="briefcase-outline" size={13} color="#9ca3af" />
+        <Text className="text-xs text-muted-foreground">Adding team members to: <Text className="text-foreground font-semibold">{projectTitle}</Text></Text>
+      </View>}
+      {!projectId && pendingTitle && <View className="flex-row items-start gap-1.5 px-1">
+        <Ionicons name="hourglass-outline" size={13} color="#f59e0b" style={{ marginTop: 1 }} />
+        <Text className="text-xs flex-1" style={{ color: "#f59e0b" }}>&quot;{pendingTitle}&quot; hasn&apos;t started yet. Finish its plan with PandAi, then you can invite a team.</Text>
+      </View>}
+      {wageError && <View style={{ gap: 6 }}>
+        <Text className="text-xs text-danger">Could not refresh team wages: {wageError}</Text>
+        <Pressable accessibilityRole="button" onPress={() => setWageVersion(version => version + 1)} className="self-start px-3 py-2 rounded-lg bg-muted border border-border"><Text className="text-xs font-semibold text-foreground">Retry wages</Text></Pressable>
+      </View>}
+    </>} renderWorker={worker => <WorkerCard
+      key={String(projectId) + "-" + worker.id} worker={worker} projectId={projectId}
+      assigned={assignedWorkerIds.has(worker.id)} onAssignedChange={handleWorkerAssignedChange}
+      hiringWage={workerWagesById.get(worker.id)} wageLoading={wageLoading}
+      pending={pendingWorkerIds.has(worker.id)}
+      onInvited={() => { setPendingWorkerIds(previous => new Set([...previous, worker.id])); setWageVersion(version => version + 1); }}
+      onView={() => setProfile({ id: worker.id, name: worker.name, role: "worker" })} onNeedsProject={projectFlow.requireProject}
+    />} renderContractor={contractor => <ContractorCard
+      key={String(projectId) + "-" + contractor.id} contractor={contractor} projectId={projectId}
+      assigned={assignedContractorIds.has(contractor.id)} onAssignedChange={handleContractorAssignedChange}
+      hiringWage={contractorWagesById.get(contractor.id)} wageLoading={wageLoading}
+      pending={pendingContractorIds.has(contractor.id)}
+      onInvited={() => { setPendingContractorIds(previous => new Set([...previous, contractor.id])); setWageVersion(version => version + 1); }}
+      onView={() => setProfile({ id: contractor.id, name: contractor.name, role: "contractor" })} onNeedsProject={projectFlow.requireProject}
+    />} />
+    {profile && <TeamProfileDetails key={profile.role + "-" + profile.id} member={profile} onClose={() => setProfile(null)} />}
+  </>;
 }

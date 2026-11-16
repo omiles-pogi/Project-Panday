@@ -47,6 +47,7 @@ export function ContractorHistoryCard({ project, onPress }: { project: Contracto
         <Text style={{ color: chrome.foreground, fontSize: 16, fontWeight: "800" }}>{project.title}</Text>
         <Text style={{ color: chrome.secondaryForeground, fontSize: 12 }}>Homeowner: {project.homeownerName}</Text>
         <Text style={{ color: chrome.secondaryForeground, fontSize: 12 }}>Completed: {contractorDate(project.completedAt)}</Text>
+        {project.overallProgressPct != null && <Text style={{ color: chrome.secondaryForeground, fontSize: 12 }}>Progress: {project.overallProgressPct}%</Text>}
         <CompletedBadge />
       </View>
       <Ionicons name="chevron-forward" size={18} color={chrome.secondaryForeground} />

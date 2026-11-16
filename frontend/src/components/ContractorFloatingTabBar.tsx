@@ -27,10 +27,12 @@ export default function ContractorFloatingTabBar() {
   const activeColor = mode === "light" ? "#d97706" : "#fbbf24";
   const inactiveColor = mode === "light" ? chrome.mutedForeground : chrome.secondaryForeground;
   const regular = (item: (typeof LEFT)[number] | (typeof RIGHT)[number]) => {
-    const selected = pathname === item.href || (item.href !== "/contractor" && pathname.startsWith(`${item.href}/`));
+    const selected = pathname === item.href || (item.href !== "/contractor" && pathname.startsWith(`${item.href}/`))
+      || (item.href === "/contractor/projects" && pathname.startsWith("/contractor/project/"));
     const color = selected ? activeColor : inactiveColor;
     return <Pressable key={item.href} accessibilityRole="button" accessibilityLabel={item.label}
-      accessibilityState={{ selected }} onPress={() => { if (!selected || pathname !== item.href) router.navigate(item.href as never); }}
+      // Projects also clears a detail's projectId query when its selected tab is tapped.
+      accessibilityState={{ selected }} onPress={() => { if (item.href === "/contractor/projects" || !selected || pathname !== item.href) router.navigate(item.href as never); }}
       style={styles.item}>
       <Ionicons name={item.icon} size={22} color={color} />
       <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={1.35}

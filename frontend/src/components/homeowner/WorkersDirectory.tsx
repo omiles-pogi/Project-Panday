@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, Keyboard, Pressable, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -13,11 +13,24 @@ import { Action, BuildTeamBanner, Identity, Skills, WorkersSectionTitle } from "
 import TeamProfileDetails from "./TeamProfileDetails";
 import ProjectHiringPrompt, { useHiringProjectPrompt } from "./ProjectHiringPrompt";
 import WorkersFilterDrawer from "./WorkersFilterDrawer";
+import type { WorkerSearchResult } from "@/types/worker";
+import type { ContractorSearchResult } from "@/types/contractor";
 
 type Person = DirectoryPerson;
 type Profile = { id: number; name: string; role: "worker" | "contractor" };
 
-export default function WorkersDirectory({ teamError, onRetryTeam }: { teamError?: string | null; onRetryTeam?: () => void }) {
+export default function WorkersDirectory({ teamError, onRetryTeam, showBanner = true, showProjectPrompt = true, beforeBanner, header, children, renderWorker, renderContractor, renderInvite }: {
+  teamError?: string | null;
+  onRetryTeam?: () => void;
+  showBanner?: boolean;
+  showProjectPrompt?: boolean;
+  beforeBanner?: ReactNode;
+  header?: ReactNode;
+  children?: ReactNode;
+  renderWorker?: (worker: WorkerSearchResult) => ReactNode;
+  renderContractor?: (contractor: ContractorSearchResult) => ReactNode;
+  renderInvite?: (person: DirectoryPerson, role: Profile["role"]) => ReactNode;
+}) {
   const { chrome } = useTheme();
   const flow = useHiringProjectPrompt();
   const [query, setQuery] = useState("");
@@ -69,18 +82,25 @@ export default function WorkersDirectory({ teamError, onRetryTeam }: { teamError
       {resource.loading && !resource.data && <ActivityIndicator accessibilityLabel={`Loading ${title.toLowerCase()}`} color="#f59e0b" />}
       {resource.error && <View style={{ gap: 6 }}><Text accessibilityRole="alert" style={{ color: "#ef4444", fontSize: 12 }}>Could not load approved {role === "worker" ? "workers" : "contractors"}. {resource.error}</Text><Action label={`Retry ${role === "worker" ? "workers" : "contractors"}`} onPress={() => void resource.refresh()} /></View>}
       {!resource.loading && !resource.error && !people.length && <Text style={{ color: chrome.secondaryForeground, fontSize: 12 }}>No approved {role === "worker" ? "workers" : "contractors"} {filtered ? "match these filters." : "are available yet."}</Text>}
-      {people.map(person => <View key={person.id} style={{ backgroundColor: chrome.card, borderColor: chrome.border, borderWidth: 1, borderRadius: 18, padding: 12, gap: 10, shadowColor: "#000", shadowOpacity: 0.05, shadowOffset: { width: 0, height: 2 }, shadowRadius: 5, elevation: 1 }}>
+      {people.map(person => {
+        // The standalone route reuses its existing project-aware hiring cards; the
+        // dashboard's public browsing cards keep their current appearance and behavior.
+        if ("trade" in person && renderWorker) return <View key={person.id}>{renderWorker(person)}</View>;
+        if ("specialization" in person && renderContractor) return <View key={person.id}>{renderContractor(person)}</View>;
+        return <View key={person.id} style={{ backgroundColor: chrome.card, borderColor: chrome.border, borderWidth: 1, borderRadius: 18, padding: 12, gap: 10, shadowColor: "#000", shadowOpacity: 0.05, shadowOffset: { width: 0, height: 2 }, shadowRadius: 5, elevation: 1 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}><ProfileAvatar name={person.name} url={"photoUrl" in person ? person.photoUrl : undefined} size={46} /><Identity person={person} /></View>
         <Skills skills={person.skills} />
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
           <Action label="View Profile" accessibilityLabel={`View ${person.name}'s profile`} icon="eye-outline" onPress={() => setProfile({ id: person.id, name: person.name, role })} />
-          <Action label="Invite to Project" onPress={flow.requireProject} />
+          {renderInvite ? renderInvite(person, role) : <Action label="Invite to Project" disabled onPress={flow.requireProject} />}
         </View>
-      </View>)}
+      </View>; })}
     </View>;
   };
   return <Screen topInset={false}>
-    <BuildTeamBanner canInvite onBrowse={() => router.push("/homeowner/find-team" as never)} />
+    {beforeBanner}
+    {showBanner && <BuildTeamBanner canInvite onBrowse={() => router.push("/homeowner/find-team" as never)} />}
+    {header}
     {teamError && <View style={{ gap: 6 }}><Text accessibilityRole="alert" style={{ color: "#ef4444" }}>{teamError}</Text>{onRetryTeam && <Action label="Retry team" onPress={onRetryTeam} />}</View>}
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
       <View style={{ flex: 1, minWidth: 0, height: 44, borderWidth: 1, borderColor: chrome.border, borderRadius: 12, paddingHorizontal: 10, backgroundColor: chrome.card, flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -97,7 +117,8 @@ export default function WorkersDirectory({ teamError, onRetryTeam }: { teamError
     </View>
     {(!filters || filters.type === "worker") && section("Explore Skilled Workers", "worker", workers)}
     {(!filters || filters.type === "contractor") && section("Explore Contractors", "contractor", contractors)}
-    <ProjectHiringPrompt flow={flow} />
+    {children}
+    {showProjectPrompt && <ProjectHiringPrompt flow={flow} />}
     {profile && <TeamProfileDetails key={`${profile.role}-${profile.id}`} member={profile} onClose={() => setProfile(null)} />}
     {filterOpen && <WorkersFilterDrawer initial={filters} workers={workers.data ?? []} contractors={contractors.data ?? []} loading={busy} workerError={workers.error} contractorError={contractors.error}
       onRetry={type => refreshResults([type])} onApply={apply} onClear={clear} onClose={() => setFilterOpen(false)} />}

@@ -65,6 +65,12 @@ class WorkerHistoryService
         return $parts ? implode(' · ', $parts) : null;
     }
 
+    /** Safe scalar for ongoing assignment summaries; never expose the private AI-plan payload. */
+    public function projectTypeFor(Project $project): ?string
+    {
+        return $this->projectType(is_array($project->approved_plan) ? $project->approved_plan : []);
+    }
+
     private function description(array $plan): ?string
     {
         // Present only saved approved fields. Never read an initial prompt or call the AI here.

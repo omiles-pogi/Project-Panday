@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Text, View, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Button, Field, ProgressBar } from "@/components/ui";
@@ -19,11 +19,13 @@ function PhaseChecklist({
   editable,
   phase,
   onChanged,
+  collapsible = false,
 }: {
   projectId: number;
   editable: boolean;
   phase: DashboardPhase;
   onChanged: () => Promise<void>;
+  collapsible?: boolean;
 }) {
   const { chrome, mode } = useTheme();
   const secondaryText = mode === "light" ? chrome.mutedForeground : chrome.secondaryForeground;
@@ -33,13 +35,16 @@ function PhaseChecklist({
   const [busyTaskId, setBusyTaskId] = useState<number | null>(null);
   const [bulk, setBulk] = useState<"check" | "uncheck" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(true);
+  const mutation = useRef(false);
   const doneCount = phase.tasks.filter((task) => task.isDone).length;
   const busy = busyTaskId !== null || adding || bulk !== null;
 
   // Check All / Uncheck All for this phase only, each behind a confirmation. Saved to the server, so it
   // stays after a refresh.
   const runBulk = async (kind: "check" | "uncheck") => {
-    if (busy) return;
+    if (!editable || busy || mutation.current) return;
+    mutation.current = true;
     setBulk(kind);
     setError(null);
     try {
@@ -48,6 +53,7 @@ function PhaseChecklist({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not update this phase. Please try again.");
     } finally {
+      mutation.current = false;
       setBulk(null);
     }
   };
@@ -80,7 +86,8 @@ function PhaseChecklist({
 
   const addTask = async () => {
     const description = newTask.trim();
-    if (!description || adding || busyTaskId !== null) return;
+    if (!editable || !description || busy || mutation.current) return;
+    mutation.current = true;
     setAdding(true);
     setError(null);
     try {
@@ -90,12 +97,14 @@ function PhaseChecklist({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add the checklist item.");
     } finally {
+      mutation.current = false;
       setAdding(false);
     }
   };
 
   const toggleTask = async (taskId: number, isDone: boolean) => {
-    if (busy) return;
+    if (!editable || busy || mutation.current) return;
+    mutation.current = true;
     setBusyTaskId(taskId);
     setError(null);
     try {
@@ -104,12 +113,14 @@ function PhaseChecklist({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not update progress. Please try again.");
     } finally {
+      mutation.current = false;
       setBusyTaskId(null);
     }
   };
 
   const removeTask = async (taskId: number) => {
-    if (busyTaskId !== null || adding) return;
+    if (!editable || busy || mutation.current) return;
+    mutation.current = true;
     setBusyTaskId(taskId);
     setError(null);
     try {
@@ -118,18 +129,21 @@ function PhaseChecklist({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not delete the checklist item.");
     } finally {
+      mutation.current = false;
       setBusyTaskId(null);
     }
   };
 
   return (
     <View className="px-3 py-3 rounded-xl bg-muted" style={{ gap: 8 }}>
-      <View className="flex-row justify-between items-center" style={{ gap: 8 }}>
-        <Text className="text-xs font-semibold" style={{ color: chrome.foreground, flex: 1 }}>{phase.name}</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel={`${phase.name} checklist`} accessibilityState={{ expanded }} disabled={!collapsible}
+        onPress={() => setExpanded(value => !value)} className="flex-row justify-between items-center" style={{ gap: 8 }}>
+        <Text className="text-xs font-semibold" style={{ color: chrome.foreground, flex: 1 }}>{phase.name} ({doneCount}/{phase.tasks.length})</Text>
         <Text className="text-xs" style={{ color: chrome.foreground }}>
           {phase.progressPct}%
         </Text>
-      </View>
+      </Pressable>
+      {expanded && <>
 
       {editable && phase.tasks.length > 0 && (
         <View className="flex-row flex-wrap gap-2">
@@ -204,6 +218,7 @@ function PhaseChecklist({
         </View>
       )}
 
+      </>}
       {dialog}
     </View>
   );
@@ -217,9 +232,13 @@ function PhaseChecklist({
 export default function ProjectChecklistCard({
   project,
   onChanged,
+  readOnly = false,
+  collapsible = false,
 }: {
   project: DashboardProject;
   onChanged: () => Promise<void>;
+  readOnly?: boolean;
+  collapsible?: boolean;
 }) {
   const { chrome, mode } = useTheme();
   const secondaryText = mode === "light" ? chrome.mutedForeground : chrome.secondaryForeground;
@@ -227,13 +246,15 @@ export default function ProjectChecklistCard({
   const [actionError, setActionError] = useState<string | null>(null);
   const { ask, dialog } = useConfirmDialog();
 
-  if (!project.canManageChecklist) return null;
+  const finishLock = useRef(false);
+  if (!project.canManageChecklist && !readOnly) return null;
 
   const checklist = project.checklist ?? { totalTasks: 0, doneTasks: 0, pct: 0 };
-  const editable = !project.checklistLocked;
+  const editable = !readOnly && !project.checklistLocked && project.status === "active";
 
   const runFinish = async () => {
-    if (busyAction) return;
+    if (!editable || !project.canSubmitCompletion || busyAction || finishLock.current) return;
+    finishLock.current = true;
     setBusyAction("finish");
     setActionError(null);
     try {
@@ -242,6 +263,7 @@ export default function ProjectChecklistCard({
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "That didn't go through. Please try again.");
     } finally {
+      finishLock.current = false;
       setBusyAction(null);
     }
   };
@@ -275,7 +297,7 @@ export default function ProjectChecklistCard({
       {actionError ? <Text className="text-xs text-danger">{actionError}</Text> : null}
 
       {project.phases.map((phase) => (
-        <PhaseChecklist key={phase.id} projectId={project.id} editable={editable} phase={phase} onChanged={onChanged} />
+        <PhaseChecklist key={phase.id} projectId={project.id} editable={editable} phase={phase} onChanged={onChanged} collapsible={collapsible} />
       ))}
 
       {editable && (

@@ -282,4 +282,49 @@ class ProjectTimelineTest extends TestCase
 
         $this->getJson("/api/projects/{$project->id}/timeline")->assertUnauthorized();
     }
+
+    public function test_contractor_history_reads_existing_schedule_without_changing_completed_records(): void
+    {
+        $contractor = $this->user('contractor');
+        $project = $this->sixMonthProject($this->user('homeowner'));
+        $project->contractors()->attach($contractor);
+        $project->update(['status' => 'completed', 'completion_confirmed_at' => now()]);
+        $before = $project->fresh()->getRawOriginal();
+        $phases = $project->phases()->get()->map->getRawOriginal()->all();
+        Sanctum::actingAs($contractor);
+
+        $this->getJson("/api/projects/{$project->id}/timeline")->assertOk()->assertJsonPath('projectId', $project->id);
+        $this->assertSame($before, $project->fresh()->getRawOriginal());
+        $this->assertSame($phases, $project->phases()->get()->map->getRawOriginal()->all());
+    }
+
+    public function test_contractor_history_does_not_backfill_missing_schedule_dates(): void
+    {
+        $contractor = $this->user('contractor');
+        $project = $this->sixMonthProject($this->user('homeowner'));
+        $project->contractors()->attach($contractor);
+        $project->update(['status' => 'completed', 'completion_confirmed_at' => now()]);
+        $project->phases()->first()->update(['planned_start' => null, 'planned_end' => null]);
+        $phases = $project->phases()->get()->map->getRawOriginal()->all();
+        $tasks = $project->phases()->with('tasks')->get()->flatMap->tasks->map->getRawOriginal()->all();
+        Sanctum::actingAs($contractor);
+
+        $this->getJson("/api/projects/{$project->id}/timeline")->assertUnprocessable()
+            ->assertJsonPath('error', 'The saved schedule is unavailable for this completed project. Historical records have not been changed.');
+        $this->assertSame($phases, $project->phases()->get()->map->getRawOriginal()->all());
+        $this->assertSame($tasks, $project->phases()->with('tasks')->get()->flatMap->tasks->map->getRawOriginal()->all());
+    }
+
+    public function test_contractor_views_do_not_reschedule_other_phases_when_one_date_is_missing(): void
+    {
+        $contractor = $this->user('contractor');
+        $project = $this->sixMonthProject($this->user('homeowner'));
+        $project->contractors()->attach($contractor);
+        $project->phases()->first()->update(['planned_end' => null]);
+        $before = $project->phases()->get()->map->getRawOriginal()->all();
+        Sanctum::actingAs($contractor);
+
+        $this->getJson("/api/projects/{$project->id}/timeline")->assertUnprocessable();
+        $this->assertSame($before, $project->phases()->get()->map->getRawOriginal()->all());
+    }
 }

@@ -24,6 +24,7 @@ function nodes(node, type) {
   return [...(node.type === type || node.type?.name === type ? [node] : []), ...nodes(node.props?.children, type)];
 }
 const flat = (style) => Array.isArray(style) ? Object.assign({}, ...style.filter(Boolean).map(flat)) : style;
+const text = node => node == null ? '' : typeof node !== 'object' ? String(node) : Array.isArray(node) ? node.map(text).join(' ') : text(node.props?.children);
 
 const status = load('src/utils/projectStatus.ts');
 const utils = load('src/utils/contractorHistory.ts', { '@/utils/projectStatus': status });
@@ -49,7 +50,7 @@ test('History search uses actual project and homeowner names, excluding unfinish
   assert.match(utils.contractorDate('2026-10-20'), /Oct.*20.*2026/);
 });
 
-test('Dashboard renders backend progress exactly and retains its project calendar and original management link', () => {
+test('Dashboard retains only summaries, exact ongoing averages, completed previews and existing Quick Actions', () => {
   const project = { id: 11, title: 'Backend Project', ownerName: 'Recorded Owner', status: 'active', budget: 1200000,
     location: 'Recorded location', startedAt: '2026-01-05', overallProgressPct: 65, contractors: [{ id: 10 }], workers: [{ id: 20 }] };
   const destinations = [];
@@ -58,17 +59,26 @@ test('Dashboard renders backend progress exactly and retains its project calenda
     'react-native': primitive(['Pressable', 'ScrollView', 'Text', 'View', 'ActivityIndicator']), '@expo/vector-icons': { Ionicons: 'Icon' },
     'expo-router': { router: { push: path => destinations.push(path) } }, '@/components/ui': primitive(['Badge', 'Card', 'PageHeader', 'Screen']),
     '@/components/contractor/DashboardStats': defaults('ContractorDashboardStats'), '@/context/AuthContext': { useAuth: () => ({ user: { id: 10 } }) },
-    '@/utils/contractorHistory': utils, '@/services/api/projects': {}, '@/hooks/useFocusedResource': { useFocusedResource: () => ({ data: [project] }) },
+    '@/utils/contractorHistory': utils, '@/services/api/projects': {}, '@/hooks/useFocusedResource': { useFocusedResource: () => ({ data: [project,
+      {...project,id:12,status:'completed',overallProgressPct:100},{...project,id:13,status:'completed',overallProgressPct:100}] }) },
     '@/context/ThemeContext': { useTheme: () => ({ chrome: colors.lightChrome }) }, '@/screens/timeline/ProjectCalendar': defaults('ProjectCalendar'),
     '@/utils/currency': { peso: n => `PHP ${n}` }, '@/utils/projectStatus': status,
   }).default;
   const tree = Dashboard(), stats = nodes(tree, 'ContractorDashboardStats')[0].props;
-  assert.deepEqual([stats.total, stats.ongoing, stats.completed, stats.team], [1, 1, 0, 1]);
+  assert.deepEqual([stats.total, stats.ongoing, stats.completed, stats.team], [3, 1, 2, 1]);
   const progress = nodes(tree, 'View').find(v => v.props.accessibilityRole === 'progressbar');
   assert.equal(progress.props.accessibilityValue.now, 65); assert.equal(progress.props.children.props.style.width, '65%');
-  assert.equal(nodes(tree, 'ProjectCalendar')[0].props.projectId, 11);
-  nodes(tree, 'Pressable').find(p => p.props.children?.type === 'Card').props.onPress();
-  assert.equal(destinations.at(-1), '/contractor/projects?projectId=11');
+  assert.equal(nodes(tree, 'ProjectCalendar').length, 0);
+  assert.match(text(tree),/Average ongoing progress:\s*65\s*%/);
+  assert.doesNotMatch(text(tree),/Project Calendar|Scheduled in|AI-Proposed Schedule|Check All|Uncheck All|Add Task/);
+  const cards=nodes(tree,'Pressable').filter(p=>p.props.children?.type==='Card');assert.equal(cards.length,3);
+  cards.forEach(card=>card.props.onPress());
+  assert.deepEqual(destinations,['/contractor/project/11','/contractor/history/12','/contractor/history/13']);
+  const button=label=>nodes(tree,'Pressable').find(p=>p.props.accessibilityLabel===label||text(p).trim()===label);
+  button('View All →').props.onPress();assert.equal(destinations.at(-1),'/contractor/projects');
+  for(const [label,path]of [['Browse Projects','/contractor/available'],['Material Requests','/contractor/material-requests'],['Messages','/contractor/messages'],['More','/contractor/more']]){
+    button(label).props.onPress();assert.equal(destinations.at(-1),path);
+  }
 });
 
 test('History client rejects malformed IDs without requests and sanitizes server failures', async () => {
@@ -100,10 +110,13 @@ test('Contractor footer retains real destinations and Create opens only the exis
   // Already-selected Home does not navigate again.
   assert.deepEqual(app.navigations.map(v => typeof v === 'string' ? v : v.pathname), ['/contractor/projects', '/contractor/material-requests', '/contractor/history', '/contractor/profile']);
   assert.equal(app.navigations[1].params.create, '1');
-  for (const [path, label] of [['/contractor', 'Home'], ['/contractor/projects', 'Projects'], ['/contractor/history/7', 'History'], ['/contractor/profile', 'Account'], ['/contractor/material-requests', 'Create']]) {
+  for (const [path, label] of [['/contractor', 'Home'], ['/contractor/projects', 'Projects'], ['/contractor/project/21','Projects'], ['/contractor/history/7', 'History'], ['/contractor/profile', 'Account'], ['/contractor/material-requests', 'Create']]) {
     app.state.pathname = path;
     assert.equal(nodes(app.render(), 'Pressable').find(b => b.props.accessibilityState?.selected).props.accessibilityLabel, label);
   }
+  app.state.pathname='/contractor/projects';
+  nodes(app.render(),'Pressable').find(button=>button.props.accessibilityLabel==='Projects').props.onPress();
+  assert.equal(app.navigations.at(-1),'/contractor/projects','return to the list without a retained projectId query');
 });
 
 test('Footer geometry reserves safe areas and equal side sections at narrow phone/tablet widths in both themes', () => {
@@ -133,20 +146,25 @@ test('Footer geometry reserves safe areas and equal side sections at narrow phon
 
 test('Completed details keep the final approved description immediately after project type and show actual dates/budget', () => {
   const details = { ...completed, budget: 1200000, location: 'Recorded location', projectType: '2-storey project', description: 'Final approved description.', finalReportAvailable: false };
-  const Screen = load('src/screens/contractor/CompletedProject.tsx', {
-    'react/jsx-runtime': runtime, react: { useCallback: fn => fn }, 'react-native': primitive(['ActivityIndicator', 'ScrollView', 'Text', 'View']),
-    'expo-router': { useLocalSearchParams: () => ({ id: '7' }) }, '@/components/contractor/HistoryUI': { ...primitive(['CompletedBadge', 'ProjectPlaceholder', 'ContractorInfoRow']), useContractorContentStyle: () => ({ paddingBottom: 24 }) },
-    '@/components/history/HistoryUI': primitive(['HistoryFeedback']), '@/hooks/useFocusedResource': { useFocusedResource: () => ({ data: details, loading: false }) },
-    '@/context/ThemeContext': { useTheme: () => ({ chrome: colors.lightChrome }) }, '@/services/api/contractorHistory': {},
-    '@/utils/contractorHistory': utils, '@/utils/currency': { peso: n => `PHP ${n}` },
+  const Screen = load('src/screens/contractor/ProjectDetails.tsx', {
+    'react/jsx-runtime': runtime, react: { useCallback: fn => fn, useEffect() {}, useState: value => [value,()=>{}] },
+    'react-native': primitive(['ActivityIndicator','ScrollView','Text','View','Pressable']),
+    'expo-router': { router:{} }, '@/components/ui': primitive(['Screen','PageHeader','Badge','Card']),
+    '@/components/contractor/HistoryUI': primitive(['ContractorInfoRow']),
+    '@/context/AuthContext': { useAuth:()=>({user:{id:10}}) },
+    '@/components/ProjectChecklistCard': defaults('Checklist'), '@/screens/contractor/ProjectOperations': defaults('Operations'),
+    '@/screens/timeline/ProjectCalendar': {ProjectCalendarContent:'Calendar'}, '@/services/api/contractorProjects': {},
+    '@/hooks/useFocusedResource': {useFocusedResource:()=>({data:{project:{...details,ownerName:details.homeownerName,timelineValue:9,timelineUnit:'months',overallProgressPct:100},historyDetails:details,timeline:null}})},
+    '@/context/ThemeContext': {useTheme:()=>({chrome:colors.lightChrome})},
+    '@/utils/contractorHistory': utils, '@/utils/projectStatus':status, '@/utils/currency':{peso:n=>'PHP '+n},
   }).default;
-  const rows = nodes(Screen(), 'ContractorInfoRow').map(n => n.props);
+  const rows = nodes(Screen({projectId:7,history:true}), 'ContractorInfoRow').map(n => n.props);
   const index = rows.findIndex(r => r.label === 'Project Type');
   assert.equal(rows[index + 1].label, 'Description'); assert.equal(rows[index + 1].value, details.description);
   assert.equal(rows.find(r => r.label === 'Total Budget').value, 'PHP 1200000');
   assert.match(rows.find(r => r.label === 'Duration').value, /2026/);
   details.description = null; details.budget = null;
-  const missing = nodes(Screen(), 'ContractorInfoRow').map(n => n.props);
+  const missing = nodes(Screen({projectId:7,history:true}), 'ContractorInfoRow').map(n => n.props);
   assert.equal(missing.find(r => r.label === 'Description').value, 'Final project description unavailable.');
   assert.equal(missing.find(r => r.label === 'Total Budget').value, 'Not recorded');
 });

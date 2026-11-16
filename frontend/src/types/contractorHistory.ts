@@ -3,6 +3,7 @@ export interface ContractorCompletedProject {
   title: string;
   homeownerName: string;
   status: "completed";
+  overallProgressPct?: number;
   startedAt: string | null;
   completedAt: string | null;
 }

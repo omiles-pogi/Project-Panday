@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\SaveWorkLogRequest;
+use App\Http\Requests\WorkerActivityProjectRequest;
 use App\Models\Project;
 use App\Services\WorkerActivityService;
 use Illuminate\Http\JsonResponse;
@@ -28,9 +29,9 @@ class WorkerActivityController extends Controller
         return $this->attempt(fn () => $this->activity->checkOut($project, $request->user()));
     }
 
-    public function workLogs(Request $request): JsonResponse
+    public function workLogs(WorkerActivityProjectRequest $request): JsonResponse
     {
-        return response()->json($this->activity->workLogsFor($request->user()));
+        return response()->json($this->activity->workLogsFor($request->user(), $request->projectId()));
     }
 
     public function saveWorkLog(SaveWorkLogRequest $request, Project $project): JsonResponse
@@ -42,9 +43,9 @@ class WorkerActivityController extends Controller
         });
     }
 
-    public function earnings(Request $request): JsonResponse
+    public function earnings(WorkerActivityProjectRequest $request): JsonResponse
     {
-        return response()->json($this->activity->earningsFor($request->user()));
+        return response()->json($this->activity->earningsFor($request->user(), $request->projectId()));
     }
 
     public function team(Request $request, Project $project): JsonResponse

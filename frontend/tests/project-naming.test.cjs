@@ -186,7 +186,7 @@ test('saved names restore after login, update the plan title, and cannot be reve
 });
 
 async function chatHarness(request, options = {}) {
-  const hook = hooks(); const calls = []; const linked = [];
+  const hook = hooks(); const calls = []; const linked = []; const routes = [];
   const context = {
     plan, messages: options.messages ?? [{ role: 'assistant', content: 'Existing AI plan' }], approvalStage: options.stage ?? 'materials', ready: true,
     activeProjectKey: options.projectKey ?? 'draft', restoredVersion: 0, resumeLatestRequested: true, projectNaming: null,
@@ -199,12 +199,12 @@ async function chatHarness(request, options = {}) {
   const Chat = load('src/screens/homeowner/ProjectChat.tsx', {
     react: hook.react, 'react/jsx-runtime': runtime,
     'react-native': { Text: 'Text', View: 'View', TextInput: 'Input', Pressable: 'Pressable', ScrollView: 'Scroll' },
-    'expo-router': { router: {}, useFocusEffect: () => {} },
+    'expo-router': { router: { push: route => routes.push(route) }, useFocusEffect: () => {} },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 24, bottom: 24 }) },
     '@expo/vector-icons': { Ionicons: 'Icon' }, '@/context/PlanContext': { usePlan: () => context },
     '@/context/ThemeContext': { useTheme: () => ({ chrome: {} }) },
     '@/components/SupplierPicker': {}, '@/components/BudgetCategoryBreakdown': {}, '@/components/charts': {},
-    '@/utils/currency': { pesoCompact: value => String(value) }, '@/utils/budget': {}, '@/utils/timeline': {}, '@/utils/garage': {}, '@/utils/chatTime': {},
+    '@/utils/currency': { pesoCompact: value => String(value), peso: value => String(value) }, '@/utils/budget': {}, '@/utils/timeline': { timelineLabel: () => 'Saved duration' }, '@/utils/garage': {}, '@/utils/chatTime': {},
     '@/services/api/projects': { createProject: send, startProjectFromPlan: send },
     '@/components/Mascot': moduleDefault('Mascot'), '@/components/ProjectNamePrompt': moduleDefault('Naming'),
     'react-native-reanimated': { ...moduleDefault({ View: 'Animated' }), useAnimatedStyle: (fn) => fn() },
@@ -212,8 +212,20 @@ async function chatHarness(request, options = {}) {
     '@/components/PlanEditorSheet': {}, '@/components/ExportPdfButton': {}, '@/utils/pdf': {}, 'expo-clipboard': {},
   }).default;
   const render = () => hook.settle(Chat);
-  return { context, calls, linked, render, initial: await render() };
+  return { context, calls, linked, routes, render, initial: await render() };
 }
+
+test('PandAI Find Your Team goes directly to the directory with a fresh filter session and preserves its selected project', async () => {
+  const chat=await chatHarness(async()=>{}, {stage:'summary',projectKey:'7'});
+  const bubble=nodes(chat.initial,'AIBubble').find(node=>node.props.msg.card==='summary');
+  const summary=nodes(bubble.type(bubble.props),'SummaryCard')[0];
+  const action=nodes(summary.type(summary.props),'Pressable')[0];
+  action.props.onPress();action.props.onPress();
+  assert.equal(chat.routes.length,2);
+  assert.ok(chat.routes.every(route=>route.pathname==='/homeowner/find-team'));
+  assert.notEqual(chat.routes[0].params.directorySession,chat.routes[1].params.directorySession);
+  assert.equal(chat.context.activeProjectKey,'7');assert.equal(chat.calls.length,0);assert.equal(chat.linked.length,0);
+});
 
 test('chat asks only after backend finalization and repeated taps share one keyed save', async () => {
   const pending = deferred();

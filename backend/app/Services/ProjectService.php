@@ -898,6 +898,7 @@ class ProjectService
 
             return array_merge($presented, [
                 'ownerName' => $project->user->name,
+                ...($user->role === 'worker' ? ['projectType' => app(WorkerHistoryService::class)->projectTypeFor($project)] : []),
                 // The viewer's own pay on this project, so their screen doesn't have to dig it out of the team list.
                 'myWage' => $mine['wage'] ?? null,
             ]);

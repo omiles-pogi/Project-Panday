@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Pressable, ScrollView, Text, View, ActivityIndicator } from "react-native";
+import { Pressable, Text, View, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { Badge, Card, PageHeader, Screen } from "@/components/ui";
 import ContractorDashboardStats from "@/components/contractor/DashboardStats";
@@ -9,14 +8,12 @@ import { contractorDashboardData, contractorDate } from "@/utils/contractorHisto
 import { fetchMyProjects } from "@/services/api/projects";
 import { useFocusedResource } from "@/hooks/useFocusedResource";
 import { useTheme } from "@/context/ThemeContext";
-import ProjectCalendar from "@/screens/timeline/ProjectCalendar";
 import { peso } from "@/utils/currency";
 import { formatDateTime, projectStatusMeta } from "@/utils/projectStatus";
 
 export default function Dashboard() {
   const { chrome } = useTheme();
   const { user } = useAuth();
-  const [calendarProjectId, setCalendarProjectId] = useState<number | null>(null);
   const { data: projects, error } = useFocusedResource(fetchMyProjects);
 
   if (!error && projects === null) {
@@ -31,8 +28,6 @@ export default function Dashboard() {
 
   // Ongoing includes a project submitted as finished that's waiting for the homeowner to confirm.
   const { assigned, active, completed, teamCount } = contractorDashboardData(projects ?? [], user?.id ?? 0);
-  // Whichever project they picked for the calendar, else their first active one.
-  const calendarProject = active.find((p) => p.id === calendarProjectId) ?? active[0] ?? null;
   const avgProgress = active.length
     ? Math.round(active.reduce((sum, p) => sum + p.overallProgressPct, 0) / active.length)
     : 0;
@@ -62,7 +57,7 @@ export default function Dashboard() {
         )}
 
         {active.map((p) => (
-          <Pressable key={p.id} onPress={() => router.push(`/contractor/projects?projectId=${p.id}` as never)}>
+          <Pressable key={p.id} onPress={() => router.push(`/contractor/project/${p.id}` as never)}>
             <Card>
               <View className="flex-row items-start justify-between mb-3">
                 <View style={{ width: 52, height: 64, borderRadius: 12, backgroundColor: chrome.muted, alignItems: "center", justifyContent: "center", marginRight: 12 }}>
@@ -141,30 +136,7 @@ export default function Dashboard() {
         </View>
       </View>
 
-      {calendarProject && (
-        <View style={{ gap: 12 }}>
-          {active.length > 1 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-              {active.map((p) => {
-                const selected = p.id === calendarProject.id;
-                return (
-                  <Pressable
-                    key={p.id}
-                    onPress={() => setCalendarProjectId(p.id)}
-                    className="px-3 py-2 rounded-xl border"
-                    style={{ backgroundColor: selected ? "#f59e0b20" : chrome.muted, borderColor: selected ? "#f59e0b" : chrome.border }}
-                  >
-                    <Text className="text-xs font-semibold" style={{ color: selected ? "#f59e0b" : chrome.mutedForeground }} numberOfLines={1}>
-                      {p.title}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          )}
-          <ProjectCalendar key={calendarProject.id} projectId={calendarProject.id} />
-        </View>
-      )}
+
     </Screen>
   );
 }

@@ -18,7 +18,7 @@ class ContractorHistoryService
 
     public function listFor(User $contractor): Collection
     {
-        return $this->completed($contractor)->with('user:id,name')
+        return $this->completed($contractor)->with(['user:id,name', 'phases'])
             ->orderByDesc('completion_confirmed_at')->orderByDesc('projects.id')->get()
             ->map(fn (Project $project) => $this->summary($project));
     }
@@ -46,6 +46,7 @@ class ContractorHistoryService
             'title' => trim($project->title ?? '') ?: "Project #{$project->id}",
             'homeownerName' => $project->user->name,
             'status' => 'completed',
+            'overallProgressPct' => $project->overallProgressPct(),
             'startedAt' => $project->started_at?->toDateString(),
             // Missing legacy confirmation dates remain unknown, never substituted with estimates.
             'completedAt' => $project->completion_confirmed_at?->toIso8601String(),

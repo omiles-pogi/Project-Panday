@@ -281,4 +281,58 @@ class WorkerActivityTest extends TestCase
         Sanctum::actingAs($worker);
         $this->getJson("/api/projects/{$project->id}/team-activity")->assertForbidden();
     }
+
+    public function test_project_scoped_logs_include_old_completed_records_but_never_another_worker_or_project(): void
+    {
+        [$project, $owner, , $worker] = $this->site();
+        $other = app(ProjectService::class)->createFromPlan($owner, ['projectTitle' => 'Other site', 'budget' => 100000, 'totalEstimate' => 90000, 'timelineValue' => 2, 'timelineUnit' => 'months', 'phases' => []]);
+        $other->workers()->attach($worker);
+        $stranger = $this->user('worker');
+        $project->workers()->attach($stranger);
+        \App\Models\WorkerWorkLog::create(['project_id' => $project->id, 'worker_id' => $worker->id, 'log_date' => '2027-03-02', 'summary' => 'My historical work']);
+        \App\Models\WorkerWorkLog::create(['project_id' => $project->id, 'worker_id' => $stranger->id, 'log_date' => '2027-03-02', 'summary' => 'Private other worker log']);
+        \App\Models\WorkerWorkLog::create(['project_id' => $other->id, 'worker_id' => $worker->id, 'log_date' => '2027-05-08', 'summary' => 'Different project work']);
+        $this->morning('2027-05-10');
+        $project->update(['status' => 'completed', 'completion_confirmed_at' => now()]);
+        $before = \App\Models\WorkerWorkLog::all()->map->getRawOriginal()->all();
+        Sanctum::actingAs($worker);
+
+        $this->getJson('/api/worker/work-logs')->assertOk()->assertJsonCount(1, 'logs')->assertJsonPath('logs.0.projectId', $other->id);
+        $this->getJson("/api/worker/work-logs?project_id={$project->id}")->assertOk()->assertJsonCount(1, 'logs')
+            ->assertJsonPath('logs.0.summary', 'My historical work')->assertJsonCount(0, 'projects');
+        $this->putJson("/api/projects/{$project->id}/work-log", ['summary' => 'Do not overwrite history', 'log_date' => '2027-05-10'])->assertUnprocessable();
+        $this->assertSame($before, \App\Models\WorkerWorkLog::all()->map->getRawOriginal()->all());
+        Sanctum::actingAs($stranger);
+        $this->getJson("/api/worker/work-logs?project_id={$other->id}")->assertNotFound();
+        $this->getJson("/api/worker/earnings?project_id={$other->id}")->assertNotFound();
+    }
+
+    public function test_project_scoped_earnings_keep_attendance_calculations_and_project_estimates_separate(): void
+    {
+        [$project, $owner, , $worker] = $this->site();
+        $other = app(ProjectService::class)->createFromPlan($owner, ['projectTitle' => 'Different wage', 'budget' => 100000, 'totalEstimate' => 90000, 'timelineValue' => 2, 'timelineUnit' => 'months', 'phases' => []]);
+        $other->workers()->attach($worker->id, ['wage_amount' => 400, 'wage_unit' => 'per_day', 'wage_days' => 10]);
+        $this->workDay($project, $worker, '2027-03-10');
+        $this->workDay($project, $worker, '2027-03-11');
+        $this->workDay($other, $worker, '2027-03-12');
+        Sanctum::actingAs($worker);
+
+        $this->getJson("/api/worker/earnings?project_id={$project->id}")->assertOk()->assertJsonCount(1, 'projects')
+            ->assertJsonPath('projects.0.projectId', $project->id)->assertJsonPath('projects.0.daysWorked', 2)
+            ->assertJsonPath('projects.0.earned', 1700)->assertJsonPath('projects.0.wage.total', 25500)
+            ->assertJsonPath('totals.earned', 1700);
+        foreach (['work-logs', 'earnings'] as $endpoint) {
+            $this->getJson("/api/worker/{$endpoint}?project_id=bad")->assertUnprocessable();
+            $this->getJson("/api/worker/{$endpoint}?project_id=0")->assertUnprocessable();
+        }
+    }
+
+    public function test_worker_assignments_include_only_safe_saved_project_type_without_exposing_the_ai_plan(): void
+    {
+        [$project, , , $worker] = $this->site();
+        $project->update(['approved_plan' => ['floors' => 2, 'designStyle' => 'Modern', 'initialPrompt' => 'Private initial request']]);
+        Sanctum::actingAs($worker);
+        $this->getJson('/api/my-projects')->assertOk()->assertJsonPath('0.projectType', '2-storey project · Modern')
+            ->assertJsonMissingPath('0.approvedPlan.initialPrompt');
+    }
 }

@@ -170,6 +170,8 @@ export interface DashboardData {
 
 export interface MyProject extends DashboardProject {
   ownerName: string;
+  /** Safe saved floor/style summary on worker assignment responses; never the raw plan. */
+  projectType?: string | null;
   canManageChecklist: boolean;
   checklistLocked: boolean;
   canSubmitCompletion: boolean;

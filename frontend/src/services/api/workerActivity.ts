@@ -94,20 +94,22 @@ export async function checkOut(projectId: number): Promise<AttendanceDay> {
   return (await apiFetch(`/api/projects/${projectId}/attendance/check-out`, { method: "POST" })) as AttendanceDay;
 }
 
-export async function fetchWorkLogs(): Promise<WorkLogOverview> {
-  return (await apiFetch("/api/worker/work-logs")) as WorkLogOverview;
+export async function fetchWorkLogs(projectId?: number): Promise<WorkLogOverview> {
+  if (projectId !== undefined && (!Number.isSafeInteger(projectId) || projectId < 1)) throw new Error("Choose a valid assigned project.");
+  return (await apiFetch(`/api/worker/work-logs${projectId === undefined ? "" : `?project_id=${projectId}`}`)) as WorkLogOverview;
 }
 
-/** Writes today's log for the project — or corrects it, there's one per project per day. */
-export async function saveWorkLog(projectId: number, summary: string): Promise<WorkLog> {
+/** Writes/corrects the permitted work date; the existing API keeps one entry per worker/project/day. */
+export async function saveWorkLog(projectId: number, summary: string, logDate?: string): Promise<WorkLog> {
   return (await apiFetch(`/api/projects/${projectId}/work-log`, {
     method: "PUT",
-    body: JSON.stringify({ summary }),
+    body: JSON.stringify({ summary, ...(logDate ? { log_date: logDate } : {}) }),
   })) as WorkLog;
 }
 
-export async function fetchEarnings(): Promise<EarningsOverview> {
-  return (await apiFetch("/api/worker/earnings")) as EarningsOverview;
+export async function fetchEarnings(projectId?: number): Promise<EarningsOverview> {
+  if (projectId !== undefined && (!Number.isSafeInteger(projectId) || projectId < 1)) throw new Error("Choose a valid assigned project.");
+  return (await apiFetch(`/api/worker/earnings${projectId === undefined ? "" : `?project_id=${projectId}`}`)) as EarningsOverview;
 }
 
 /** For the homeowner and the project's contractors: every worker's day on site. */

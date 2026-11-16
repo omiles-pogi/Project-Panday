@@ -18,6 +18,7 @@ export default function WorkerLayout() {
       footer={<WorkerFloatingTabBar />}
       items={NAV_ITEMS}
       pages={[
+        { name: "project/[id]", title: "Project Details", headerShown: false },
         { name: "history", title: "History", headerShown: false },
         { name: "chat/[id]", title: "Chat", detail: true },
         { name: "invite/[requestId]", title: "Project Invite", detail: true },

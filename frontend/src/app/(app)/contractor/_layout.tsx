@@ -20,6 +20,7 @@ export default function ContractorLayout() {
       footer={<ContractorFloatingTabBar />}
       items={NAV_ITEMS}
       pages={[
+        { name: "project/[id]", title: "Project Details", headerShown: false },
         { name: "history", title: "History", headerShown: false },
         { name: "profile", title: "Profile" },
         { name: "materials", title: "Supplier Materials" },

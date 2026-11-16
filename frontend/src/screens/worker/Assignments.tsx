@@ -1,136 +1,43 @@
-import { useState } from "react";
-import { Text, View, Pressable, ActivityIndicator } from "react-native";
-import { useLocalSearchParams } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import { Badge, Card, PageHeader, Screen } from "@/components/ui";
-import MessageButton from "@/components/MessageButton";
+import { ActivityIndicator, Pressable, Text } from "react-native";
+import { router, useLocalSearchParams } from "expo-router";
+import { Badge, Card, PageHeader, ProgressBar, Screen } from "@/components/ui";
+import WorkerProjectDetails from "@/screens/worker/ProjectDetails";
+import { useAuth } from "@/context/AuthContext";
+import { useFocusedResource } from "@/hooks/useFocusedResource";
 import { fetchMyProjects } from "@/services/api/projects";
-import type { MyProject } from "@/types/project";
+import { workerDashboardData } from "@/utils/workerHistory";
 import { projectStatusMeta } from "@/utils/projectStatus";
 import { wageLine } from "@/utils/wage";
-import { useFocusedResource } from "@/hooks/useFocusedResource";
-import { useTheme } from "@/context/ThemeContext";
 
-function ProjectCard({ project, initiallyExpanded }: { project: MyProject; initiallyExpanded?: boolean }) {
-  const { chrome } = useTheme();
-  const [expanded, setExpanded] = useState(!!initiallyExpanded);
-
-  return (
-    <Card>
-      <Pressable onPress={() => setExpanded((e) => !e)}>
-        <View className="flex-row items-start justify-between mb-2">
-          <View className="flex-1 pr-3" style={{ gap: 4 }}>
-            <Text className="font-bold text-sm text-foreground">{project.title}</Text>
-            <Badge label={projectStatusMeta(project.status).label} color={projectStatusMeta(project.status).color} />
-            <Text className="text-xs text-muted-foreground">
-              Homeowner: {project.ownerName}
-              {project.location ? ` · ${project.location}` : ""}
-            </Text>
-          </View>
-          <View className="items-end">
-            <Text className="text-xl font-bold" style={{ color: "#f59e0b" }}>
-              {project.overallProgressPct}%
-            </Text>
-            <Text className="text-xs text-muted-foreground">Progress</Text>
-          </View>
-        </View>
-        <View className="flex-row items-center justify-between px-3 py-2 mb-2 rounded-xl bg-muted">
-          <View className="flex-row items-center gap-1.5">
-            <Ionicons name="cash-outline" size={14} color="#f59e0b" />
-            <Text className="text-xs font-medium text-foreground">Your wage</Text>
-          </View>
-          <Text className="text-xs font-semibold" style={{ color: project.myWage ? "#10b981" : "#6b7280" }}>
-            {project.myWage ? wageLine(project.myWage) : "Not set yet"}
-          </Text>
-        </View>
-        <View className="flex-row items-center justify-center gap-1 py-1">
-          <Text className="text-xs font-medium text-primary">{expanded ? "Hide phases" : "View phases"}</Text>
-          <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={14} color="#f59e0b" />
-        </View>
-      </Pressable>
-
-      <View className="mt-2" style={{ gap: 8 }}>
-        <MessageButton projectId={project.id} chatPath={(id) => `/worker/chat/${id}`} label="Message Homeowner" />
-        {project.contractors.map((contractor) => (
-          <MessageButton
-            key={contractor.id}
-            projectId={project.id}
-            contractorId={contractor.id}
-            chatPath={(id) => `/worker/chat/${id}`}
-            label={`Message ${contractor.companyName || contractor.name}`}
-          />
-        ))}
-      </View>
-
-      {expanded && (
-        <View style={{ gap: 10 }} className="mt-2">
-          {project.phases.map((phase) => (
-            <View key={phase.id} className="px-3 py-3 rounded-xl bg-muted" style={{ gap: 8 }}>
-              <View className="flex-row justify-between items-center">
-                <Text className="text-xs font-semibold text-foreground">{phase.name}</Text>
-                <Text className="text-xs" style={{ color: phase.progressPct === 100 ? "#10b981" : "#f59e0b" }}>
-                  {phase.progressPct}%
-                </Text>
-              </View>
-              {phase.tasks.map((task) => (
-                <View key={task.id} className="flex-row items-center gap-2">
-                  <Ionicons
-                    name={task.isDone ? "checkbox" : "square-outline"}
-                    size={16}
-                    color={task.isDone ? "#10b981" : "#9ca3af"}
-                  />
-                  <Text
-                    className="flex-1 text-xs"
-                    style={{
-                      color: task.isDone ? "#10b981" : chrome.foreground,
-                      textDecorationLine: task.isDone ? "line-through" : "none",
-                    }}
-                  >
-                    {task.description}
-                  </Text>
-                </View>
-              ))}
-              {phase.tasks.length === 0 && <Text className="text-xs text-muted-foreground">No checklist items yet.</Text>}
-            </View>
-          ))}
-        </View>
-      )}
-    </Card>
-  );
+function OngoingAssignments() {
+  const { user } = useAuth();
+  const { data, loading, error, refresh } = useFocusedResource(fetchMyProjects);
+  const { active } = workerDashboardData(data ?? [], user?.id ?? 0);
+  return <Screen topInset={false}>
+    <PageHeader title="My Assignments" />
+    <Pressable accessibilityRole="button" onPress={() => void refresh()}><Text className="text-xs text-muted-foreground">Refresh progress ? updates every 15 seconds</Text></Pressable>
+    {error && <Text accessibilityRole="alert" className="text-xs text-danger">{error}</Text>}
+    {loading && !data && <ActivityIndicator color="#f59e0b" />}
+    {!loading && !error && !active.length && <Card><Text className="text-base font-bold text-foreground">No ongoing assignments yet</Text><Text className="text-sm text-muted-foreground">You don&apos;t have any active construction projects at the moment.</Text></Card>}
+    {active.map(project => <Pressable key={project.id} accessibilityRole="button" accessibilityLabel={"Open " + project.title} onPress={() => router.push(("/worker/project/" + project.id) as never)}>
+      <Card gap={10}>
+        <Text className="text-base font-bold text-foreground">{project.title}</Text>
+        <Badge label={projectStatusMeta(project.status).label} color={projectStatusMeta(project.status).color} />
+        <Text className="text-sm text-muted-foreground">Homeowner: {project.ownerName}</Text>
+        <Text className="text-sm text-foreground">Progress: {project.overallProgressPct}%</Text>
+        <ProgressBar pct={project.overallProgressPct} color="#f59e0b" />
+        <Text className="text-xs text-muted-foreground">Your wage: {wageLine(project.myWage)}</Text>
+        <Text className="text-xs font-semibold text-primary">View Project Details ?</Text>
+      </Card>
+    </Pressable>)}
+  </Screen>;
 }
 
 export default function Assignments() {
-  // Set when arriving from a specific assignment elsewhere (e.g. tapping it on the Dashboard) —
-  // that project's phases open pre-expanded instead of landing on the flat, collapsed list.
   const { projectId } = useLocalSearchParams<{ projectId?: string }>();
-  const targetId = projectId ? Number(projectId) : null;
-  const { data: projects, error, refresh } = useFocusedResource(fetchMyProjects);
-
-  return (
-    <Screen topInset={false}>
-      <PageHeader title="My Assignments" subtitle="Projects you're on, and how they're coming along." />
-      <Pressable accessibilityRole="button" onPress={refresh} className="self-start flex-row items-center gap-1.5">
-        <Ionicons name="refresh-outline" size={14} color="#f59e0b" />
-        <Text className="text-xs text-muted-foreground">Refresh progress · updates every 15 seconds</Text>
-      </Pressable>
-
-      {error && <Text className="text-xs text-danger px-1">{error}</Text>}
-
-      {!error && projects === null && (
-        <View className="items-center py-10">
-          <ActivityIndicator color="#f59e0b" />
-        </View>
-      )}
-
-      {projects !== null && projects.length === 0 && (
-        <Text className="text-sm text-center text-muted-foreground py-10">
-          No homeowner has added you to a project yet.
-        </Text>
-      )}
-
-      {projects?.map((project) => (
-        <ProjectCard key={project.id} project={project} initiallyExpanded={project.id === targetId} />
-      ))}
-    </Screen>
-  );
+  if (projectId !== undefined) {
+    const selected = typeof projectId === "string" && /^[1-9]\d*$/.test(projectId) ? Number(projectId) : NaN;
+    return <WorkerProjectDetails key={String(selected)} projectId={selected} />;
+  }
+  return <OngoingAssignments />;
 }

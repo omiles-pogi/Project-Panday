@@ -9,6 +9,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { CATEGORIES, CAT_COLORS, type StockStatus } from "@/data/supplier";
 import { fetchMaterialCatalog, type CatalogMaterialDto } from "@/services/api/supplierProducts";
 import { peso } from "@/utils/currency";
+import { publicMaterialDescription } from "@/utils/materialDescription";
 
 const STOCK_FILTERS: Record<string, StockStatus | undefined> = {
   All: undefined,
@@ -146,6 +147,7 @@ function MaterialCard({ material: m, onPress }: { material: CatalogMaterialDto; 
 
 function MaterialDetailSheet({ material: m, onClose }: { material: CatalogMaterialDto; onClose: () => void }) {
   const inStock = m.stock_status === "in_stock";
+  const description = publicMaterialDescription(m.description);
   const rows: [string, string][] = [
     ["Price", `${peso(m.price)} per ${m.unit}`],
     ["Available quantity", inStock ? `${m.available_quantity.toLocaleString()} ${m.unit}` : "None — out of stock"],
@@ -159,7 +161,7 @@ function MaterialDetailSheet({ material: m, onClose }: { material: CatalogMateri
   return (
     <Sheet visible title={m.name} subtitle={m.category} onClose={onClose}>
       <StockBadge status={m.stock_status} quantity={m.available_quantity} unit={m.unit} />
-      {m.description ? <Text className="text-sm leading-5 text-secondary-foreground">{m.description}</Text> : null}
+      {description ? <Text className="text-sm leading-5 text-secondary-foreground">{description}</Text> : null}
       <View className="rounded-xl bg-muted p-3" style={{ gap: 8 }}>
         {rows.map(([label, value]) => (
           <View key={label} className="flex-row justify-between gap-3">

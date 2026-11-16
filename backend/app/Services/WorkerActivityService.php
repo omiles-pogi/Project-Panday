@@ -183,10 +183,15 @@ class WorkerActivityService
      *
      * @return array<string, mixed>
      */
-    public function workLogsFor(User $worker): array
+    public function workLogsFor(User $worker, ?int $projectId = null): array
     {
+        if ($projectId !== null) {
+            // History reads include all this worker's saved logs, but require an official assignment.
+            $worker->workerAssignments()->findOrFail($projectId);
+        }
         $logs = WorkerWorkLog::where('worker_id', $worker->id)
-            ->where('log_date', '>=', $this->daysAgo(self::HISTORY_DAYS))
+            ->when($projectId !== null, fn ($query) => $query->where('project_id', $projectId),
+                fn ($query) => $query->where('log_date', '>=', $this->daysAgo(self::HISTORY_DAYS)))
             ->with('project:id,title')
             ->orderByDesc('log_date')
             ->orderByDesc('id')
@@ -196,7 +201,7 @@ class WorkerActivityService
 
         return [
             'date' => $this->today(),
-            'projects' => $this->activeProjectsOf($worker)->map(fn (Project $project) => [
+            'projects' => $this->activeProjectsOf($worker)->filter(fn (Project $project) => $projectId === null || $project->id === $projectId)->map(fn (Project $project) => [
                 'projectId' => $project->id,
                 'projectTitle' => $project->title,
                 'todayLog' => $todays->get($project->id)?->summary,
@@ -251,13 +256,18 @@ class WorkerActivityService
      *
      * @return array<string, mixed>
      */
-    public function earningsFor(User $worker): array
+    public function earningsFor(User $worker, ?int $projectId = null): array
     {
+        if ($projectId !== null) {
+            $worker->workerAssignments()->findOrFail($projectId);
+        }
         $projects = Project::query()
             ->whereHas('workers', fn ($q) => $q->whereKey($worker->id))
+            ->when($projectId !== null, fn ($query) => $query->whereKey($projectId))
             ->with(['workers' => fn ($q) => $q->whereKey($worker->id)])
             ->get();
-        $attendance = WorkerAttendance::where('worker_id', $worker->id)->get()->groupBy('project_id');
+        $attendance = WorkerAttendance::where('worker_id', $worker->id)
+            ->when($projectId !== null, fn ($query) => $query->where('project_id', $projectId))->get()->groupBy('project_id');
 
         $items = $projects->map(function (Project $project) use ($attendance) {
             $wage = Wage::fromPivot($project->workers->first()?->pivot);
