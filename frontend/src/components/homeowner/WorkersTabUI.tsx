@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "@/context/ThemeContext";
@@ -14,8 +14,6 @@ import type { RecommendationEvidence } from "@/types/teamRecommendations";
 
 type Icon = keyof typeof Ionicons.glyphMap;
 const ORANGE = "#f59e0b";
-const HOUSE = require("../../../assets/home-hero-house.png");
-const CREW = require("../../../assets/workers-build-team.png");
 
 export function Action({ label, accessibilityLabel = label, onPress, disabled = false, filled = false, icon, tile = false }: {
   label: string; accessibilityLabel?: string; onPress: () => void; disabled?: boolean; filled?: boolean; icon?: Icon; tile?: boolean;
@@ -74,7 +72,6 @@ export function OverviewBanner({ overview, pendingCount, columns, showInfo, onIn
         <Text style={{ fontSize: 12, color: chrome.secondaryForeground }}>Team Overview</Text>
         <Text numberOfLines={1} style={{ fontSize: 10, color: chrome.secondaryForeground }}>{overview.title}</Text>
       </View>
-      <Image source={HOUSE} resizeMode="contain" accessible={false} style={{ width: columns === 4 ? 94 : 74, height: 62 }} />
       <Pressable accessibilityRole="button" accessibilityLabel="Team statistics information" accessibilityState={{ expanded: showInfo }} onPress={onInfo} hitSlop={6} style={{ paddingVertical: 10, paddingHorizontal: 1 }}>
         <Ionicons name="information-circle-outline" size={17} color={chrome.secondaryForeground} />
       </Pressable>
@@ -96,9 +93,8 @@ export function OverviewBanner({ overview, pendingCount, columns, showInfo, onIn
 export function BuildTeamBanner({ canInvite, onBrowse }: { canInvite: boolean; onBrowse: () => void }) {
   const { chrome, mode } = useTheme();
   return <LinearGradient colors={mode === "light" ? ["#fff8e5", "#ffe293", "#ffd04a"] : ["#30291b", "#49371c", "#624814"]}
-    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0.7 }} style={[styles.banner, { padding: 11, minHeight: 114 }]}>
-    <Image source={CREW} resizeMode="contain" accessible={false} style={{ position: "absolute", right: -1, bottom: -3, width: "44%", height: "101%" }} />
-    <View style={{ width: "57%", gap: 5 }}>
+    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0.7 }} style={[styles.banner, { padding: 11, minHeight: 114, justifyContent: "center" }]}>
+    <View style={{ width: "100%", minWidth: 0, gap: 5 }}>
       <Text style={{ color: chrome.foreground, fontSize: 17, lineHeight: 22, fontWeight: "800" }}>Build Your Team</Text>
       <Text style={{ color: chrome.secondaryForeground, fontSize: 11.5, lineHeight: 16 }}>Find skilled construction workers for your project.</Text>
       <Pressable accessibilityRole="button" accessibilityLabel={canInvite ? "Browse Skilled Workers" : "Continue planning with PandAI"} onPress={onBrowse}

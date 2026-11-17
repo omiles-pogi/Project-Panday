@@ -151,7 +151,7 @@ test('small phones and large fonts stack content in both themes while loading an
   for (const mode of ['light', 'dark']) for (const dimensions of [{ width: 320, fontScale: 1 }, { width: 430, fontScale: 1.8 }]) {
     app.theme.mode = mode; app.setDimensions(dimensions); await app.render();
     const hero = nodes(app.tree, 'HeroBanner')[0]; assert.equal(hero.props.stacked, true);
-    assert.equal(nodes(hero.type(hero.props), 'Image')[0].props.style.width, '100%');
+    assert.equal(nodes(hero.type(hero.props), 'Image').length, 0);
     const scroll = nodes(app.tree, 'ScrollView')[0]; assert.equal(scroll.props.contentContainerStyle.paddingLeft, 20);
   }
   app.setResource({ data: null, loading: true }); await app.render();

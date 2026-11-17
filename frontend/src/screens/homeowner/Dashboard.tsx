@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions, type ScrollViewInstance } from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions, type ScrollViewInstance } from "react-native";
 import { Redirect, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -46,14 +46,10 @@ function HeroBanner({ onNewProject, disabled, stacked, actionLabel }: { onNewPro
   return <LinearGradient colors={mode === "dark" ? ["#302819", "#685021"] : ["#fff9ed", "#ffe49a", "#ffc12f"]}
     start={{ x: 0, y: 0 }} end={{ x: 1, y: 0.8 }} style={[styles.hero, styles.shadow]}>
     <View pointerEvents="none" style={styles.stripe} />
-    <View style={{ flexDirection: stacked ? "column" : "row", alignItems: "center", gap: 10 }}>
-      <View style={{ flex: stacked ? undefined : 1.2, alignSelf: "stretch", gap: 12, minWidth: 0 }}>
-        <Text style={{ color: chrome.foreground, fontSize: 21, lineHeight: 28, fontWeight: "800" }}>Project Panday</Text>
-        <Text style={{ color: chrome.foreground, fontSize: 13, lineHeight: 20 }}>AI-Powered Construction Planning &amp; Worker Recommendation</Text>
-        <NewProjectButton label={actionLabel} onPress={onNewProject} disabled={disabled} compact={!stacked} />
-      </View>
-      <Image source={require("../../../assets/home-hero-house.png")} accessible={false} resizeMode="contain"
-        style={{ flex: stacked ? undefined : 1, width: stacked ? "100%" : undefined, height: stacked ? 155 : 185, minWidth: 0 }} />
+    <View style={{ width: "100%", minWidth: 0, gap: 12, alignItems: "flex-start" }}>
+      <Text style={{ color: chrome.foreground, fontSize: 21, lineHeight: 28, fontWeight: "800" }}>Project Panday</Text>
+      <Text style={{ color: chrome.foreground, fontSize: 13, lineHeight: 20, alignSelf: "stretch" }}>AI-Powered Construction Planning &amp; Worker Recommendation</Text>
+      <NewProjectButton label={actionLabel} onPress={onNewProject} disabled={disabled} compact={!stacked} />
     </View>
   </LinearGradient>;
 }
