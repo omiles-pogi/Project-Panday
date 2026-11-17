@@ -67,7 +67,8 @@ export default function ContractorProjectDetails({ projectId, history = false }:
       </Card>}
       {saved.timelineError && tab !== "Checklist" && <Text accessibilityRole="alert" className="text-xs text-danger">{saved.timelineError}</Text>}
       {saved.timeline && <ProjectCalendarContent key={`project-${projectId}-timeline`} timeline={saved.timeline}
-        section={tab === "Overview" ? "overview" : tab === "Calendar" ? "calendar" : tab === "AI Schedule" ? "schedule" : "none"} />}
+        section={tab === "Overview" ? "overview" : tab === "Calendar" ? "calendar" : tab === "AI Schedule" ? "schedule" : "none"}
+        selectToday team={[...project.workers.map(worker => ({ ...worker, role: "worker" as const })), ...project.contractors.map(contractor => ({ ...contractor, role: "contractor" as const }))]} />}
       {tab === "Overview" && <ContractorProjectOperations key={`project-${projectId}-operations`} project={project} readOnly={readOnly} onChanged={refresh} />}
       {tab === "Checklist" && <ProjectChecklistCard key={`project-${projectId}-checklist`} project={project} readOnly={readOnly} collapsible onChanged={refresh} />}
     </>}

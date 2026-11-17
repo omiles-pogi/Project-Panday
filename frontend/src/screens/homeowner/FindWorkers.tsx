@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useFocusEffect } from "expo-router";
 import { Text, View, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -22,6 +22,8 @@ import { wageLine } from "@/utils/wage";
 import TeamProfileDetails from "@/components/homeowner/TeamProfileDetails";
 import { useHiringProjectPrompt } from "@/components/homeowner/ProjectHiringPrompt";
 import WorkersDirectory from "@/components/homeowner/WorkersDirectory";
+import TeamRecommendations, { RecommendationFacts } from "@/components/homeowner/TeamRecommendations";
+import type { RecommendationEvidence, TeamRecommendations as RecommendationData } from "@/types/teamRecommendations";
 import type { HiringWage, HiringWageData } from "@/types/project";
 import type { WorkerSearchResult } from "@/types/worker";
 import type { ContractorSearchResult } from "@/types/contractor";
@@ -154,8 +156,12 @@ function WorkerCard({
   onInvited,
   onView,
   onNeedsProject,
+  recommendation,
+  requestLocks,
 }: {
   worker: WorkerSearchResult;
+  recommendation?: RecommendationEvidence;
+  requestLocks: Set<string>;
   projectId: number | null;
   assigned: boolean;
   onAssignedChange: (id: number, assigned: boolean) => void;
@@ -174,7 +180,9 @@ function WorkerCard({
   const [inviteError, setInviteError] = useState<string | null>(null);
 
   const toggleAssign = async () => {
-    if (!projectId) return;
+    const key = `${projectId}:worker:${worker.id}`;
+    if (!projectId || assigning || requestLocks.has(key) || (!assigned && (pending || invited))) return;
+    requestLocks.add(key);
     setAssigning(true);
     setInviteError(null);
     try {
@@ -189,6 +197,7 @@ function WorkerCard({
     } catch (err) {
       setInviteError(err instanceof Error ? err.message : "Failed to send invite.");
     } finally {
+      requestLocks.delete(key);
       setAssigning(false);
     }
   };
@@ -218,7 +227,7 @@ function WorkerCard({
         )}
       </View>
 
-      {projectId && <HiringWageInfo preview={hiringWage} projectId={projectId} loading={wageLoading} />}
+      {recommendation ? <RecommendationFacts match={recommendation} /> : projectId && <HiringWageInfo preview={hiringWage} projectId={projectId} loading={wageLoading} />}
       {worker.bio && <Text className="text-xs text-secondary-foreground mb-2">{worker.bio}</Text>}
 
       <View className="flex-row flex-wrap gap-1.5 mb-3">
@@ -266,8 +275,12 @@ function ContractorCard({
   onInvited,
   onView,
   onNeedsProject,
+  recommendation,
+  requestLocks,
 }: {
   contractor: ContractorSearchResult;
+  recommendation?: RecommendationEvidence;
+  requestLocks: Set<string>;
   projectId: number | null;
   assigned: boolean;
   onAssignedChange: (id: number, assigned: boolean) => void;
@@ -286,7 +299,9 @@ function ContractorCard({
   const [inviteError, setInviteError] = useState<string | null>(null);
 
   const toggleAssign = async () => {
-    if (!projectId) return;
+    const key = `${projectId}:contractor:${contractor.id}`;
+    if (!projectId || assigning || requestLocks.has(key) || (!assigned && (pending || invited))) return;
+    requestLocks.add(key);
     setAssigning(true);
     setInviteError(null);
     try {
@@ -301,6 +316,7 @@ function ContractorCard({
     } catch (err) {
       setInviteError(err instanceof Error ? err.message : "Failed to send invite.");
     } finally {
+      requestLocks.delete(key);
       setAssigning(false);
     }
   };
@@ -328,7 +344,7 @@ function ContractorCard({
         )}
       </View>
 
-      {projectId && <HiringWageInfo preview={hiringWage} projectId={projectId} loading={wageLoading} />}
+      {recommendation ? <RecommendationFacts match={recommendation} /> : projectId && <HiringWageInfo preview={hiringWage} projectId={projectId} loading={wageLoading} />}
       {contractor.bio && <Text className="text-xs text-secondary-foreground mb-2">{contractor.bio}</Text>}
 
       <View className="flex-row flex-wrap gap-1.5 mb-3">
@@ -379,6 +395,8 @@ export default function FindWorkers() {
   const [wageLoading, setWageLoading] = useState(true);
   const [wageError, setWageError] = useState<string | null>(null);
   const [wageVersion, setWageVersion] = useState(0);
+  const [recommendations, setRecommendations] = useState<RecommendationData | null>(null);
+  const requestLocks = useRef(new Set<string>());
 
   // The title of a "not started yet" project the team can't join until its plan is approved.
   const [pendingTitle, setPendingTitle] = useState<string | null>(null);
@@ -391,6 +409,7 @@ export default function FindWorkers() {
       if (!ready) return;
       let cancelled = false;
       setHiringWages(null);
+      setRecommendations(null);
       setWageLoading(true);
       setWageError(null);
       setProjectId(null);
@@ -414,11 +433,15 @@ export default function FindWorkers() {
           setAssignedWorkerIds(new Set(started?.workers.map((w) => w.id) ?? []));
           setAssignedContractorIds(new Set(started?.contractors.map((c) => c.id) ?? []));
           if (started) {
-            return Promise.all([fetchHiringWages(started.id), fetchHomeownerTeam(started.id)]).then(([wages, team]) => {
+            return Promise.allSettled([fetchHiringWages(started.id), fetchHomeownerTeam(started.id)]).then(([wages, team]) => {
               if (!cancelled) {
-                setHiringWages(wages);
-                setPendingWorkerIds(new Set(team.pendingWorkers.map(request => request.workerId)));
-                setPendingContractorIds(new Set(team.pendingContractorIds));
+                if (wages.status === "fulfilled") setHiringWages(wages.value);
+                else setWageError("Wage previews could not be loaded. Refresh to retry.");
+                if (team.status === "fulfilled") {
+                  setRecommendations(team.value.recommendations ?? null);
+                  setPendingWorkerIds(new Set(team.value.pendingWorkers.map(request => request.workerId)));
+                  setPendingContractorIds(new Set(team.value.pendingContractorIds));
+                } else setWageError("Project recommendations and invitations could not be refreshed. Please retry.");
               }
             });
           }
@@ -458,9 +481,29 @@ export default function FindWorkers() {
   const workerWagesById = new Map(hiringWages?.workers.map((entry) => [entry.userId, entry]));
   const contractorWagesById = new Map(hiringWages?.contractors.map((entry) => [entry.userId, entry]));
 
+  const renderWorker = (worker: WorkerSearchResult, recommendation?: RecommendationEvidence) => <WorkerCard
+    key={String(projectId) + "-" + worker.id} worker={worker} projectId={projectId} recommendation={recommendation} requestLocks={requestLocks.current}
+    assigned={assignedWorkerIds.has(worker.id)} onAssignedChange={handleWorkerAssignedChange}
+    hiringWage={workerWagesById.get(worker.id)} wageLoading={wageLoading} pending={pendingWorkerIds.has(worker.id)}
+    onInvited={() => { setPendingWorkerIds(previous => new Set([...previous, worker.id])); setWageVersion(version => version + 1); }}
+    onView={() => setProfile({ id: worker.id, name: worker.name, role: "worker" })} onNeedsProject={projectFlow.requireProject} />;
+  const renderContractor = (contractor: ContractorSearchResult, recommendation?: RecommendationEvidence) => <ContractorCard
+    key={String(projectId) + "-" + contractor.id} contractor={contractor} projectId={projectId} recommendation={recommendation} requestLocks={requestLocks.current}
+    assigned={assignedContractorIds.has(contractor.id)} onAssignedChange={handleContractorAssignedChange}
+    hiringWage={contractorWagesById.get(contractor.id)} wageLoading={wageLoading} pending={pendingContractorIds.has(contractor.id)}
+    onInvited={() => { setPendingContractorIds(previous => new Set([...previous, contractor.id])); setWageVersion(version => version + 1); }}
+    onView={() => setProfile({ id: contractor.id, name: contractor.name, role: "contractor" })} onNeedsProject={projectFlow.requireProject} />;
+  // Guard the render itself as well as asynchronous reads; a previous project's matches
+  // must disappear immediately when the context changes, including before effect cleanup.
+  const selectedRecommendations = ready && projectId !== null && String(projectId) === activeProjectKey
+    && recommendations?.projectId === projectId ? recommendations : null;
+
   return <>
-    <WorkersDirectory showBanner={false} showProjectPrompt={!projectId} header={<>
+    <WorkersDirectory workerTitle="Other Skilled Workers" showBanner={false} showProjectPrompt={!projectId} header={<>
       <PageHeader title="Find Your Team" subtitle="Browse approved workers and contractors. Use the filters to narrow it down." />
+      <TeamRecommendations data={selectedRecommendations} loading={wageLoading} failed={!!projectId && !wageLoading && (!selectedRecommendations || !!wageError)}
+        renderWorker={worker => renderWorker(worker, worker)} renderContractor={contractor => renderContractor(contractor, contractor)} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Refresh project recommendations" onPress={() => setWageVersion(version => version + 1)} className="self-start px-3 py-2 rounded-xl bg-muted"><Text className="text-xs text-foreground">Refresh recommendations</Text></Pressable>
       <Text className="text-xs leading-5 text-muted-foreground">Wages are filled in automatically when team members join your project. Estimates are marked below; you do not need to enter amounts manually.</Text>
       {projectId && <View className="flex-row items-center gap-1.5 px-1">
         <Ionicons name="briefcase-outline" size={13} color="#9ca3af" />
@@ -474,21 +517,7 @@ export default function FindWorkers() {
         <Text className="text-xs text-danger">Could not refresh team wages: {wageError}</Text>
         <Pressable accessibilityRole="button" onPress={() => setWageVersion(version => version + 1)} className="self-start px-3 py-2 rounded-lg bg-muted border border-border"><Text className="text-xs font-semibold text-foreground">Retry wages</Text></Pressable>
       </View>}
-    </>} renderWorker={worker => <WorkerCard
-      key={String(projectId) + "-" + worker.id} worker={worker} projectId={projectId}
-      assigned={assignedWorkerIds.has(worker.id)} onAssignedChange={handleWorkerAssignedChange}
-      hiringWage={workerWagesById.get(worker.id)} wageLoading={wageLoading}
-      pending={pendingWorkerIds.has(worker.id)}
-      onInvited={() => { setPendingWorkerIds(previous => new Set([...previous, worker.id])); setWageVersion(version => version + 1); }}
-      onView={() => setProfile({ id: worker.id, name: worker.name, role: "worker" })} onNeedsProject={projectFlow.requireProject}
-    />} renderContractor={contractor => <ContractorCard
-      key={String(projectId) + "-" + contractor.id} contractor={contractor} projectId={projectId}
-      assigned={assignedContractorIds.has(contractor.id)} onAssignedChange={handleContractorAssignedChange}
-      hiringWage={contractorWagesById.get(contractor.id)} wageLoading={wageLoading}
-      pending={pendingContractorIds.has(contractor.id)}
-      onInvited={() => { setPendingContractorIds(previous => new Set([...previous, contractor.id])); setWageVersion(version => version + 1); }}
-      onView={() => setProfile({ id: contractor.id, name: contractor.name, role: "contractor" })} onNeedsProject={projectFlow.requireProject}
-    />} />
+    </>} renderWorker={worker => renderWorker(worker)} renderContractor={contractor => renderContractor(contractor)} />
     {profile && <TeamProfileDetails key={profile.role + "-" + profile.id} member={profile} onClose={() => setProfile(null)} />}
   </>;
 }

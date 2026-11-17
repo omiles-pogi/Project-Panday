@@ -19,7 +19,7 @@ import type { ContractorSearchResult } from "@/types/contractor";
 type Person = DirectoryPerson;
 type Profile = { id: number; name: string; role: "worker" | "contractor" };
 
-export default function WorkersDirectory({ teamError, onRetryTeam, showBanner = true, showProjectPrompt = true, beforeBanner, header, children, renderWorker, renderContractor, renderInvite }: {
+export default function WorkersDirectory({ teamError, onRetryTeam, showBanner = true, showProjectPrompt = true, beforeBanner, header, children, renderWorker, renderContractor, renderInvite, workerTitle = "Explore Skilled Workers" }: {
   teamError?: string | null;
   onRetryTeam?: () => void;
   showBanner?: boolean;
@@ -27,6 +27,7 @@ export default function WorkersDirectory({ teamError, onRetryTeam, showBanner = 
   beforeBanner?: ReactNode;
   header?: ReactNode;
   children?: ReactNode;
+  workerTitle?: string;
   renderWorker?: (worker: WorkerSearchResult) => ReactNode;
   renderContractor?: (contractor: ContractorSearchResult) => ReactNode;
   renderInvite?: (person: DirectoryPerson, role: Profile["role"]) => ReactNode;
@@ -115,7 +116,7 @@ export default function WorkersDirectory({ teamError, onRetryTeam, showBanner = 
         {count > 0 && <Text style={{ color: "#11141c", backgroundColor: "#f59e0b", borderRadius: 8, minWidth: 16, textAlign: "center", fontSize: 10, paddingHorizontal: 3 }}>{count > 9 ? "9+" : count}</Text>}
       </Pressable>
     </View>
-    {(!filters || filters.type === "worker") && section("Explore Skilled Workers", "worker", workers)}
+    {(!filters || filters.type === "worker") && section(workerTitle, "worker", workers)}
     {(!filters || filters.type === "contractor") && section("Explore Contractors", "contractor", contractors)}
     {children}
     {showProjectPrompt && <ProjectHiringPrompt flow={flow} />}

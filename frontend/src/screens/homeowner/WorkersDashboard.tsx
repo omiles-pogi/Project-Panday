@@ -11,9 +11,6 @@ import { useTheme } from "@/context/ThemeContext";
 import { useFocusedResource } from "@/hooks/useFocusedResource";
 import { fetchHomeownerTeam, type HomeownerTeamMember, type HomeownerTeamOverview } from "@/services/api/homeownerTeam";
 import { assignWorkerToProject, assignContractorToProject } from "@/services/api/projects";
-import { searchWorkers } from "@/services/api/workers";
-import { searchContractors } from "@/services/api/contractors";
-import { recommendedSkillsForPlan } from "@/utils/teamRecommendations";
 import { workersLayout } from "@/utils/workersLayout";
 import type { WorkerSearchResult } from "@/types/worker";
 import type { ContractorSearchResult } from "@/types/contractor";
@@ -34,19 +31,18 @@ export default function WorkersDashboard() {
     const requestedAt = Date.now();
     if (!projectId) return { overview: null, recommendations: [], contractorRecommendations: [], recommendationError: null, requestedAt };
     const overview = await fetchHomeownerTeam(projectId);
-    const approved = overview.approvedPlan;
-    const skills = approved ? recommendedSkillsForPlan({ ...approved, budgetBreakdown: approved.budgetBreakdown ?? [], phases: approved.phases ?? [] } as Parameters<typeof recommendedSkillsForPlan>[0]).filter(skill => skill.length <= 50).slice(0, 20) : [];
-    if ((overview.status !== "active" && overview.status !== "pending_confirmation") || !overview.canInvite || !skills.length) return { overview, recommendations: [], contractorRecommendations: [], recommendationError: null, requestedAt };
-    // Keep each existing endpoint's ranking. A failure for one role must not erase
-    // the other role's matches, the verified team, or the unfiltered directory.
-    const [workers, contractors] = await Promise.allSettled([searchWorkers({ skills }), searchContractors({ skills })]);
+    const matches = overview.recommendations;
+    if ((overview.status !== "active" && overview.status !== "pending_confirmation") || !overview.canInvite || !overview.approvedPlan) return { overview, recommendations: [], contractorRecommendations: [], recommendationError: null, requestedAt };
+    // Reuse the same server-owned project matching as Find Your Team. The general
+    // directory still uses its independent, unfiltered browsing endpoints.
+    const valid = matches?.projectId === projectId && matches.planApproved;
     const joinedWorkers = new Set(overview.team.filter(member => member.role === "worker").map(member => member.id));
     const joinedContractors = new Set(overview.team.filter(member => member.role === "contractor").map(member => member.id));
     return {
       overview, requestedAt,
-      recommendations: workers.status === "fulfilled" ? workers.value.filter(worker => worker.matchedSkillCount > 0 && !joinedWorkers.has(worker.id)) : [],
-      contractorRecommendations: contractors.status === "fulfilled" ? contractors.value.filter(contractor => contractor.matchedSkillCount > 0 && !joinedContractors.has(contractor.id)) : [],
-      recommendationError: workers.status === "rejected" || contractors.status === "rejected" ? "Could not refresh all recommended workers and contractors. Your current team is still available." : null,
+      recommendations: valid ? matches.workers.filter(worker => !joinedWorkers.has(worker.id)) : [],
+      contractorRecommendations: valid ? matches.contractors.filter(contractor => !joinedContractors.has(contractor.id)) : [],
+      recommendationError: !matches ? "Could not refresh recommended workers and contractors. Your current team is still available." : null,
     };
   }, [projectId]);
   const { data, loading, error, refresh } = useFocusedResource(load, ready);
@@ -111,10 +107,12 @@ export default function WorkersDashboard() {
     ...(data?.recommendations ?? []).map(person => ({ role: "worker" as const, person })),
     ...(data?.contractorRecommendations ?? []).map(person => ({ role: "contractor" as const, person })),
   ];
-  const rows: Recommendation[][] = [];
-  for (let index = 0; index < recommendations.length; index += layout.recommendationColumns) {
-    rows.push(recommendations.slice(index, index + layout.recommendationColumns));
-  }
+  const groups = (["worker", "contractor"] as const).map(role => {
+    const people = recommendations.filter(candidate => candidate.role === role);
+    const rows: Recommendation[][] = [];
+    for (let index = 0; index < people.length; index += layout.recommendationColumns) rows.push(people.slice(index, index + layout.recommendationColumns));
+    return { role, rows };
+  });
   // One directory stays mounted while project reads load, fail or finish. Its own
   // unfiltered APIs stay separate from the existing recommendation query.
   return <WorkersDirectory showProjectPrompt={!managing?.canInvite}
@@ -154,7 +152,9 @@ export default function WorkersDashboard() {
     {inviteError && <Text accessibilityRole="alert" style={{ color: "#ef4444" }}>{inviteError}</Text>}
     {data?.recommendationError && <View style={{ gap: 8 }}><Text accessibilityRole="alert" style={{ color: "#ef4444" }}>{data.recommendationError}</Text><Action label="Retry recommendations" onPress={() => void refresh()} /></View>}
     {!recommendations.length && !data?.recommendationError && <View style={[...card, { padding: 14 }]}><Text style={{ color: chrome.secondaryForeground, fontSize: 12 }}>No recommendations available yet</Text></View>}
-    {rows.map((row, index) => <View key={index} style={{ flexDirection: "row", gap: 10, alignItems: "stretch" }}>
+    {groups.filter(group => group.rows.length > 0).map(group => <View key={group.role} style={{ gap: 10 }}>
+    <Text style={{ color: chrome.foreground, fontWeight: "700", fontSize: 13 }}>{group.role === "worker" ? "Recommended Skilled Workers" : "Recommended Contractors"}</Text>
+    {group.rows.map((row, index) => <View key={index} style={{ flexDirection: "row", gap: 10, alignItems: "stretch" }}>
       {row.map(({ role, person }) => {
         const submitting = role === "worker" ? sending.includes(person.id) : sendingContractors.includes(person.id);
         const requested = role === "worker" ? pending.has(person.id) : pendingContractors.has(person.id);
@@ -166,6 +166,7 @@ export default function WorkersDashboard() {
         </View>;
       })}
       {row.length < layout.recommendationColumns && <View style={{ flex: 1 }} />}
+    </View>)}
     </View>)}
     {profile && <TeamProfileDetails key={`${managing.projectId}-${profile.role}-${profile.id}`} member={profile} onClose={() => setProfile(null)} />}
     </>}

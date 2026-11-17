@@ -112,8 +112,8 @@ async function dashboardHarness(backend, options = {}) {
     '@/utils/currency': { peso: (value) => `PHP ${value}` }, '@/utils/budget': { compareBudget: () => ({ hasBudget: true, difference: 50000 }), formatBudget: (value) => `PHP ${value}` },
     '@/theme/colors': { colors: {} }, '@/components/Mascot': defaults('Mascot'), '@/components/MessageButton': defaults('MessageButton'),
     '@/components/ProjectChecklistCard': defaults('ProjectChecklistCard'), '@/components/ProjectCompletionCard': defaults('ProjectCompletionCard'),
-    '@/components/ProjectRatingPrompt': defaults('ProjectRatingPrompt'), '@/screens/timeline/ProjectCalendar': defaults('ProjectCalendar'),
-    '@/components/WageSheet': defaults('WageSheet'), '@/components/AddBudgetSheet': defaults('AddBudgetSheet'), '@/utils/wage': {},
+    '@/components/ProjectRatingPrompt': defaults('ProjectRatingPrompt'), '@/screens/timeline/ProjectCalendar': defaults('ProjectCalendar'), '@/components/UpcomingActivities': defaults('Upcoming'), '@/components/ProjectOverviewSummary':defaults('Summary'),
+    '@/components/WageSheet': defaults('WageSheet'), '@/components/AddBudgetSheet': defaults('AddBudgetSheet'), '@/utils/wage': {wageLine:value=>value?'Recorded wage':'No wage set'},
   }, { setInterval: (fn) => { poll = fn; return 1; }, clearInterval() {} }).default;
   const render = () => hook.settle(Dashboard);
   return { render, initial: await render(), removals, reads, selections, navigations, drafts,
@@ -196,4 +196,28 @@ test('removing the last visible project leaves Overview scrollable without a flo
   assert.equal(app.drafts.length, 0);
   assert.equal(nodes(tree, 'Scroll')[0].props.contentContainerStyle.paddingBottom, 40);
   assert.equal(backend.records.length, 1);
+});
+
+test('Project Overview removes the full checklist and calendar but keeps its small upcoming summary and completion controls',async()=>{
+  const current={...project(7,'active','Saved ongoing project'),canManageChecklist:true};
+  const app=await dashboardHarness(server([current],7));
+  assert.equal(nodes(app.initial,'ProjectChecklistCard').length,0);
+  assert.equal(nodes(app.initial,'ProjectCalendar').length,0);
+  assert.equal(nodes(app.initial,'ProjectCompletionCard').length,1);
+  assert.equal(nodes(app.initial,'Summary').length,1);
+  const summary=nodes(app.initial,'Summary')[0];assert.equal(summary.props.project.id,7);
+  summary.props.onOpen();assert.ok(app.selections.some(args=>args[0]===7));assert.ok(app.navigations.includes('/homeowner/progress'));
+  assert.doesNotMatch(text(app.initial),/Construction Phases/);assert.match(text(app.initial),/Team management/);
+  assert.equal(app.drafts.length,0);
+});
+
+test('concise Overview keeps existing team messaging and wage controls available through Team management',async()=>{
+  const current={...project(7,'active','Selected project'),workers:[{id:11,name:'Saved worker',trade:'Mason'}],contractors:[{id:21,name:'Saved contractor',specialization:'Residential'}]};
+  const app=await dashboardHarness(server([current],7));
+  assert.equal(nodes(app.initial,'WageButton').length,0);
+  nodes(app.initial,'Pressable').find(n=>n.props.accessibilityLabel==='Team management').props.onPress();let tree=await app.render();
+  assert.equal(nodes(tree,'WageButton').length,2);assert.equal(nodes(tree,'MessageButton').length,2);
+  assert.ok(nodes(tree,'MessageButton').every(n=>n.props.projectId===7));
+  nodes(tree,'WageButton')[1].props.onPress();tree=await app.render();assert.equal(nodes(tree,'WageSheet')[0].props.name,'Saved worker');
+  assert.equal(nodes(tree,'WageSheet')[0].props.defaultUnit,'per_day');
 });

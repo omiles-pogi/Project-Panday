@@ -9,7 +9,7 @@ use Illuminate\Support\Arr;
 /** Read-only project team snapshot. Membership comes from accepted pivots, never applications. */
 class HomeownerTeamService
 {
-    public function __construct(private readonly WorkerService $workers, private readonly ContractorService $contractors) {}
+    public function __construct(private readonly WorkerService $workers, private readonly ContractorService $contractors, private readonly TeamRecommendationService $recommendations) {}
 
     public function overview(User $owner, int $projectId): array
     {
@@ -26,12 +26,21 @@ class HomeownerTeamService
         $workerRequests = $project->workerRequests()->where('status', 'pending')->get(['worker_id', 'initiated_by']);
         $pendingContractors = $project->contractorRequests()->where('status', 'pending')->pluck('contractor_id');
 
+        try {
+            $recommendations = $this->recommendations->forProject($project, $owner);
+        } catch (\Throwable $failure) {
+            // Manual browsing and project management stay usable if matching fails.
+            \Illuminate\Support\Facades\Log::warning('Project team matching unavailable', ['project_id' => $project->id, 'error_type' => get_class($failure)]);
+            $recommendations = null;
+        }
+
         return [
             'projectId' => $project->id,
             'title' => $project->title,
             'status' => $project->status,
             'canInvite' => $project->status !== 'not_started',
             'approvedPlan' => $project->approved_plan,
+            'recommendations' => $recommendations,
             'team' => $members,
             'pendingWorkers' => $workerRequests->map(fn ($request) => ['workerId' => $request->worker_id, 'initiatedBy' => $request->initiated_by])->values(),
             'pendingContractorIds' => $pendingContractors->values(),

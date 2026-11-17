@@ -2,11 +2,14 @@ import { useCallback } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { Card, PageHeader, ProgressBar, Screen, StatGrid, StatTile } from "@/components/ui";
+import { Badge, Card, InfoBox, PageHeader, ProgressBar, Screen, StatGrid, StatTile } from "@/components/ui";
 import { ProgressRing } from "@/components/charts";
 import TeamActivity from "@/components/TeamActivity";
-import { fetchActiveDashboard, fetchProjectActivityLog } from "@/services/api/projects";
-import type { ActivityLogDay, DashboardProject } from "@/types/project";
+import { fetchProgressSnapshot, type ProgressSnapshot } from "@/services/api/progressMonitor";
+import { ProjectCalendarContent } from "@/screens/timeline/ProjectCalendar";
+import ProjectChecklistCard from "@/components/ProjectChecklistCard";
+import { projectStatusMeta } from "@/utils/projectStatus";
+import { savedDate } from "@/utils/projectOverview";
 import { usePlan } from "@/context/PlanContext";
 import { useFocusedResource } from "@/hooks/useFocusedResource";
 
@@ -23,19 +26,21 @@ function dayLabel(dateStr: string): string {
 
 export default function ProgressMonitor() {
   const { activeProjectKey, ready, refreshProjectSelection } = usePlan();
-  const load = useCallback(async (): Promise<{ project: DashboardProject | null; log: ActivityLogDay[] }> => {
-    const id = /^\d+$/.test(activeProjectKey) ? Number(activeProjectKey) : undefined;
-    if (!id) return { project: null, log: [] };
-    const dashboard = await fetchActiveDashboard(id);
-    if (!dashboard.project) void refreshProjectSelection();
-    const project = dashboard.project?.status === "not_started" ? null : dashboard.project;
-    return { project, log: project ? await fetchProjectActivityLog(project.id) : [] };
+  const selectedId = /^[1-9]\d*$/.test(activeProjectKey) ? Number(activeProjectKey) : null;
+  const load = useCallback(async (): Promise<ProgressSnapshot> => {
+    const id = /^[1-9]\d*$/.test(activeProjectKey) ? Number(activeProjectKey) : null;
+    if (!id) return { project: null, log: [], timeline: null, logError: null, timelineError: null };
+    const snapshot = await fetchProgressSnapshot(id);
+    if (!snapshot.project) void refreshProjectSelection();
+    return snapshot;
   }, [activeProjectKey, refreshProjectSelection]);
   const { data, loading, error, refresh } = useFocusedResource(load, ready);
-  const project = data?.project ?? null;
-  const log = data?.log ?? [];
+  // Guard rendering too: a project change must hide the old snapshot immediately,
+  // before focus-effect cleanup and the new project's network request finish.
+  const project = ready && data?.project?.id === selectedId ? data.project : null;
+  const log = project ? data?.log : null;
 
-  if (loading) {
+  if (!ready || (loading && !project)) {
     return (
       <View className="flex-1 items-center justify-center bg-background">
         <ActivityIndicator color="#f59e0b" />
@@ -78,10 +83,12 @@ export default function ProgressMonitor() {
 
   const days = log ?? [];
   const latestDay = days[0] ?? null;
+  const timeline = data?.timeline?.projectId === project.id ? data.timeline : null;
 
   return (
     <Screen topInset={false}>
       <PageHeader title="Progress Monitor" subtitle={project.title} />
+      <Badge label={projectStatusMeta(project.status).label} color={projectStatusMeta(project.status).color} />
       {error && <Text className="text-xs text-danger">Refresh failed. Showing the last loaded progress: {error}</Text>}
       <Pressable accessibilityRole="button" onPress={refresh} className="self-start flex-row items-center gap-1.5">
         <Ionicons name="refresh-outline" size={14} color="#f59e0b" />
@@ -95,8 +102,9 @@ export default function ProgressMonitor() {
             <Text className="text-xs text-muted-foreground">Overall progress, right now</Text>
             <Text className="text-lg font-extrabold text-foreground">{project.overallProgressPct}% complete</Text>
             <Text className="text-xs mt-0.5 text-muted-foreground">
-              Started {new Date(project.startedAt).toLocaleDateString()}
+              Started {savedDate(project.startedAt)}
             </Text>
+            <Text className="text-xs mt-0.5 text-muted-foreground">Estimated completion: {savedDate(timeline?.endDate)}</Text>
           </View>
         </View>
       </Card>
@@ -104,7 +112,7 @@ export default function ProgressMonitor() {
       <StatGrid>
         <StatTile
           label="Days with activity"
-          value={days.length}
+          value={log === null ? "—" : days.length}
           icon="calendar-outline"
           color="#3b82f6"
         />
@@ -116,12 +124,27 @@ export default function ProgressMonitor() {
         />
       </StatGrid>
 
+      {data?.timelineError && <InfoBox title="Progress Calendar" color="#ef4444">{data.timelineError}</InfoBox>}
+      {data?.timeline && data.timeline.projectId === project.id && <ProjectCalendarContent
+        key={`progress-calendar-${project.id}`} timeline={data.timeline} section="calendar" showPhases={false} selectToday
+        actualProgressPct={project.overallProgressPct}
+        team={[...project.workers.map(worker => ({ ...worker, role: "worker" as const })), ...project.contractors.map(contractor => ({ ...contractor, role: "contractor" as const }))]} />}
+
+      <ProjectChecklistCard key={`progress-checklist-${project.id}`} project={project} drawer collapsible
+        readOnly={!project.canManageChecklist} timeline={data?.timeline} onChanged={refresh} />
+
       <Card title="Phases">
         <View style={{ gap: 14 }}>
-          {project.phases.map((phase, i) => (
+          {project.phases.map((phase, i) => {
+            const saved = timeline?.phases.find(item => item.id === phase.id);
+            const status = phase.progressPct >= 100 ? { label: "Completed", color: "#10b981" }
+              : saved?.status === "overdue" ? { label: "Delayed", color: "#ef4444" }
+              : phase.progressPct > 0 ? { label: "In progress", color: "#3b82f6" }
+              : saved ? { label: "Scheduled", color: "#f59e0b" } : { label: "Not started", color: "#6b7280" };
+            return (
             <View key={`${phase.id}-${i}`}>
               <View className="flex-row justify-between mb-1.5">
-                <Text className="text-xs text-muted-foreground" numberOfLines={1}>
+                <Text className="flex-1 text-xs text-muted-foreground">
                   {phase.name}
                 </Text>
                 <Text
@@ -132,18 +155,25 @@ export default function ProgressMonitor() {
                 </Text>
               </View>
               <ProgressBar pct={phase.progressPct} color={phase.progressPct === 100 ? "#10b981" : "#f59e0b"} />
+              <View className="mt-2 self-start"><Badge label={status.label} color={status.color} /></View>
             </View>
-          ))}
+          ); })}
         </View>
       </Card>
 
       <Card title="Team on Site">
-        <TeamActivity projectId={project.id} />
+        {project.contractors.map(contractor => <View key={`contractor-${contractor.id}`} className="rounded-xl bg-muted p-3" style={{ gap: 4 }}>
+          <Text className="text-sm font-semibold text-foreground">{contractor.name}</Text>
+          {contractor.companyName && <Text className="text-xs text-muted-foreground">{contractor.companyName}</Text>}
+          <Text className="text-xs text-muted-foreground">Assigned contractor{contractor.specialization ? ` · ${contractor.specialization}` : ""}</Text>
+        </View>)}
+        {project.workers.length > 0 && <TeamActivity key={`site-team-${project.id}`} projectId={project.id} />}
+        {!project.workers.length && !project.contractors.length && <Text className="text-xs text-muted-foreground">No team members assigned yet.</Text>}
       </Card>
 
       <View>
         <Text className="font-bold text-sm mb-3 text-foreground">Day by Day</Text>
-        {days.length === 0 ? (
+        {data?.logError ? <Text accessibilityRole="alert" className="text-xs text-danger">{data.logError}</Text> : days.length === 0 ? (
           <View className="rounded-3xl p-6 items-center bg-card border border-border">
             <Ionicons name="checkbox-outline" size={26} color="#6b7280" style={{ marginBottom: 8 }} />
             <Text className="text-sm text-center text-muted-foreground">

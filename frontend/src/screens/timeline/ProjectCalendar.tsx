@@ -6,7 +6,8 @@ import { GrowBar } from "@/components/charts";
 import { useTheme } from "@/context/ThemeContext";
 import { fetchProjectTimeline } from "@/services/api/timeline";
 import { useFocusedResource } from "@/hooks/useFocusedResource";
-import type { ProjectTimeline, TimelineMonth, TimelineTask } from "@/types/timeline";
+import { monthlyActivities } from "@/utils/projectOverview";
+import type { CalendarTeamMember, ProjectTimeline, TimelineMonth, TimelineTask } from "@/types/timeline";
 import {
   PHASE_STATUS_META,
   SCHEDULE_STATUS_META,
@@ -17,6 +18,7 @@ import {
   formatRange,
   formatShortDate,
   timelineLabel,
+  taskDurationDays,
 } from "@/utils/timeline";
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
@@ -47,11 +49,14 @@ export default function ProjectCalendar({ projectId, showPhases = true }: { proj
 }
 
 /** Present the existing views with one parent-owned refresh; tabs never start extra pollers. */
-export function ProjectCalendarContent({ timeline, showPhases = true, section = "all" }: {
+export function ProjectCalendarContent({ timeline, showPhases = true, section = "all", selectToday = false, team, actualProgressPct }: {
   timeline: ProjectTimeline; showPhases?: boolean; section?: "all" | "overview" | "calendar" | "schedule" | "none";
+  selectToday?: boolean; team?: CalendarTeamMember[];
+  actualProgressPct?: number;
 }) {
   const [monthKey, setMonthKey] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [view, setView] = useState<"monthly" | "daily">("monthly");
   useEffect(() => {
     if (!timeline) return;
     // Preserve the chosen month while fresh progress arrives from the backend.
@@ -69,11 +74,6 @@ export function ProjectCalendarContent({ timeline, showPhases = true, section = 
 
   return (
     <View style={{ gap: 16 }}>
-      {section === "calendar" && <View className="flex-row items-center gap-2">
-        <Ionicons name="calendar-outline" size={16} color="#f59e0b" />
-        <Text className="font-bold text-sm text-foreground">Project Calendar</Text>
-      </View>}
-
       {timeline && (
         <>
           {(section === "all" || section === "overview") && <ScheduleSummary timeline={timeline} />}
@@ -86,10 +86,18 @@ export function ProjectCalendarContent({ timeline, showPhases = true, section = 
               hasNext={monthIndex < timeline.months.length - 1}
               onPrev={() => pickMonth(timeline.months[monthIndex - 1].key)}
               onNext={() => pickMonth(timeline.months[monthIndex + 1].key)}
-              selectedDay={selectedDay}
-              onSelectDay={setSelectedDay}
+              selectedDay={selectedDay?.startsWith(month.key) ? selectedDay : selectToday ? timeline.today.startsWith(month.key) ? timeline.today : `${month.key}-01` : null}
+              onSelectDay={day => { setSelectedDay(day); setView("daily"); }}
+              team={team}
+              view={view}
+              onViewChange={mode => {
+                setView(mode);
+                if (mode === "daily" && !selectedDay?.startsWith(month.key)) setSelectedDay(timeline.today.startsWith(month.key) ? timeline.today : `${month.key}-01`);
+              }}
+              actualProgressPct={actualProgressPct}
             />
           )}
+          {(section === "all" || section === "calendar") && !month && <InfoBox title="Progress Calendar" color="#6b7280">No saved construction schedule is available for this project.</InfoBox>}
           {showPhases && (section === "all" || section === "schedule") && <PhaseSchedule timeline={timeline} />}
         </>
       )}
@@ -237,6 +245,10 @@ function MonthCalendar({
   onNext,
   selectedDay,
   onSelectDay,
+  team,
+  view,
+  onViewChange,
+  actualProgressPct,
 }: {
   timeline: ProjectTimeline;
   month: TimelineMonth;
@@ -246,20 +258,27 @@ function MonthCalendar({
   onNext: () => void;
   selectedDay: string | null;
   onSelectDay: (iso: string | null) => void;
+  team?: CalendarTeamMember[];
+  view: "monthly" | "daily";
+  onViewChange: (view: "monthly" | "daily") => void;
+  actualProgressPct?: number;
 }) {
   const { chrome } = useTheme();
   const rows = buildMonthGrid(month);
-  const visibleTasks = selectedDay ? month.tasks.filter((t) => t.plannedEnd === selectedDay) : month.tasks;
+  const activities = monthlyActivities(month);
+  const day = selectedDay ?? (timeline.today.startsWith(month.key) ? timeline.today : `${month.key}-01`);
+  const visibleTasks = view === "daily" ? activities.filter((t) => t.plannedStart <= day && t.plannedEnd >= day) : activities;
+  const actual = actualProgressPct ?? timeline.overall?.actualPct;
 
   return (
     <>
-      <Card>
+      <Card title="Progress Calendar">
         <View className="flex-row items-center justify-between mb-3">
-          <Pressable onPress={onPrev} disabled={!hasPrev} hitSlop={10} accessibilityLabel="Previous month">
+          <Pressable onPress={onPrev} disabled={!hasPrev} accessibilityRole="button" accessibilityState={{ disabled: !hasPrev }} style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center" }} accessibilityLabel="Previous month">
             <Ionicons name="chevron-back" size={20} color={hasPrev ? chrome.foreground : chrome.border} />
           </Pressable>
-          <Text className="font-bold text-base text-foreground">{month.label}</Text>
-          <Pressable onPress={onNext} disabled={!hasNext} hitSlop={10} accessibilityLabel="Next month">
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} className="flex-1 text-center font-bold text-base text-foreground">{month.label}</Text>
+          <Pressable onPress={onNext} disabled={!hasNext} accessibilityRole="button" accessibilityState={{ disabled: !hasNext }} style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center" }} accessibilityLabel="Next month">
             <Ionicons name="chevron-forward" size={20} color={hasNext ? chrome.foreground : chrome.border} />
           </Pressable>
         </View>
@@ -282,14 +301,16 @@ function MonthCalendar({
               return (
                 <Pressable
                   key={c}
-                  disabled={!hasTasks}
-                  onPress={() => onSelectDay(selected ? null : cell.iso)}
-                  style={{ flex: 1, height: 44, alignItems: "center", justifyContent: "center", padding: 2 }}
-                  accessibilityLabel={`${cell.iso}${hasTasks ? `, ${cell.tasks.length} task${cell.tasks.length === 1 ? "" : "s"} due` : ""}`}
+                  onPress={() => onSelectDay(cell.iso)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  style={{ flex: 1, minWidth: 0, height: 46, alignItems: "center", justifyContent: "center", padding: 2 }}
+                  accessibilityLabel={`${cell.iso}, ${cell.tasks.length} scheduled activit${cell.tasks.length === 1 ? "y" : "ies"}${hasTasks ? `, ${Array.from(new Set(cell.tasks.map(task => TASK_STATUS_META[task.status].label))).join(", ")}` : ""}`}
                 >
                   <View
                     style={{
-                      width: 34,
+                      width: "100%",
+                      maxWidth: 38,
                       height: 38,
                       borderRadius: 12,
                       alignItems: "center",
@@ -306,16 +327,9 @@ function MonthCalendar({
                       {cell.day}
                     </Text>
                     <View style={{ height: 6, marginTop: 2, justifyContent: "center" }}>
-                      {hasTasks ? (
-                        <View
-                          style={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: 3,
-                            backgroundColor: selected ? "#0f1117" : dayDotColor(cell.tasks),
-                          }}
-                        />
-                      ) : null}
+                      <View
+                        style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: dayDotColor(cell.tasks) }}
+                      />
                     </View>
                   </View>
                 </Pressable>
@@ -325,13 +339,27 @@ function MonthCalendar({
         ))}
 
         <View className="flex-row flex-wrap gap-x-4 gap-y-1 mt-3">
-          <Legend color="#10b981" label="Done" />
-          <Legend color="#f59e0b" label="Pending / late" />
-          <Legend color="#ef4444" label="Overdue" />
+          <Legend color="#10b981" label="Completed" />
+          <Legend color="#3b82f6" label="In progress" />
+          <Legend color="#f59e0b" label="Scheduled / pending" />
+          <Legend color="#ef4444" label="Delayed" />
+          <Legend color="#6b7280" label="No scheduled activity" />
         </View>
       </Card>
 
-      <Card title={selectedDay ? `Due ${formatShortDate(selectedDay)}` : `Scheduled in ${month.label}`} gap={10}>
+      <Card title="Scheduled Activities" gap={10}>
+        <View style={{ flexDirection: "row", gap: 6, padding: 4, borderRadius: 14, backgroundColor: chrome.muted }}>
+          {(["monthly", "daily"] as const).map(mode => <Pressable key={mode} accessibilityRole="button" accessibilityLabel={mode === "monthly" ? "Monthly View" : "Daily View"} accessibilityState={{ selected: view === mode }}
+            onPress={() => onViewChange(mode)} style={{ flex: 1, minWidth: 0, minHeight: 42, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: view === mode ? chrome.card : "transparent" }}>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: view === mode ? "#d97706" : chrome.foreground, fontWeight: "700", fontSize: 12 }}>{mode === "monthly" ? "Monthly View" : "Daily View"}</Text>
+          </Pressable>)}
+        </View>
+        <Text className="text-sm font-bold text-foreground">{view === "daily" ? `${formatShortDate(day)}, ${day.slice(0, 4)}` : `Scheduled in ${month.label}`}</Text>
+        {team && <Text className="text-xs leading-5 text-secondary-foreground">{team.length ? `Project team: ${team.map(member => `${member.name} (${member.role === "worker" ? member.trade || "Skilled Worker" : "Contractor"})`).join(", ")}.` : "No team members assigned yet."}</Text>}
+        {!!timeline.assignmentWarnings?.length && <InfoBox title="Potential schedule overlaps" color="#f59e0b">
+          {timeline.assignmentWarnings.map(warning => `${warning.name}: ${warning.overlappingAssignments} other ongoing assignment(s) with an overlapping project window.`).join(" ")}
+          {" Confirm availability with your team before changing the schedule."}
+        </InfoBox>}
         <View className="flex-row justify-between">
           <Text className="text-xs text-muted-foreground">Planned by month end</Text>
           <Text className="text-xs font-semibold" style={{ color: PLANNED_COLOR, fontFamily: MONO }}>
@@ -339,13 +367,13 @@ function MonthCalendar({
           </Text>
         </View>
         <View className="flex-row justify-between">
-          <Text className="text-xs text-muted-foreground">{month.isCurrent ? "Actual so far" : "Actual by month end"}</Text>
+          <Text className="text-xs text-muted-foreground">Actual so far</Text>
           <Text className="text-xs font-semibold" style={{ color: ACTUAL_COLOR, fontFamily: MONO }}>
-            {month.actualPct === null ? "—" : `${month.actualPct}%`}
+            {actual === undefined ? "—" : `${actual}%`}
           </Text>
         </View>
 
-        {!selectedDay && month.phases.length > 0 && (
+        {view === "monthly" && month.phases.length > 0 && (
           <View className="flex-row flex-wrap gap-2">
             {month.phases.map((p) => (
               <Badge key={p.id} label={p.name} color="#3b82f6" />
@@ -355,17 +383,17 @@ function MonthCalendar({
 
         {visibleTasks.length === 0 ? (
           <Text className="text-xs text-muted-foreground">
-            {selectedDay ? "Nothing is due on this day." : "No checklist items are due this month."}
+            {view === "daily" ? "No construction activities scheduled for this date." : "No construction activities scheduled for this month."}
           </Text>
         ) : (
-          visibleTasks.map((task) => <TaskRow key={task.id} task={task} />)
+          visibleTasks.map((task) => <TaskRow key={task.id} task={task} phaseProgressPct={timeline.phases.find(phase => phase.id === task.phaseId)?.progressPct} />)
         )}
       </Card>
     </>
   );
 }
 
-function TaskRow({ task }: { task: TimelineTask }) {
+function TaskRow({ task, phaseProgressPct }: { task: TimelineTask; phaseProgressPct?: number }) {
   const meta = TASK_STATUS_META[task.status];
   return (
     <View className="flex-row items-center gap-2.5 px-3 py-2 rounded-xl bg-muted">
@@ -374,10 +402,12 @@ function TaskRow({ task }: { task: TimelineTask }) {
         <Text className="text-xs font-medium text-foreground" numberOfLines={2}>
           {task.description}
         </Text>
-        <Text className="text-xs text-muted-foreground" numberOfLines={1}>
-          {task.phaseName} · due {formatShortDate(task.plannedEnd)}
-          {task.completedAt ? ` · done ${formatShortDate(task.completedAt)}` : ""}
-        </Text>
+        <Text className="text-xs text-muted-foreground">Phase: {task.phaseName}</Text>
+        <Text className="text-xs text-muted-foreground">Planned: {formatRange(task.plannedStart, task.plannedEnd)}</Text>
+        <Text className="text-xs text-muted-foreground">Planned duration: {taskDurationDays(task)} calendar {taskDurationDays(task) === 1 ? "day" : "days"}</Text>
+        {task.completedAt && <Text className="text-xs text-muted-foreground">Actually completed: {task.completedAt}</Text>}
+        {task.isDone && !task.completedAt && <Text className="text-xs text-muted-foreground">Completion date not recorded.</Text>}
+        {phaseProgressPct !== undefined && <Text className="text-xs text-muted-foreground">Phase progress: {phaseProgressPct}%</Text>}
       </View>
       <Badge label={meta.label} color={meta.color} />
     </View>

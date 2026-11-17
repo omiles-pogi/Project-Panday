@@ -55,7 +55,12 @@ export interface TimelineMonth {
   phases: { id: number; name: string }[];
   /** Tasks due (planned end) in this month. */
   tasks: TimelineTask[];
+  /** Activities whose planned date ranges intersect this month, including carry-over tasks. */
+  activities?: TimelineTask[];
 }
+
+/** Project membership only; the current schema has no task-level worker assignment. */
+export interface CalendarTeamMember { id: number; name: string; role: "worker" | "contractor"; trade?: string | null; specialization?: string | null }
 
 export interface ProjectTimeline {
   projectId: number;
@@ -77,4 +82,6 @@ export interface ProjectTimeline {
   };
   phases: TimelinePhase[];
   months: TimelineMonth[];
+  /** Aggregate conflicts only: other projects' private details are never returned. */
+  assignmentWarnings?: { memberId: number; name: string; role: "worker" | "contractor"; overlappingAssignments: number }[];
 }

@@ -91,13 +91,24 @@ class TimelineService
      *
      * @throws ValidationException
      */
-    public function timelineFor(Project $project, User $actingUser): array
+    public function timelineFor(Project $project, User $actingUser, bool $savedOnly = false): array
     {
         if (! $project->canViewTimeline($actingUser)) {
             throw ValidationException::withMessages(['project_id' => 'You cannot view this project\'s calendar.']);
         }
 
         $project->load('phases.tasks');
+        // Progress Monitor is a saved-schedule viewer, never a schedule repair action.
+        // Keep the existing legacy calendar behavior for callers that did not opt in.
+        if ($savedOnly) {
+            if ($project->status === 'not_started' || ! $project->approved_plan) {
+                throw ValidationException::withMessages(['project_id' => 'Approve the construction plan before viewing its saved schedule.']);
+            }
+            if (! $project->started_at || $project->phases->isEmpty()
+                || $project->phases->contains(fn (ProjectPhase $phase) => ! $phase->planned_start || ! $phase->planned_end || $phase->planned_end->lt($phase->planned_start))) {
+                throw ValidationException::withMessages(['project_id' => 'The saved construction schedule is unavailable or incomplete. Existing phase dates have not been changed.']);
+            }
+        }
         // Contractor History is a view of saved records, never a schedule repair.
         // Legacy completed projects with missing dates remain viewable elsewhere,
         // but must not be rescheduled merely by opening the Calendar/AI Schedule tab.
@@ -110,7 +121,9 @@ class TimelineService
             && $project->phases->contains(fn (ProjectPhase $phase) => $phase->planned_start || $phase->planned_end)) {
             throw ValidationException::withMessages(['project_id' => 'The saved schedule has incomplete dates. Existing phase dates have been preserved; schedule review is required.']);
         }
-        $this->ensureSchedule($project);
+        if (! $savedOnly) {
+            $this->ensureSchedule($project);
+        }
 
         $today = Carbon::today();
         $phases = $project->phases->values();
@@ -123,7 +136,7 @@ class TimelineService
         $projectEnd = $phases->last()->planned_end->copy();
 
         $phaseItems = $phases->map(fn (ProjectPhase $phase) => $this->presentPhase($phase, $today));
-        $tasks = $phases->flatMap(fn (ProjectPhase $phase) => $this->presentTasks($phase, $today))->values();
+        $tasks = $phases->flatMap(fn (ProjectPhase $phase) => $this->presentTasks($phase, $today, $savedOnly))->values();
 
         return [
             'projectId' => $project->id,
@@ -136,7 +149,42 @@ class TimelineService
             'overall' => $this->presentOverall($project, $phases, $tasks, $projectStart, $projectEnd, $today),
             'phases' => $phaseItems->values(),
             'months' => $this->months($phases, $tasks, $projectStart, $projectEnd, $today),
+            'assignmentWarnings' => $savedOnly ? $this->assignmentWarnings($project, $projectStart, $projectEnd) : [],
         ];
+    }
+
+    /** Potential project-window conflicts, not a claim about task-level availability.
+     * Return only this project's known members and counts; never disclose another
+     * project's ID, title, owner, dates, wages or private work logs.
+     */
+    private function assignmentWarnings(Project $project, Carbon $start, Carbon $end): array
+    {
+        if (! in_array($project->status, ['active', Project::PENDING_CONFIRMATION], true) || $project->completion_confirmed_at) {
+            return [];
+        }
+        $project->loadMissing(['workers', 'contractors']);
+        $workers = $project->workers->pluck('id');
+        $contractors = $project->contractors->pluck('id');
+        if ($workers->isEmpty() && $contractors->isEmpty()) {
+            return [];
+        }
+        $others = Project::whereKeyNot($project->id)->whereIn('status', ['active', Project::PENDING_CONFIRMATION])
+            ->whereNull('completion_confirmed_at')->whereNotNull('started_at')
+            ->where(fn ($q) => $q->whereHas('workers', fn ($members) => $members->whereIn('users.id', $workers))
+                ->orWhereHas('contractors', fn ($members) => $members->whereIn('users.id', $contractors)))
+            ->with(['workers' => fn ($q) => $q->whereIn('users.id', $workers), 'contractors' => fn ($q) => $q->whereIn('users.id', $contractors)])
+            ->get()->filter(fn (Project $other) => $other->started_at->lte($end) && $other->timelineEndDate($other->started_at)->gte($start));
+        $warnings = [];
+        foreach (['worker' => 'workers', 'contractor' => 'contractors'] as $role => $relation) {
+            foreach ($project->$relation as $member) {
+                $count = $others->filter(fn (Project $other) => $other->$relation->contains('id', $member->id))->count();
+                if ($count > 0) {
+                    $warnings[] = ['memberId' => $member->id, 'name' => $member->name, 'role' => $role, 'overlappingAssignments' => $count];
+                }
+            }
+        }
+
+        return $warnings;
     }
 
     /**
@@ -251,22 +299,23 @@ class TimelineService
      *
      * @return Collection<int, array<string, mixed>>
      */
-    private function presentTasks(ProjectPhase $phase, Carbon $today): Collection
+    private function presentTasks(ProjectPhase $phase, Carbon $today, bool $verifiedDatesOnly = false): Collection
     {
         $tasks = $phase->tasks->sortBy('id')->values();
         $count = $tasks->count();
         $spanDays = $this->spanDays($phase);
 
-        return $tasks->map(function (ProjectPhaseTask $task, int $index) use ($phase, $today, $count, $spanDays) {
+        return $tasks->map(function (ProjectPhaseTask $task, int $index) use ($phase, $today, $count, $spanDays, $verifiedDatesOnly) {
             $startOffset = min((int) round($spanDays * $index / $count), $spanDays - 1);
             $endOffset = min(max((int) round($spanDays * ($index + 1) / $count) - 1, $startOffset), $spanDays - 1);
 
             $plannedStart = $phase->planned_start->copy()->addDays($startOffset);
             $plannedEnd = $phase->planned_start->copy()->addDays($endOffset);
-            $completedAt = $task->is_done ? ($task->completed_at ?? $task->updated_at) : null;
+            // A saved-only view must not present an unrelated edit timestamp as a verified completion date.
+            $completedAt = $task->is_done ? ($task->completed_at ?? ($verifiedDatesOnly ? null : $task->updated_at)) : null;
 
             if ($task->is_done) {
-                $status = $completedAt->toDateString() > $plannedEnd->toDateString() ? 'completed_late' : 'completed';
+                $status = $completedAt && $completedAt->toDateString() > $plannedEnd->toDateString() ? 'completed_late' : 'completed';
             } elseif ($today->gt($plannedEnd)) {
                 $status = 'overdue';
             } elseif ($today->gte($plannedStart)) {
@@ -327,6 +376,11 @@ class TimelineService
                     ->sortBy('plannedEnd')
                     ->values()
                     ->all(),
+                // Activity ranges may cross a month boundary. Preserve the existing
+                // due-only list above for charts; the interactive calendar uses overlaps.
+                'activities' => $tasks
+                    ->filter(fn (array $t) => $t['plannedStart'] <= $monthEnd->toDateString() && $t['plannedEnd'] >= $monthStart->toDateString())
+                    ->sortBy('plannedStart')->values()->all(),
             ];
 
             $cursor->addMonthNoOverflow();

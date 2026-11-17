@@ -34,10 +34,10 @@ export const PHASE_STATUS_META: Record<PhaseScheduleStatus, { label: string; col
 
 export const TASK_STATUS_META: Record<TaskScheduleStatus, { label: string; color: string; icon: IconName }> = {
   completed: { label: "Done", color: "#10b981", icon: "checkmark-circle" },
-  completed_late: { label: "Done late", color: "#f59e0b", icon: "checkmark-circle" },
+  completed_late: { label: "Completed late", color: "#10b981", icon: "checkmark-circle" },
   overdue: { label: "Overdue", color: "#ef4444", icon: "alert-circle" },
-  in_progress: { label: "In progress", color: "#f59e0b", icon: "time-outline" },
-  upcoming: { label: "Upcoming", color: "#6b7280", icon: "ellipse-outline" },
+  in_progress: { label: "In progress", color: "#3b82f6", icon: "time-outline" },
+  upcoming: { label: "Scheduled", color: "#f59e0b", icon: "ellipse-outline" },
 };
 
 /** "1 month", "2 weeks", "10 days" — never says "1 months". */
@@ -86,19 +86,16 @@ export interface CalendarCell {
   tasks: TimelineTask[];
 }
 
-/** Sunday-first grid rows for a month, padded with nulls so day 1 lands on its weekday. */
+/** Sunday-first grid, using saved activity ranges rather than only their due dates. */
 export function buildMonthGrid(month: TimelineMonth): (CalendarCell | null)[][] {
   const first = new Date(month.year, month.month - 1, 1);
   const daysInMonth = new Date(month.year, month.month, 0).getDate();
-  const byDay = new Map<string, TimelineTask[]>();
-  for (const task of month.tasks) {
-    byDay.set(task.plannedEnd, [...(byDay.get(task.plannedEnd) ?? []), task]);
-  }
+  const tasks = month.activities ?? month.tasks;
 
   const cells: (CalendarCell | null)[] = Array.from({ length: first.getDay() }, () => null);
   for (let day = 1; day <= daysInMonth; day++) {
     const iso = `${month.key}-${String(day).padStart(2, "0")}`;
-    cells.push({ day, iso, tasks: byDay.get(iso) ?? [] });
+    cells.push({ day, iso, tasks: tasks.filter(task => task.plannedStart <= iso && task.plannedEnd >= iso) });
   }
   while (cells.length % 7 !== 0) cells.push(null);
 
@@ -107,10 +104,15 @@ export function buildMonthGrid(month: TimelineMonth): (CalendarCell | null)[][] 
   return rows;
 }
 
-/** The colour a day's dot should be: red if anything due that day is overdue, amber while work is
- * still pending, green once everything due that day is done. */
+/** Current recorded status, not historical completion inferred from the tapped date. */
 export function dayDotColor(tasks: TimelineTask[]): string {
+  if (!tasks.length) return "#6b7280";
   if (tasks.some((t) => t.status === "overdue")) return "#ef4444";
-  if (tasks.every((t) => t.isDone)) return tasks.some((t) => t.status === "completed_late") ? "#f59e0b" : "#10b981";
+  if (tasks.every((t) => t.isDone)) return "#10b981";
+  if (tasks.some((t) => t.status === "in_progress")) return "#3b82f6";
   return "#f59e0b";
+}
+
+export function taskDurationDays(task: TimelineTask): number {
+  return Math.round((Date.parse(`${task.plannedEnd}T00:00:00Z`) - Date.parse(`${task.plannedStart}T00:00:00Z`)) / 86400000) + 1;
 }

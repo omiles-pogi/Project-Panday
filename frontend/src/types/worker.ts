@@ -10,7 +10,7 @@ export interface WorkerSearchResult {
   photoUrl?: string | null;
   id: number;
   name: string;
-  email: string;
+  email?: string;
   trade: string;
   yearsExperience: number;
   bio: string | null;
@@ -20,7 +20,7 @@ export interface WorkerSearchResult {
   averageRating: number | null;
   ratingCount: number;
   matchedSkillCount: number;
-  score: number;
+  score?: number;
 }
 
 export interface WorkerRatingEntry {

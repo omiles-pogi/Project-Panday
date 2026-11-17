@@ -10,7 +10,7 @@ export interface ContractorSearchResult {
   photoUrl?: string | null;
   id: number;
   name: string;
-  email: string;
+  email?: string;
   companyName: string | null;
   specialization: string;
   yearsExperience: number;
@@ -19,7 +19,7 @@ export interface ContractorSearchResult {
   averageRating: number | null;
   ratingCount: number;
   matchedSkillCount: number;
-  score: number;
+  score?: number;
 }
 
 export interface ContractorRatingEntry {

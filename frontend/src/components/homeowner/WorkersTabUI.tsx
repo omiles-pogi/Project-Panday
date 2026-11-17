@@ -10,6 +10,7 @@ import { peso } from "@/utils/currency";
 import type { HomeownerTeamMember, HomeownerTeamOverview } from "@/services/api/homeownerTeam";
 import type { WorkerSearchResult } from "@/types/worker";
 import type { ContractorSearchResult } from "@/types/contractor";
+import type { RecommendationEvidence } from "@/types/teamRecommendations";
 
 type Icon = keyof typeof Ionicons.glyphMap;
 const ORANGE = "#f59e0b";
@@ -136,7 +137,7 @@ export function CurrentTeamCard({ member, projectId, inline, onView, onAssignmen
 }
 
 export function RecommendedWorkerCard({ worker, inviteLabel, disabled, onInvite, onView }: {
-  worker: WorkerSearchResult | ContractorSearchResult; inviteLabel: string; disabled: boolean; onInvite: () => void; onView: () => void;
+  worker: (WorkerSearchResult | ContractorSearchResult) & Partial<RecommendationEvidence>; inviteLabel: string; disabled: boolean; onInvite: () => void; onView: () => void;
 }) {
   const { chrome, mode } = useTheme();
   return <View style={[styles.card, { backgroundColor: chrome.card, borderColor: chrome.border, padding: 10, gap: 7, flex: 1 }]}>
@@ -148,6 +149,7 @@ export function RecommendedWorkerCard({ worker, inviteLabel, disabled, onInvite,
       <ProfileAvatar name={worker.name} url={worker.photoUrl} size={36} /><Identity person={worker} compact />
     </Pressable>
     <Text style={{ color: chrome.secondaryForeground, fontSize: 10, lineHeight: 14 }}>{worker.skills.slice(0, 3).join(" · ")}</Text>
+    {worker.reason && <Text style={{ color: chrome.secondaryForeground, fontSize: 10, lineHeight: 14 }}>{worker.reason}</Text>}
     <View style={{ marginTop: "auto", flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 5 }}>
       {"minDailyWage" in worker && worker.minDailyWage != null && <Text style={{ color: mode === "light" ? "#c45c00" : "#fbbf24", fontSize: 13, fontWeight: "800" }}>{peso(worker.minDailyWage)}<Text style={{ color: chrome.secondaryForeground, fontSize: 10, fontWeight: "400" }}> / day</Text></Text>}
       <Action label={inviteLabel} icon={inviteLabel === "Invite" ? "chevron-forward" : undefined} disabled={disabled} onPress={onInvite} />

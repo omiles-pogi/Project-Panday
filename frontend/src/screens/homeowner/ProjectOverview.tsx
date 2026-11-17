@@ -1,36 +1,24 @@
 import { useCallback, useRef, useState } from "react";
 import { AppState, ScrollView, Text, View, Pressable, ActivityIndicator, Modal } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { CountUp, ProgressRing } from "@/components/charts";
-import { ProgressBar } from "@/components/ui";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { addProjectBudget, setTeamWage } from "@/services/api/projects";
 import { fetchProjectOverview, fetchDashboardProjects, removeProjectFromDashboard } from "@/services/api/dashboard";
-import type { DashboardData, ProjectStatus, ProjectSummary, Wage, WageInput } from "@/types/project";
+import type { DashboardData, ProjectSummary, Wage, WageInput } from "@/types/project";
 import { peso } from "@/utils/currency";
-import { compareBudget, formatBudget } from "@/utils/budget";
+import { compareBudget } from "@/utils/budget";
 import { usePlan } from "@/context/PlanContext";
 import { useTheme } from "@/context/ThemeContext";
 import { colors } from "@/theme/colors";
 import Mascot from "@/components/Mascot";
 import MessageButton from "@/components/MessageButton";
-import ProjectChecklistCard from "@/components/ProjectChecklistCard";
 import ProjectCompletionCard from "@/components/ProjectCompletionCard";
 import ProjectRatingPrompt from "@/components/ProjectRatingPrompt";
-import ProjectCalendar from "@/screens/timeline/ProjectCalendar";
+import ProjectOverviewSummary from "@/components/ProjectOverviewSummary";
 import WageSheet from "@/components/WageSheet";
 import AddBudgetSheet from "@/components/AddBudgetSheet";
 import { wageLine } from "@/utils/wage";
-
-/** The hero card's tag. "Completed" is now something the homeowner confirms, not just a progress reading. */
-function projectLabel(status: ProjectStatus, pct: number): { label: string; color: string } {
-  if (status === "completed") return { label: "COMPLETED", color: "#10b981" };
-  if (status === "pending_confirmation") return { label: "PENDING CONFIRMATION", color: "#8b5cf6" };
-  if (pct >= 100) return { label: "ALL TASKS DONE", color: "#10b981" };
-  if (pct > 0) return { label: "IN PROGRESS", color: "#f59e0b" };
-  return { label: "JUST STARTED", color: "#9ca3af" };
-}
 
 /* DASHBOARD REMOVAL — reuse the existing confirmation layout while retaining the project in History. */
 function RemoveFromDashboardModal({
@@ -108,6 +96,7 @@ export default function ProjectOverview() {
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState(false);
+  const [teamExpandedProject, setTeamExpandedProject] = useState<number | null>(null);
   const [removingId, setRemovingId] = useState<number | null>(null);
   const [removeTarget, setRemoveTarget] = useState<ProjectSummary | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
@@ -397,59 +386,15 @@ export default function ProjectOverview() {
   }
 
   const pct = project.overallProgressPct;
-  const status = projectLabel(project.status, pct);
   const cmp = compareBudget(project.budget, project.totalEstimate);
-
-  const budgetPills = [
-    { label: "Your Budget", value: formatBudget(project.budget), color: "#9ca3af" },
-    { label: "AI Estimate", value: peso(project.totalEstimate), color: "#f59e0b" },
-    ...(cmp.hasBudget
-      ? [
-          {
-            label: cmp.difference >= 0 ? "Left Over" : "Short By",
-            value: peso(Math.abs(cmp.difference)),
-            color: cmp.difference >= 0 ? "#10b981" : "#ef4444",
-          },
-        ]
-      : []),
-  ];
 
   return (
     <>
       <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 16, gap: 16 }}>
       {picker}
-      {/* Hero project card */}
-      <View className="rounded-3xl p-5 bg-card border border-border">
-        <View className="flex-row items-start justify-between mb-4">
-          <View className="flex-1 pr-3">
-            <View
-              className="self-start px-2 py-0.5 rounded-full mb-1"
-              style={{ backgroundColor: `${status.color}20` }}
-            >
-              <Text className="text-xs font-bold" style={{ color: status.color }}>
-                {status.label}
-              </Text>
-            </View>
-            <Text className="text-lg font-extrabold text-foreground">{project.title}</Text>
-            <Text className="text-xs mt-0.5 text-muted-foreground">
-              {project.location ? `${project.location} · ` : ""}Started {new Date(project.startedAt).toLocaleDateString()}
-            </Text>
-          </View>
-          <ProgressRing pct={pct} />
-        </View>
-
-        <View className="flex-row flex-wrap gap-2 mb-4">
-          {budgetPills.map(({ label, value, color }) => (
-            <View key={label} className="px-3 py-2.5 rounded-2xl bg-background" style={{ flexGrow: 1, flexBasis: "28%" }}>
-              <Text className="text-xs mb-0.5 text-muted-foreground">{label}</Text>
-              <CountUp text={value} className="font-bold text-sm" style={{ color, fontFamily: "DMMono_500Medium" }} />
-              {/* The estimate went up because the work outgrew the plan — say by how much, so "Left Over" shrinking isn't a mystery. */}
-              {label === "AI Estimate" && !!project.estimateAdjustment?.additionsTotal && (
-                <CountUp text={`+${peso(project.estimateAdjustment.additionsTotal)} added`} className="text-xs mt-0.5" style={{ color: colors.danger }} />
-              )}
-            </View>
-          ))}
-        </View>
+      <ProjectOverviewSummary key={`overview-summary-${project.id}`} project={project}
+        onOpen={() => { selectPlanProject(project.id, project.approvedPlan); router.push("/homeowner/progress" as never); }} />
+      {!!project.estimateAdjustment?.additionsTotal && <Text className="text-xs text-muted-foreground">The estimate includes {peso(project.estimateAdjustment.additionsTotal)} in additional project costs.</Text>}
         {!!project.estimateAdjustment?.pendingMaterialsTotal && (
           <Pressable onPress={() => router.push("/homeowner/approvals" as never)} className="mb-4">
             <Text className="text-xs" style={{ color: colors.warning }}>
@@ -471,16 +416,6 @@ export default function ProjectOverview() {
           </Pressable>
         )}
 
-        <View>
-          <View className="flex-row justify-between mb-1.5">
-            <Text className="text-xs text-muted-foreground">Overall Progress</Text>
-            <Text className="text-xs" style={{ color: chrome.foreground }}>
-              {pct}%
-            </Text>
-          </View>
-          <ProgressBar pct={pct} color="#f59e0b" height={10} />
-        </View>
-      </View>
 
       {/* The contractor's finished-project submission waiting for the homeowner, or how it ended */}
       <ProjectCompletionCard
@@ -493,88 +428,29 @@ export default function ProjectOverview() {
         }}
       />
 
-      {/* Small projects with no contractor: the homeowner manages the checklist themselves. */}
-      {project.canManageChecklist && (
-        <View className="rounded-3xl p-4 bg-card border border-border">
-          <Text className="font-bold text-sm text-foreground mb-3">Project Checklist</Text>
-          <ProjectChecklistCard
-            key={`project-checklist-${project.id}`}
-            project={project}
-            onChanged={async () => {
-              const next = await fetchProjectOverview(project.id);
-              setData(next);
-              if (next.project?.status === "completed") await refreshProjectSelection();
-            }}
-          />
-        </View>
-      )}
-
       {/* At 100%, invites the homeowner to rate the contractor and workers who built it */}
       <ProjectRatingPrompt key={`project-rating-${project.id}`} projectId={project.id} progressPct={project.status === "completed" ? 100 : pct} />
 
-      {/* Stats row */}
-      <View className="flex-row gap-2">
-        {[
-          { label: "Active Projects", value: data!.stats.active, color: "#f59e0b" },
-          { label: "Completed", value: data!.stats.completed, color: "#10b981" },
-        ].map(({ label, value, color }) => (
-          <View key={label} className="flex-1 p-4 rounded-2xl items-center bg-card border border-border">
-            <Text className="text-2xl font-extrabold mb-0.5" style={{ color }}>
-              {value}
-            </Text>
-            <Text className="text-xs text-muted-foreground">{label}</Text>
-          </View>
-        ))}
-      </View>
-
-      {/* Construction phases */}
-      <View className="rounded-3xl p-4 bg-card border border-border">
-        <View className="flex-row items-center justify-between mb-3">
-          <Text className="font-bold text-sm text-foreground">Construction Phases</Text>
-          <Pressable onPress={() => router.push("/homeowner/progress" as never)}>
-            <Text className="text-xs font-semibold text-primary">View All →</Text>
-          </Pressable>
-        </View>
-        <View style={{ gap: 12 }}>
-          {project.phases.map(({ name, progressPct }, i) => (
-            <View key={`${name}-${i}`}>
-              <View className="flex-row justify-between mb-1.5">
-                <Text className="text-xs" style={{ color: chrome.foreground, flex: 1 }}>{name}</Text>
-                <Text
-                  className="text-xs font-semibold"
-                  style={{ color: chrome.foreground }}
-                >
-                  {progressPct}%
-                </Text>
-              </View>
-              <ProgressBar
-                pct={progressPct}
-                height={8}
-                color={progressPct === 100 ? "#10b981" : progressPct > 50 ? "#f59e0b" : progressPct > 0 ? "#3b82f6" : "#252a3a"}
-              />
-            </View>
-          ))}
-        </View>
-      </View>
-
-      {/* The AI-proposed schedule vs real progress; the phases card above already lists the phases. */}
-      <ProjectCalendar key={`project-calendar-${project.id}`} projectId={project.id} showPhases={false} />
+      <Text className="text-xs text-muted-foreground">Your projects: {data!.stats.active} ongoing · {data!.stats.completed} completed</Text>
 
       {/* Project team */}
       <View className="rounded-3xl p-4 bg-card border border-border">
         <View className="flex-row items-center justify-between mb-3">
-          <View>
-            <Text className="font-bold text-sm text-foreground">Project Team</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Team management" accessibilityState={{ expanded: teamExpandedProject === project.id }} onPress={() => setTeamExpandedProject(value => value === project.id ? null : project.id)} style={{ flex: 1, minWidth: 0, gap: 4 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><Text className="flex-1 font-bold text-sm text-foreground">Team management</Text>
+              <Ionicons name={teamExpandedProject === project.id ? "chevron-up" : "chevron-down"} size={18} color={chrome.foreground} /></View>
+            <Text className="text-xs text-muted-foreground">{project.workers.length} workers · {project.contractors.length} contractors</Text>
             {!!project.teamWageTotal && (
               <Text className="text-xs mt-0.5 text-muted-foreground">
                 Team wages <Text className="font-semibold" style={{ color: "#f59e0b" }}>{peso(project.teamWageTotal)}</Text>
               </Text>
             )}
-          </View>
+          </Pressable>
           <Pressable onPress={() => router.push("/homeowner/marketplace" as never)}>
             <Text className="text-xs font-semibold text-primary">Find Team →</Text>
           </Pressable>
         </View>
+        {teamExpandedProject === project.id && <>
         <Text className="text-xs mb-3 leading-5 text-muted-foreground">Wages are filled in automatically when your team joins. Automatic amounts are estimates; custom amounts are optional.</Text>
         {project.contractors.length === 0 && project.workers.length === 0 ? (
           <Text className="text-xs text-muted-foreground">
@@ -627,6 +503,7 @@ export default function ProjectOverview() {
             ))}
           </View>
         )}
+        </>}
       </View>
       </ScrollView>
       {wageTarget && (

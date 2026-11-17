@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { load, hooks, nodes, text, runtime, defaults, deferred, theme } = require('./helpers/account-harness.cjs');
+const { load, hooks, nodes, text, runtime, defaults, deferred, tick, theme } = require('./helpers/account-harness.cjs');
 const worker = (id, extra = {}) => ({ id, name: `Worker ${id}`, trade: 'Mason', skills: ['Masonry'], averageRating: null, ratingCount: 0, matchedSkillCount: 0, ...extra });
 const contractor = (id, extra = {}) => ({ id, name: `Contractor ${id}`, specialization: 'Residential', companyName: 'Construction Company', skills: ['Renovation'], averageRating: 4.5, ratingCount: 2, matchedSkillCount: 0, ...extra });
 
@@ -145,13 +145,15 @@ async function browser(options={}) {
       assignWorkerToProject:async (...args)=>calls.push(['invite-worker',...args]),
       assignContractorToProject:async (...args)=>calls.push(['invite-contractor',...args]),
     },
-    '@/services/api/homeownerTeam':{fetchHomeownerTeam:async id=>{calls.push(['team',id]);return{
+    '@/services/api/homeownerTeam':{fetchHomeownerTeam:async id=>{calls.push(['team',id]);if(options.teamError)throw new Error('Team unavailable');return{
+      recommendations:options.recommendations??null,
       pendingWorkers:calls.filter(c=>c[0]==='invite-worker'&&c[1]===id).map(c=>({workerId:c[2]})),
       pendingContractorIds:calls.filter(c=>c[0]==='invite-contractor'&&c[1]===id).map(c=>c[2]),
     };}},
     '@/utils/currency':{},'@/utils/wage':{}, '@/components/ProfilePhoto':{ProfileAvatar:'Avatar'},
     '@/components/homeowner/TeamProfileDetails':defaults('Profile'),
     '@/components/homeowner/WorkersDirectory':defaults('Directory'),
+    '@/components/homeowner/TeamRecommendations':{...defaults('Recommendations'),RecommendationFacts:'Facts'},
     '@/components/homeowner/ProjectHiringPrompt':{...defaults('ProjectPrompt'),useHiringProjectPrompt:()=>({requireProject:()=>prompts++})},
   }).default;
   const render=()=>{current=h;return h.render(Component);};
@@ -171,6 +173,35 @@ test('the existing advanced browser loads unfiltered records before project hydr
   nodes(shared.tree,'ContractorCard')[0].props.onNeedsProject();
   assert.equal(app.prompts(),1);
   assert.equal(app.calls.length,0);
+});
+
+test('Find Your Team shows only the selected project recommendation snapshot and keeps manual cards independent',async()=>{
+  const match={...worker(11),matchedSkills:['Painting'],reason:'Recorded Painting matches the saved repainting phase.',estimatedDays:7,estimatedWage:3500,budgetFit:true,bestMatch:true};
+  const recommendations={projectId:7,projectTitle:'Approved room repainting',planApproved:true,workers:[match],contractors:[]};
+  const app=await browser({key:'7',project:{id:7,title:'Approved room repainting',status:'active',workers:[],contractors:[]},recommendations});
+  let tree=app.tree;
+  const recommended=nodes(nodes(tree,'Directory')[0].props.header,'Recommendations')[0].props;
+  assert.equal(recommended.data.projectId,7);assert.equal(recommended.data.workers[0].id,11);
+  assert.equal(recommended.renderWorker(match).props.recommendation.reason,match.reason);
+  assert.equal(recommended.renderWorker(match).props.projectId,7);
+  assert.equal(nodes(tree,'Directory')[0].props.workerTitle,'Other Skilled Workers');
+  assert.equal(nodes(tree,'Directory')[0].props.renderWorker(worker(11)).props.recommendation,undefined);
+  recommended.renderWorker(match).props.onView();tree=await app.render();assert.equal(nodes(tree,'Profile')[0].props.member.id,11);
+  app.context.activeProjectKey='8';tree=await app.render();
+  assert.equal(nodes(nodes(tree,'Directory')[0].props.header,'Recommendations')[0].props.data,null);
+});
+
+test('Find Your Team errors preserve manual browsing and repeated recommended/manual invitation taps share one lock',async()=>{
+  const error=await browser({key:'7',project:{id:7,title:'Approved',status:'active',workers:[],contractors:[]},teamError:true});
+  assert.equal(nodes(error.tree,'Directory').length,1);
+  assert.equal(nodes(nodes(error.tree,'Directory')[0].props.header,'Recommendations')[0].props.failed,true);
+  const match={...worker(11),matchedSkills:['Masonry']};
+  const app=await browser({key:'7',project:{id:7,title:'Approved',status:'active',workers:[],contractors:[]},recommendations:{projectId:7,planApproved:true,workers:[match],contractors:[]}});
+  const a=await app.renderCard(nodes(nodes(app.tree,'Directory')[0].props.header,'Recommendations')[0].props.renderWorker(match));
+  const b=await app.renderCard(nodes(app.tree,'Directory')[0].props.renderWorker(match));
+  nodes(a,'AssignButton')[0].props.onPress();nodes(b,'AssignButton')[0].props.onPress();await tick();
+  assert.equal(app.calls.filter(c=>c[0]==='invite-worker').length,1);
+  assert.deepEqual(app.calls.find(c=>c[0]==='invite-worker'),['invite-worker',7,11]);
 });
 
 test('the advanced browser enables project actions only for the exact eligible project, never a draft or completed project',async()=>{

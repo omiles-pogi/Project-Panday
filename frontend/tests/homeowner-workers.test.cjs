@@ -46,14 +46,17 @@ async function harness(options = {}) {
     '@/utils/workersLayout': load('src/utils/workersLayout.ts', {}),
     '@/context/PlanContext': { usePlan: () => context }, '@/context/ThemeContext': { useTheme: () => theme },
     '@/hooks/useFocusedResource': resource,
-    '@/services/api/homeownerTeam': { fetchHomeownerTeam: async id => { requests.push(id); return options.fetch ? options.fetch(id) : current; } },
+    '@/services/api/homeownerTeam': { fetchHomeownerTeam: async id => { requests.push(id); const base = options.fetch ? await options.fetch(id) : current;
+      return { ...base, recommendations: options.searchError || options.contractorSearchError ? null : {
+        projectId: base.projectId, planApproved: !!base.approvedPlan, workers: recommendations.filter(p=>p.matchedSkillCount>0), contractors: (options.contractors ?? []).filter(p=>p.matchedSkillCount>0),
+      }}; } },
     '@/services/api/workers': { searchWorkers: async params => { searches.push(params); if (options.searchError) throw new Error('Search offline'); return recommendations; } },
     '@/services/api/contractors': { searchContractors: async params => { contractorSearches.push(params); if (options.contractorSearchError) throw new Error('Contractors offline'); return options.contractors ?? []; } },
     '@/services/api/projects': {
       assignWorkerToProject: async (...args) => { invitations.push(args); return options.invite ? options.invite(...args) : { status: 'pending' }; },
       assignContractorToProject: async (...args) => { contractorInvitations.push(args); return options.inviteContractor ? options.inviteContractor(...args) : { status: 'pending' }; },
     },
-    '@/utils/teamRecommendations': load('src/utils/teamRecommendations.ts', {}), '@/utils/currency': { peso: value => `PHP ${value}` },
+    '@/utils/currency': { peso: value => `PHP ${value}` },
   }).default;
   const render = async () => expandUI(await h.render(Screen));
   return { tree: await render(), render, h, routes, invitations, contractorInvitations, requests, searches, contractorSearches, setOverview: value => { current = value; }, setContext: value => { context = { ...context, ...value }; }, setWorkers: value => { recommendations = value; }, setTheme: value => { theme = value; } };
@@ -107,7 +110,7 @@ test('workers dashboard orders real project sections, omits fake data and preser
   nodes(app.tree, 'Pressable').find(node => node.props.accessibilityLabel === 'Team statistics information').props.onPress();
   assert.match(text(await app.render()), /staffing headcount target/);
   assert.doesNotMatch(body, /match score|100%|Available now|PHP 0/);
-  assert.equal(app.requests[0], 7); assert.ok(app.searches[0].skills.includes('Masonry'));
+  assert.equal(app.requests[0], 7); assert.equal(app.searches.length, 0);
   actions(app.tree, 'Browse Skilled Workers')[0].props.onPress(); assert.deepEqual(app.routes, ['/homeowner/find-team']);
   assert.equal(metric(app.tree, 'Needed'), '—'); assert.equal(metric(app.tree, 'Total Team'), 0);
 });
@@ -142,8 +145,7 @@ test('worker and contractor recommendations preserve endpoint ranking and exclud
       contractors:[contractor(43,{photoUrl:'/api/account/photo/43/saved.jpg',averageRating:4.8,ratingCount:5}),contractor(42),contractor(41),contractor(44,{matchedSkillCount:0})]});
     const cards=nodes(app.tree,'RecommendedWorkerCard');
     assert.deepEqual(cards.map(card=>card.props.worker.id),[23,22,43,42]);
-    assert.deepEqual(Array.from(app.searches[0].skills),Array.from(app.contractorSearches[0].skills));
-    assert.ok(app.searches[0].skills.includes('Masonry'));
+    assert.equal(app.searches.length,0); assert.equal(app.contractorSearches.length,0);
     assert.ok(nodes(app.tree,'Avatar').some(node=>node.props.url==='/api/account/photo/43/saved.jpg'));
     assert.doesNotMatch(text(app.tree),/AI match score|100%|PHP 0/);
     assert.equal(nodes(app.tree,'Directory').length,1);
@@ -167,10 +169,10 @@ test('empty and failed recommendations leave the complete directory and the acti
   assert.match(text(empty.tree),/Recommended Workers for Your Project/);assert.match(text(empty.tree),/No recommendations available yet/);
   assert.equal(nodes(empty.tree,'Directory').length,1);
   const partial=await harness({searchError:true,contractors:[contractor(43)]});
-  assert.deepEqual(nodes(partial.tree,'RecommendedWorkerCard').map(n=>n.props.worker.id),[43]);
+  assert.equal(nodes(partial.tree,'RecommendedWorkerCard').length,0);
   assert.match(text(partial.tree),/current team is still available/);assert.equal(nodes(partial.tree,'Directory').length,1);
   const other=await harness({contractorSearchError:true});
-  assert.deepEqual(nodes(other.tree,'RecommendedWorkerCard').map(n=>n.props.worker.id),[21]);
+  assert.equal(nodes(other.tree,'RecommendedWorkerCard').length,0);
 });
 
 test('without a current construction project recommendations are hidden and no plan matching requests run',async()=>{

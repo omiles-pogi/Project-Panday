@@ -1,6 +1,7 @@
 import { apiFetch } from "@/services/api/client";
 import type { ConstructionPlan } from "@/types/plan";
 import type { ProjectStatus } from "@/types/project";
+import type { TeamRecommendations } from "@/types/teamRecommendations";
 
 export interface HomeownerTeamMember {
   id: number; name: string; role: "worker" | "contractor"; status: "Assigned";
@@ -12,6 +13,7 @@ export interface HomeownerTeamMember {
 export interface HomeownerTeamOverview {
   projectId: number; title: string; status: ProjectStatus; canInvite: boolean;
   approvedPlan: Partial<ConstructionPlan> | null; team: HomeownerTeamMember[];
+  recommendations?: TeamRecommendations | null;
   pendingWorkers: { workerId: number; initiatedBy: "homeowner" | "worker" }[];
   pendingContractorIds: number[];
   metrics: { total: number; active: number; pending: number; needed: number | null };

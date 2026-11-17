@@ -42,7 +42,7 @@ test('checklist task text follows the theme while toggle, delete, add and phase 
       react: hook.react, 'react/jsx-runtime': runtime, 'react-native': { Text: 'Text', View: 'View', Pressable: 'Pressable' },
       '@expo/vector-icons': { Ionicons: 'Icon' }, '@/components/ui': { Button: 'Button', Field: 'Field', ProgressBar: 'ProgressBar' },
       '@/components/ConfirmDialog': { useConfirmDialog: () => ({ ask: (options) => confirmations.push(options), dialog: null }) },
-      '@/services/api/projects': api, '@/context/ThemeContext': { useTheme: () => ({ mode, chrome }) },
+      '@/utils/checklist': load('src/utils/checklist.ts', {}), '@/utils/timeline': load('src/utils/timeline.ts', {}), '@/services/api/projects': api, '@/context/ThemeContext': { useTheme: () => ({ mode, chrome }) },
     }).default;
     const project = { id: 7, title: 'Saved house', status: 'active', canManageChecklist: true, checklistLocked: false, canSubmitCompletion: false,
       checklist: { pct: 50, totalTasks: 2, doneTasks: 1 }, phases: [{ id: 8, name: 'Foundation', progressPct: 50,

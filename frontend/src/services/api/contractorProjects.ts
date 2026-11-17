@@ -23,7 +23,7 @@ export async function fetchContractorProjectDetails(projectId: number, contracto
   let timeline: ProjectTimeline | null = null;
   let timelineError: string | null = null;
   try {
-    const saved = await fetchProjectTimeline(projectId);
+    const saved = await fetchProjectTimeline(projectId, true);
     if (saved.projectId !== projectId) throw new Error("The calendar response did not match your selection.");
     timeline = saved;
   } catch {
